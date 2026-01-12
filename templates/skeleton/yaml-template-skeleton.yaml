@@ -1,0 +1,169 @@
+# @id: yaml-template-skeleton
+# @name: YAML Template Skeleton
+# @author: CERT-X-GEN Security Team
+# @severity: info
+# @description: Skeleton template showing the structure for CERT-X-GEN YAML templates
+# @tags: skeleton, example, yaml
+# @references: https://cwe.mitre.org/data/definitions/1008.html
+
+id: yaml-template-skeleton
+name: "YAML Template Skeleton"
+author: CERT-X-GEN Security Team
+severity: info
+description: |
+  Skeleton template showing the structure for CERT-X-GEN YAML templates.
+  Copy and customize for your specific security check.
+tags:
+  - skeleton
+  - example
+  - yaml
+references:
+  - https://cwe.mitre.org/data/definitions/1008.html
+
+language: yaml
+
+# HTTP-based template example
+# Use when your check is primarily HTTP/HTTPS based.
+# ============================================================================
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/"
+      - "{{BaseURL}}/api/health"
+
+    headers:
+      User-Agent: "cert-x-gen/1.0"
+
+    # Matchers determine if the response indicates a finding
+    # Valid types: word, regex, binary, status, size, dsl, xpath
+    matchers-condition: and
+    matchers:
+      # Status matcher: HTTP status codes
+      - type: status
+        status:
+          - 200
+
+      # Word matcher: substrings in body/header/all
+      - type: word
+        words:
+          - "example-indicator"
+          - "another-indicator"
+        condition: or
+        part: body
+
+      # Regex matcher: regular expressions
+      - type: regex
+        regex:
+          - "Version:\\s*(\\d+\\.\\d+\\.\\d+)"
+        part: body
+
+      # Binary matcher: raw byte sequences (hex-encoded)
+      - type: binary
+        binary:
+          - "89504E47"
+
+      # Size matcher: response body length using DSL
+      - type: dsl
+        dsl:
+          - "content_length > 1000"
+          - "content_length < 100000"
+        condition: and
+
+      # DSL matcher: expression-based matching
+      - type: dsl
+        dsl:
+          - "status_code == 200"
+          - "contains(body, 'vulnerable')"
+        condition: and
+
+      # XPath matcher: for XML/HTML responses
+      - type: xpath
+        xpath:
+          - "//title[contains(text(), 'Admin')]"
+
+    # Extractors capture data from responses
+    # Valid types: regex, kval, json, xpath, dsl
+    extractors:
+      - type: regex
+        name: version
+        regex:
+          - "Version:\\s*(\\d+\\.\\d+\\.\\d+)"
+        group: 1
+
+      - type: kval
+        name: server_header
+        kval:
+          - Server
+
+      - type: json
+        name: api_version
+        json:
+          - ".version"
+          - ".api.version"
+
+# Network-based template example
+# Use when your check talks directly to TCP/UDP services.
+# ============================================================================
+
+network:
+  - protocol: tcp
+    port: 6379
+
+    # Payloads sent to the target service
+    payloads:
+      - "INFO\r\n"
+
+    matchers-condition: and
+    matchers:
+      - type: word
+        words:
+          - "redis_version"
+        part: body
+
+      - type: regex
+        regex:
+          - "redis_version:(\\d+\\.\\d+\\.\\d+)"
+
+    extractors:
+      - type: regex
+        name: redis_version
+        regex:
+          - "redis_version:(\\d+\\.\\d+\\.\\d+)"
+        group: 1
+
+# Flow-based multi-step example
+# Flows chain multiple steps with variables and conditions.
+# ============================================================================
+
+flows:
+  - name: auth_flow
+    steps:
+      - action: http_request
+        method: POST
+        path: /api/login
+        headers:
+          Content-Type: "application/json"
+        body: '{"username":"admin","password":"{{Password}}"}'
+        store: login_response
+
+      - action: extract
+        from: login_response
+        pattern: '"token":\\s*"([^"]+)"'
+        store: auth_token
+
+      - action: set_variable
+        name: Authorization
+        value: "Bearer {{auth_token}}"
+
+      - action: check
+        condition: auth_token != ""
+        message: "Authentication successful"
+
+# Remediation guidance
+# ============================================================================
+
+remediation: |
+  1. Describe how to remediate or mitigate the detected issue.
+  2. Include configuration changes, patches, or architectural guidance.
+  3. Link to vendor or community best-practice documentation.

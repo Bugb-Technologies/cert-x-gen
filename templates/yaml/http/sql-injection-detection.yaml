@@ -1,0 +1,65 @@
+id: sql-injection-basic
+name: "SQL Injection Detection (Basic)"
+author:
+  name: "CERT-X-GEN Security Team"
+  email: "security@cert-x-gen.io"
+severity: critical
+description: |
+  Detects SQL injection vulnerabilities through error-based detection techniques.
+  Tests common SQL injection payloads across multiple database types and analyzes
+  responses for database error messages indicating improper input validation.
+
+tags:
+  - sql-injection
+  - injection
+  - database
+  - sqli
+  - owasp-a03
+  - web
+
+language: yaml
+confidence: 85
+
+cwe:
+  - CWE-89
+
+references:
+  - https://cwe.mitre.org/data/definitions/89.html
+  - https://owasp.org/www-community/attacks/SQL_Injection
+  - https://portswigger.net/web-security/sql-injection
+
+# HTTP request specifications
+http:
+  - method: GET
+    path:
+      - "/?id=1'"
+      - "/?id=1' OR '1'='1"
+      - "/?id=1' AND 1=1--"
+      - "/?page=admin' UNION SELECT NULL--"
+    
+    headers:
+      User-Agent: "cert-x-gen/1.0"
+    
+    # Match SQL error messages
+    matchers-condition: or
+    matchers:
+      - type: word
+        words:
+          - "SQL syntax"
+          - "mysql_fetch"
+          - "ORA-01"
+          - "PostgreSQL"
+          - "SQLite"
+          - "Microsoft SQL Server"
+          - "Unclosed quotation mark"
+          - "quoted string not properly terminated"
+        condition: or
+        part: body
+      
+      - type: regex
+        regex:
+          - "SQL\\s+error"
+          - "mysql_.*error"
+          - "pg_.*error"
+          - "sqlite.*error"
+          - "ODBC.*Driver"

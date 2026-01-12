@@ -1,0 +1,22 @@
+id: etcd-instead-http-request
+name: "Etcd Member List Security Check"
+author:
+  name: "CERT-X-GEN"
+severity: medium
+description: |
+  Detects unauthenticated etcd member list over TCP.
+
+tags: [etcd, unauthenticated, database, key-value]
+language: yaml
+
+network:
+  - protocol: tcp
+    port: 2379
+    payloads:
+      - "GET /v2/members HTTP/1.1\r\nHost: {{ip}}:{{port}}\r\nAccept: */*\r\n\r\n"
+    matchers:
+      - type: word
+        words:
+          - '"members"'
+          - '"clientURLs"'
+        condition: and

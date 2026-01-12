@@ -1,0 +1,94 @@
+# CERT-X-GEN YAML Template Skeleton
+#
+# Copy this file and customize it for your specific security check.
+# This skeleton shows the common structure used by CERT-X-GEN YAML templates.
+#
+# Basic metadata -----------------------------------------------------------
+
+id: api-pull-access-check
+name: "Unauthorized API Pull Access Check"
+author:
+  name: "CERT-X-GEN Automated Generator"
+  email: "security@cert-x-gen.org"
+  github: "cert-x-gen"
+severity: critical
+description: |
+  This template checks for unauthorized access to the `/api/pull` endpoint.
+  It sends a POST request attempting to trigger a model pull operation and
+  verifies whether the endpoint responds with an initial status output that
+  indicates the pull was accepted or started. Unauthorized access to this
+  endpoint could allow attackers to manipulate or exfiltrate model data,
+  corresponding to the risk described in CVE-2024-37032.
+
+tags:
+  - api
+  - unauthorized-access
+  - model-pull
+  - critical
+  - cve-2024-37032
+  - ollama
+
+language: yaml
+confidence: 95
+
+cve_ids:
+  - "CVE-2024-37032"
+cwe_ids:
+  - "CWE-306"        # Missing Authentication for Critical Function
+cvss_score: 9.8
+version: "1.0.0"
+
+references:
+  - https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2024-37032
+  - https://owasp.org/Top10/A01_2021-Broken_Access_Control/
+
+# HTTP-based template ------------------------------------------------------
+
+http:
+  - method: POST
+    path:
+      - "/api/pull"
+
+    headers:
+      User-Agent: "cert-x-gen/1.0"
+      Content-Type: "application/json"
+
+    body: |
+      {
+        "model": "example-model",
+        "action": "pull"
+      }
+
+    matchers-condition: and
+    matchers:
+      - type: status
+        status:
+          - 200
+          - 202
+
+      - type: word
+        words:
+          - "pull initiated"
+          - "status"
+          - "in_progress"
+        condition: or
+        part: body
+
+      - type: regex
+        regex:
+          - "\"status\"\\s*:\\s*\"(initiated|in_progress|queued)\""
+
+    extractors:
+      - type: regex
+        name: pull_status
+        regex:
+          - "\"status\"\\s*:\\s*\"([a-z_]+)\""
+
+# Remediation guidance ----------------------------------------------------
+
+remediation: |
+  1. Restrict access to the `/api/pull` endpoint to authenticated and authorized users only.
+  2. Implement proper authentication and authorization checks before allowing model pull operations.
+  3. Review API gateway or reverse proxy configurations to ensure sensitive endpoints are not publicly exposed.
+  4. Apply vendor patches or updates addressing CVE-2024-37032 if applicable.
+  5. Monitor logs for unauthorized POST requests to `/api/pull` and investigate any suspicious activity.

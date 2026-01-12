@@ -1,0 +1,62 @@
+FROM ubuntu:22.04
+
+# Prevent interactive prompts
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Update and install basic tools
+RUN apt-get update && apt-get install -y \
+    curl wget git vim \
+    build-essential \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python
+RUN apt-get update && apt-get install -y \
+    python3.11 python3-pip python3-venv \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Ruby
+RUN apt-get update && apt-get install -y \
+    ruby-full \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Node.js
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y nodejs && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install Go
+RUN apt-get update && apt-get install -y \
+    golang-go \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Java
+RUN apt-get update && apt-get install -y \
+    default-jdk \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Perl
+RUN apt-get update && apt-get install -y \
+    perl cpanminus \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install PHP
+RUN apt-get update && apt-get install -y \
+    php-cli php-curl php-xml php-mbstring \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Rust
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
+    echo 'source $HOME/.cargo/env' >> ~/.bashrc
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Set up workspace
+WORKDIR /workspace
+
+# Mark as sandbox
+ENV CERT_X_GEN_SANDBOX=true
+ENV CERT_X_GEN_SANDBOX_NAME=cert-x-gen-sandboxed-env
+
+# Keep container running
+# Use tail -f /dev/null to keep container alive
+CMD ["tail", "-f", "/dev/null"]

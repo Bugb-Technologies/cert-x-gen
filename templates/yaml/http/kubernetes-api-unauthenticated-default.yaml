@@ -1,0 +1,186 @@
+id: kubernetes-api-unauthenticated
+name: "Kubernetes API Unauthenticated Access"
+author:
+  name: "CERT-X-GEN"
+  email: "security@cert-x-gen.org"
+  github: "cert-x-gen"
+severity: critical
+description: |
+  Detects unauthenticated access to Kubernetes API server.
+  Unauthenticated access to the Kubernetes API can allow attackers to
+  enumerate cluster resources, deploy malicious pods, access secrets,
+  and potentially gain full control of the Kubernetes cluster.
+
+tags:
+  - kubernetes
+  - api
+  - unauthenticated
+  - container
+  - orchestration
+  - cve
+
+language: yaml
+confidence: 90
+
+cwe_ids:
+  - "CWE-306"
+  - "CWE-284"
+cvss_score: 9.8
+version: "1.0.0"
+
+references:
+  - https://kubernetes.io/docs/concepts/security/controlling-access/
+  - https://www.cvedetails.com/vulnerability-list/vendor_id-15867/product_id-34016/Kubernetes-Kubernetes.html
+
+network:
+  - protocol: tcp
+    port: 6443  # Default Kubernetes API port
+    
+    payloads:
+      - "GET /api/v1/namespaces/default/pods HTTP/1.1\r\nHost: {{Hostname}}\r\nUser-Agent: cert-x-gen/1.0\r\nAccept: application/json\r\n\r\n"
+
+    matchers-condition: or
+    matchers:
+      - type: word
+        words:
+          - '"kind":"PodList"'
+          - '"kind":"NamespaceList"'
+          - "kubernetes"
+          - "apiVersion"
+        condition: and
+        part: body
+
+      - type: status
+        status:
+          - 200
+          - 201
+
+      - type: regex
+        regex:
+          - '"kind":"(Pod|Namespace|Service|Deployment)List"'
+        part: body
+
+  - protocol: tcp
+    port: 8080  # Common insecure port
+    
+    payloads:
+      - "GET /api/v1/namespaces/default/pods HTTP/1.1\r\nHost: {{Hostname}}\r\nUser-Agent: cert-x-gen/1.0\r\nAccept: application/json\r\n\r\n"
+
+    matchers-condition: or
+    matchers:
+      - type: word
+        words:
+          - '"kind":"PodList"'
+          - '"kind":"NamespaceList"'
+          - "kubernetes"
+          - "apiVersion"
+        condition: and
+        part: body
+
+      - type: status
+        status:
+          - 200
+          - 201
+
+  - protocol: tcp
+    port: 8443  # Alternative HTTPS port
+    
+    payloads:
+      - "GET /api/v1/namespaces/default/pods HTTP/1.1\r\nHost: {{Hostname}}\r\nUser-Agent: cert-x-gen/1.0\r\nAccept: application/json\r\n\r\n"
+
+    matchers-condition: or
+    matchers:
+      - type: word
+        words:
+          - '"kind":"PodList"'
+          - '"kind":"NamespaceList"'
+          - "kubernetes"
+          - "apiVersion"
+        condition: and
+        part: body
+
+      - type: status
+        status:
+          - 200
+          - 201
+
+  - protocol: tcp
+    port: 2379  # etcd port (Kubernetes data store)
+    
+    payloads:
+      - "GET /version HTTP/1.1\r\nHost: {{Hostname}}\r\nUser-Agent: cert-x-gen/1.0\r\n\r\n"
+
+    matchers-condition: or
+    matchers:
+      - type: word
+        words:
+          - "etcdserver"
+          - "etcdcluster"
+        condition: or
+        part: body
+
+      - type: regex
+        regex:
+          - '"etcdversion":"[0-9]+\\.[0-9]+\\.[0-9]+"'
+        part: body
+
+http:
+  - method: GET
+    path:
+      - "/api/v1/namespaces/default/pods"
+      - "/api/v1/namespaces"
+      - "/version"
+      - "/healthz"
+
+    headers:
+      User-Agent: "cert-x-gen/1.0"
+      Accept: "application/json"
+
+    matchers-condition: or
+    matchers:
+      - type: word
+        words:
+          - '"kind":"PodList"'
+          - '"kind":"NamespaceList"'
+          - "kubernetes"
+          - "apiVersion"
+        condition: and
+        part: body
+
+      - type: status
+        status:
+          - 200
+          - 201
+
+      - type: regex
+        regex:
+          - '"gitVersion":"v[0-9]+\\.[0-9]+\\.[0-9]+"'
+        part: body
+
+      - type: word
+        words:
+          - "ok"
+          - "healthy"
+        condition: or
+        part: body
+
+extractors:
+  - type: regex
+    name: kubernetes_version
+    regex:
+      - '"gitVersion":"(v[0-9]+\\.[0-9]+\\.[0-9]+)"'
+    part: body
+
+remediation: |
+  1. Enable and enforce authentication for Kubernetes API server
+  2. Use Role-Based Access Control (RBAC) with least privilege principles
+  3. Enable network policies to restrict API server access
+  4. Use TLS certificates for API server authentication
+  5. Consider using a service mesh or API gateway for additional security layers
+  6. Regularly audit and monitor Kubernetes API access logs
+  7. Use Kubernetes admission controllers to enforce security policies
+  8. Ensure etcd (Kubernetes data store) is properly secured and not exposed
+
+  References:
+  - https://kubernetes.io/docs/reference/access-authn-authz/authentication/
+  - https://kubernetes.io/docs/reference/access-authn-authz/rbac/

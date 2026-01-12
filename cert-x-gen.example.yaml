@@ -1,0 +1,148 @@
+# CERT-X-GEN Example Configuration
+# Copy this file to cert-x-gen.yaml and customize for your environment
+
+global:
+  # Verbosity level (0-3)
+  verbosity: 1
+  
+  # Enable colored output
+  color: true
+  
+  # Log level: trace, debug, info, warn, error
+  log_level: info
+  
+  # Log file path (optional)
+  log_file: null
+  
+  # Enable debug mode
+  debug: false
+
+templates:
+  # Template directories to search
+  directories:
+    - ./templates
+    - ~/.cert-x-gen/templates
+  
+  # Auto-update templates from remote repository
+  auto_update: false
+  
+  # Template cache directory
+  cache_dir: .cache/templates
+  
+  # Enabled template languages
+  enabled_languages:
+    - yaml
+    - python
+    - rust
+    - shell
+  
+  # Template execution timeout (seconds)
+  timeout_secs: 30
+
+network:
+  # Request timeout (seconds)
+  timeout_secs: 10
+  
+  # User agent string
+  user_agent: "cert-x-gen/1.0"
+  
+  # Follow HTTP redirects
+  follow_redirects: true
+  
+  # Maximum number of redirects
+  max_redirects: 5
+  
+  # Connection pool size
+  connection_pool_size: 100
+  
+  # Enable HTTP/2
+  http2: true
+  
+  # Proxy URL (optional)
+  # Examples: http://proxy:8080, socks5://proxy:1080
+  proxy: null
+  
+  # Custom DNS servers (optional)
+  dns_servers: []
+  
+  # Rate limit (requests per second)
+  rate_limit: 100
+
+execution:
+  # Number of worker threads (0 = auto-detect)
+  threads: 0
+  
+  # Parallel target scanning
+  parallel_targets: 50
+  
+  # Parallel template execution per target
+  parallel_templates: 10
+  
+  # Maximum retries on failure
+  max_retries: 3
+  
+  # Retry delay (seconds)
+  retry_delay_secs: 1
+  
+  # Aggressive mode (more invasive checks)
+  aggressive_mode: false
+  
+  # Stealth mode (slower, less detectable)
+  stealth_mode: false
+  
+  # Enable result caching
+  cache_enabled: true
+
+output:
+  # Output formats: json, csv, markdown, sarif, html, xml
+  formats:
+    - json
+  
+  # Output directory
+  output_dir: ./results
+  
+  # Output file basename
+  output_file: scan-results
+  
+  # Stream output in real-time
+  stream: false
+  
+  # Minimum severity to report
+  min_severity: info
+
+sandbox:
+  # Enable sandbox for template execution
+  enabled: true
+  
+  # Memory limit per template (MB)
+  memory_limit_mb: 512
+  
+  # CPU limit (percentage)
+  cpu_limit_percent: 80
+  
+  # Network access control: none, controlled, full
+  network_access: controlled
+  
+  # Filesystem access: none, readonly, full
+  filesystem_access: readonly
+
+metrics:
+  # Enable metrics collection
+  enabled: true
+  
+  # Metrics export port (Prometheus)
+  export_port: 9090
+  
+  # Metrics export format: prometheus, json
+  export_format: prometheus
+
+plugins:
+  # Enable plugin system
+  enabled: false
+  
+  # Plugin directories
+  directories:
+    - ./plugins
+  
+  # Loaded plugins
+  plugins: []

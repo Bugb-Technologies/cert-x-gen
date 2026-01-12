@@ -1,0 +1,105 @@
+id: redis-exporter-exposed
+name: "Redis Exporter Exposed Detection"
+author:
+  name: "CERT-X-GEN Security Team"
+  email: "security@cert-x-gen.io"
+severity: medium
+description: |
+  Detects publicly exposed Redis exporters (Prometheus exporters for Redis).
+  Redis exporters expose internal Redis metrics and statistics that can reveal
+  sensitive information about the Redis instance, including version, memory usage,
+  connected clients, and replication status.
+  
+  This template tests HTTP/HTTPS endpoints commonly used by Redis exporters.
+  For direct Redis protocol testing, use the 'redis-unauthenticated-access' template.
+  
+  PROTOCOL FLEXIBILITY:
+  - Uses 'http:' section for HTTP/HTTPS testing
+  - Engine automatically detects supported protocols: HTTP and HTTPS
+  - Recommended ports: 9121 (redis_exporter), 9090 (Prometheus), 9100 (node_exporter)
+
+tags:
+  - redis
+  - exporter
+  - prometheus
+  - metrics
+  - exposure
+  - monitoring
+  - http
+
+language: yaml
+confidence: 90
+
+cwe:
+  - CWE-200  # Exposure of Sensitive Information
+
+references:
+  - https://cwe.mitre.org/data/definitions/200.html
+  - https://github.com/oliver006/redis_exporter
+  - https://prometheus.io/docs/instrumenting/exporters/
+
+# Redis exporter typically runs on port 9121
+# Prometheus on 9090, Node exporter on 9100
+http:
+  - method: GET
+    path:
+      - "/"
+      - "/metrics"
+      - "/api/v1/targets"
+    
+    matchers-condition: or
+    matchers:
+      # Redis exporter specific
+      - type: word
+        words:
+          - "redis_exporter"
+          - "redis_version"
+          - "redis_uptime_in_seconds"
+          - "redis_connected_clients"
+          - "redis_used_memory_bytes"
+        condition: or
+        part: body
+      
+      # Prometheus metrics format
+      - type: regex
+        regex:
+          - "# HELP redis_"
+          - "# TYPE redis_"
+        condition: or
+        part: body
+      
+      # Generic Prometheus exporter indicators
+      - type: word
+        words:
+          - "go_goroutines"
+          - "process_cpu_seconds_total"
+        condition: and
+        part: body
+
+extractors:
+  - type: regex
+    name: redis_version
+    regex:
+      - 'redis_version="([\\d\\.]+)"'
+      - "redis_version:(\\d+\\.\\d+\\.\\d+)"
+    group: 1
+  
+  - type: regex
+    name: exporter_version
+    regex:
+      - 'version="([\\d\\.]+)"'
+    group: 1
+  
+  - type: regex
+    name: redis_role
+    regex:
+      - 'role="(master|slave|replica)"'
+    group: 1
+
+remediation: |
+  1. Restrict access to Redis exporter endpoints using firewall rules
+  2. Implement authentication for the exporter (basic auth, OAuth, etc.)
+  3. Use network segmentation to isolate monitoring infrastructure
+  4. Configure TLS/SSL for the exporter endpoint
+  5. Disable unnecessary metrics that expose sensitive information
+  6. Use Prometheus service discovery instead of exposing exporters publicly

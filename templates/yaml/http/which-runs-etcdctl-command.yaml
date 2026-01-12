@@ -1,0 +1,30 @@
+id: etcd-auth-check
+name: "Etcd Authentication Check"
+author:
+  name: "CERT-X-GEN"
+severity: info
+description: |
+  Checks if etcd endpoints are accessible and whether authentication is required
+  by attempting to run etcdctl member list command.
+
+tags:
+  - etcd
+  - authentication
+  - kubernetes
+
+language: yaml
+
+network:
+  - protocol: tcp
+    ports:
+      - "2379"
+    inputs:
+      - data: "etcdctl --endpoints=http://{{Host}}:{{Port}} member list\n"
+    matchers:
+      - type: word
+        words:
+          - "etcd cluster is unavailable"
+          - "authentication failed"
+          - "user name is empty"
+        condition: or
+        part: data

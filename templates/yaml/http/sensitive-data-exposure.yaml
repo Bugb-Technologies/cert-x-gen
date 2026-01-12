@@ -1,0 +1,112 @@
+id: sensitive-data-exposure
+name: "Sensitive Data Exposure Detection"
+author:
+  name: "CERT-X-GEN Security Team"
+  email: "security@cert-x-gen.io"
+severity: medium
+description: |
+  Detects exposure of sensitive information in HTTP responses.
+  Looks for API keys, credentials, internal paths, and configuration data.
+
+tags:
+  - information-disclosure
+  - sensitive-data
+  - owasp-a02
+  - data-leakage
+  - credentials
+  - web
+
+language: yaml
+confidence: 95
+
+cwe:
+  - CWE-200
+  - CWE-312
+
+references:
+  - https://cwe.mitre.org/data/definitions/200.html
+  - https://owasp.org/www-community/vulnerabilities/Information_exposure
+  - https://portswigger.net/web-security/information-disclosure
+
+# HTTP request specifications
+http:
+  - method: GET
+    path:
+      - "/.env"
+      - "/.git/config"
+      - "/config.php"
+      - "/phpinfo.php"
+      - "/server-status"
+      - "/admin/config.json"
+      - "/.aws/credentials"
+      - "/backup.sql"
+    
+    headers:
+      User-Agent: "cert-x-gen/1.0"
+    
+    # Detect sensitive patterns
+    matchers-condition: or
+    matchers:
+      # API Keys and Secrets
+      - type: regex
+        regex:
+          - "api[_-]?key['\"]?\\s*[:=]\\s*['\"]?[a-zA-Z0-9_\\-]{20,}"
+          - "secret[_-]?key['\"]?\\s*[:=]\\s*['\"]?[a-zA-Z0-9_\\-]{20,}"
+          - "aws[_-]?access[_-]?key['\"]?\\s*[:=]\\s*['\"]?[A-Z0-9]{20}"
+          - "AKIA[0-9A-Z]{16}"
+          - "sk_live_[a-zA-Z0-9]{24,}"
+          - "pk_live_[a-zA-Z0-9]{24,}"
+      
+      # Database Credentials
+      - type: regex
+        regex:
+          - "DB_PASSWORD\\s*=\\s*.+"
+          - "database[_-]?password['\"]?\\s*[:=]"
+          - "mysql://[^\\s]+:[^\\s]+@"
+          - "postgres://[^\\s]+:[^\\s]+@"
+      
+      # Internal Paths and Structure
+      - type: word
+        words:
+          - "root:x:0:0"
+          - "/etc/passwd"
+          - "C:\\Windows\\System32"
+          - "[database]"
+          - "[client]"
+        condition: or
+      
+      # JWT Tokens
+      - type: regex
+        regex:
+          - "eyJ[a-zA-Z0-9_-]*\\.eyJ[a-zA-Z0-9_-]*\\.[a-zA-Z0-9_-]*"
+      
+      # Private Keys
+      - type: word
+        words:
+          - "-----BEGIN PRIVATE KEY-----"
+          - "-----BEGIN RSA PRIVATE KEY-----"
+          - "-----BEGIN EC PRIVATE KEY-----"
+        condition: or
+      
+      # Configuration Disclosure
+      - type: word
+        words:
+          - "phpinfo()"
+          - "PHP Version"
+          - "Server API"
+          - "Apache/2"
+        condition: and
+
+  - method: GET
+    path:
+      - "/robots.txt"
+      - "/sitemap.xml"
+    
+    matchers:
+      - type: word
+        words:
+          - "Disallow: /admin"
+          - "Disallow: /backup"
+          - "Disallow: /config"
+          - "Disallow: /internal"
+        condition: or

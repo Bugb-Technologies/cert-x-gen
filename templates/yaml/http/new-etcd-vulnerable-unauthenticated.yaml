@@ -1,0 +1,34 @@
+id: etcd-unauth
+name: "Etcd Unauthenticated Access - Members List"
+author:
+  name: "CERT-X-GEN"
+severity: high
+description: |
+  Detects unauthenticated access to etcd on port 2379 by attempting to list
+  cluster members via the HTTP API.
+
+tags:
+  - etcd
+  - unauthenticated
+  - database
+  - key-value
+
+language: yaml
+
+http:
+  - method: GET
+    path:
+      - "/v2/members"
+      - "/v3/members"
+      - "/v3beta/members"
+    matchers-condition: or
+    matchers:
+      - type: word
+        words:
+          - "clientURLs"
+          - "id"
+        condition: and
+        part: body
+      - type: status
+        status:
+          - 200

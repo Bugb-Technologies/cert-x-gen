@@ -1,0 +1,30 @@
+id: etcd-think-path-wrong
+name: "Etcd Unauthenticated Access"
+author:
+  name: "CERT-X-GEN"
+severity: medium
+description: |
+  Detects unauthenticated etcd endpoints exposing cluster member information.
+
+tags:
+  - etcd
+  - unauthenticated
+  - database
+  - key-value
+
+language: yaml
+
+http:
+  - method: GET
+    path:
+      - "/v2/members"
+    matchers-condition: or
+    matchers:
+      - type: word
+        words:
+          - '"members"'
+          - '"clientURLs"'
+        condition: and
+        part: body
+      - type: status
+        status: [200]

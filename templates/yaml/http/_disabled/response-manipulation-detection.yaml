@@ -1,0 +1,122 @@
+id: response-manipulation-detection
+name: "Response Manipulation & Cache Poisoning"
+author:
+  name: "CERT-X-GEN Security Team"
+  email: "security@cert-x-gen.io"
+severity: medium
+description: |
+  Detects response manipulation, cache poisoning, and HTTP parameter pollution.
+  Analyzes response size differences and content variations.
+
+tags:
+  - cache-poisoning
+  - hpp
+  - response-manipulation
+  - web-cache
+  - parameter-pollution
+  - web
+
+language: yaml
+confidence: 75
+
+cwe:
+  - CWE-444
+  - CWE-113
+
+references:
+  - https://cwe.mitre.org/data/definitions/444.html
+  - https://portswigger.net/web-security/web-cache-poisoning
+  - https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/04-Testing_for_HTTP_Parameter_Pollution
+
+# HTTP request specifications
+http:
+  # Baseline request
+  - method: GET
+    path:
+      - "/"
+    
+    headers:
+      User-Agent: "cert-x-gen/1.0"
+      X-Baseline: "true"
+    
+    matchers:
+      - type: status
+        status:
+          - 200
+
+  # Test cache poisoning with host header
+  - method: GET
+    path:
+      - "/"
+    
+    headers:
+      User-Agent: "cert-x-gen/1.0"
+      Host: "evil.com"
+      X-Forwarded-Host: "evil.com"
+    
+    matchers-condition: or
+    matchers:
+      - type: word
+        words:
+          - "evil.com"
+        part: body
+      
+      - type: word
+        words:
+          - "evil.com"
+        part: header
+
+  # Test parameter pollution
+  - method: GET
+    path:
+      - "/?page=home&page=admin"
+      - "/?id=1&id=2"
+      - "/?redirect=http://example.com&redirect=http://evil.com"
+    
+    matchers:
+      - type: word
+        words:
+          - "admin"
+          - "evil.com"
+        condition: or
+
+  # Test response amplification
+  - method: POST
+    path:
+      - "/search"
+      - "/api/query"
+    
+    body: "query=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    
+    headers:
+      Content-Type: "application/x-www-form-urlencoded"
+    
+    matchers-condition: or
+    matchers:
+      # Large response (amplification) - use DSL for size comparison
+      - type: dsl
+        dsl:
+          - "content_length > 100000"
+      
+      # Slow response (potential DoS) - use DSL for duration
+      - type: dsl
+        dsl:
+          - "duration > 3"
+
+  # Test header injection (CRLF)
+  - method: GET
+    path:
+      - "/?redirect=/%0d%0aSet-Cookie:admin=true"
+      - "/?url=/%0d%0aLocation:http://evil.com"
+    
+    matchers-condition: or
+    matchers:
+      - type: word
+        words:
+          - "Set-Cookie"
+        part: header
+      
+      - type: regex
+        regex:
+          - "Location:\\s*http://evil"
+        part: header

@@ -1,0 +1,47 @@
+id: http-service-detection
+name: "HTTP Service Detection"
+author:
+  name: "CERT-X-GEN Security Team"
+  email: "security@cert-x-gen.io"
+severity: info
+description: |
+  Detects HTTP/HTTPS services and extracts server information including
+  version, technology stack, and configuration details for reconnaissance.
+
+tags:
+  - http
+  - detection
+  - info-gathering
+  - reconnaissance
+  - web
+
+language: yaml
+confidence: 95
+
+cwe:
+  - CWE-200
+
+references:
+  - https://cwe.mitre.org/data/definitions/200.html
+  - https://owasp.org/www-project-web-security-testing-guide/
+  - https://developer.mozilla.org/en-US/docs/Web/HTTP
+
+# HTTP request specifications
+http:
+  - method: GET
+    path:
+      - "/"
+    
+    headers:
+      User-Agent: "cert-x-gen/1.0"
+    
+    # Match successful HTTP responses
+    matchers-condition: or
+    matchers:
+      - type: status
+        status:
+          - 200
+          - 301
+          - 302
+          - 401
+          - 403
