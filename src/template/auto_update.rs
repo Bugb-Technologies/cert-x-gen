@@ -91,7 +91,7 @@ impl AutoUpdater {
             );
             println!(
                 "{}",
-                "[INFO] Run 'cert-x-gen template update' to get the latest templates".yellow()
+                "[INFO] Run 'cxg template update' to get the latest templates".yellow()
             );
             return Ok(true); // Updates available
         }

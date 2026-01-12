@@ -107,9 +107,7 @@ impl CertXGen {
 
         // If no templates found, show helpful message
         if all_templates.is_empty() {
-            tracing::warn!(
-                "No templates found. Run 'cert-x-gen template update' to download templates."
-            );
+            tracing::warn!("No templates found. Run 'cxg template update' to download templates.");
         }
 
         // Deduplicate templates by ID, keeping first occurrence (priority: Local > User > System)

@@ -469,8 +469,8 @@ node my_template.js
 Enable debug logging for sandbox operations:
 
 ```bash
-cert-x-gen -vvv sandbox init
-cert-x-gen -vvv sandbox install python requests
+cxg -vvv sandbox init
+cxg -vvv sandbox install python requests
 ```
 
 ## Troubleshooting
@@ -585,7 +585,7 @@ cxg sandbox init --languages python,javascript
 The sandbox provides **process-level isolation** but not complete system-level isolation. For maximum security:
 
 1. **Run in containers**: Use Docker/Podman for additional isolation
-2. **Limit permissions**: Run cert-x-gen as a non-privileged user
+2. **Limit permissions**: Run cxg as a non-privileged user
 3. **Network isolation**: Use firewall rules or network namespaces
 4. **Resource limits**: Use cgroups to limit CPU/memory usage
 

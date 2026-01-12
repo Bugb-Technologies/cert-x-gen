@@ -183,13 +183,13 @@ tags:
 4. **Test the template**
 
 ```bash
-cert-x-gen template test your-template.yaml --target test-target.com
+cxg template test your-template.yaml --target test-target.com
 ```
 
 5. **Validate the template**
 
 ```bash
-cert-x-gen template validate your-template.yaml
+cxg template validate your-template.yaml
 ```
 
 ### Template Quality Standards

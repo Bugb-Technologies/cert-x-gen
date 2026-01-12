@@ -309,7 +309,7 @@ async fn run_scan(args: cli::ScanArgs, config_path: Option<PathBuf>) -> Result<(
 
         if matched_templates.is_empty() {
             return Err(Error::config(format!(
-                "No templates found matching: {:?}. Use 'cert-x-gen template list' to see available templates.",
+                "No templates found matching: {:?}. Use 'cxg template list' to see available templates.",
                 filter_ids
             )));
         }
@@ -1667,7 +1667,7 @@ async fn run_template_command(cmd: cli::TemplateCommand) -> Result<()> {
             }
 
             println!("\nTemplates are now available for scanning!");
-            println!("Use 'cert-x-gen template list' to see available templates.");
+            println!("Use 'cxg template list' to see available templates.");
 
             Ok(())
         }
@@ -1902,11 +1902,11 @@ async fn run_sandbox_command(cmd: cli::SandboxCommand) -> Result<()> {
                         term.write_line(&format!("  For true OS-level isolation, consider using Docker sandboxes instead:"))?;
                         term.write_line(&format!(
                             "  {}",
-                            style("cert-x-gen sandbox create my-env").yellow()
+                            style("cxg sandbox create my-env").yellow()
                         ))?;
                         term.write_line(&format!(
                             "  {}",
-                            style("cert-x-gen sandbox set-default my-env").yellow()
+                            style("cxg sandbox set-default my-env").yellow()
                         ))?;
                         term.write_line("")?;
                         term.write_line(&format!("  This command (init) creates a package-level sandbox using your host's language runtimes."))?;
@@ -1914,7 +1914,7 @@ async fn run_sandbox_command(cmd: cli::SandboxCommand) -> Result<()> {
                         term.write_line("")?;
                         term.write_line(&format!(
                             "  Run {} for more info.",
-                            style("cert-x-gen sandbox info").cyan()
+                            style("cxg sandbox info").cyan()
                         ))?;
                         term.write_line("")?;
                     }
@@ -2212,7 +2212,7 @@ async fn run_sandbox_command(cmd: cli::SandboxCommand) -> Result<()> {
 
             if !sandbox.is_initialized() {
                 return Err(Error::config(
-                    "Sandbox not initialized. Run 'cert-x-gen sandbox init' first.",
+                    "Sandbox not initialized. Run 'cxg sandbox init' first.",
                 ));
             }
 
@@ -2282,7 +2282,7 @@ async fn run_sandbox_command(cmd: cli::SandboxCommand) -> Result<()> {
 
             if !sandbox.is_initialized() {
                 return Err(Error::config(
-                    "Sandbox not initialized. Run 'cert-x-gen sandbox init' first.",
+                    "Sandbox not initialized. Run 'cxg sandbox init' first.",
                 ));
             }
 
@@ -2328,7 +2328,7 @@ async fn run_sandbox_command(cmd: cli::SandboxCommand) -> Result<()> {
 
             if !sandbox.is_initialized() {
                 return Err(Error::config(
-                    "Sandbox not initialized. Run 'cert-x-gen sandbox init' first.",
+                    "Sandbox not initialized. Run 'cxg sandbox init' first.",
                 ));
             }
 
@@ -2426,7 +2426,7 @@ async fn run_sandbox_command(cmd: cli::SandboxCommand) -> Result<()> {
                     template.export.javascript_packages.len()
                 ))?;
                 term.write_line(&format!(
-                    "  Usage: cert-x-gen sandbox use-template {}",
+                    "  Usage: cxg sandbox use-template {}",
                     template.name
                 ))?;
             }
@@ -2452,7 +2452,7 @@ async fn run_sandbox_command(cmd: cli::SandboxCommand) -> Result<()> {
                 }
                 "api-testing" => cert_x_gen::sandbox::import_export::SandboxTemplate::api_testing(),
                 _ => {
-                    return Err(Error::config(format!("Unknown template: {}. Use 'cert-x-gen sandbox templates' to list available templates.", template)));
+                    return Err(Error::config(format!("Unknown template: {}. Use 'cxg sandbox templates' to list available templates.", template)));
                 }
             };
 
@@ -2475,7 +2475,7 @@ async fn run_sandbox_command(cmd: cli::SandboxCommand) -> Result<()> {
 
             if !sandbox.is_initialized() {
                 return Err(Error::config(
-                    "Sandbox not initialized. Run 'cert-x-gen sandbox init' first.",
+                    "Sandbox not initialized. Run 'cxg sandbox init' first.",
                 ));
             }
 
@@ -2617,13 +2617,10 @@ async fn run_sandbox_command(cmd: cli::SandboxCommand) -> Result<()> {
                 name
             ))?;
             term.write_line(&format!(
-                "  Set as default: cert-x-gen sandbox set-default {}",
+                "  Set as default: cxg sandbox set-default {}",
                 name
             ))?;
-            term.write_line(&format!(
-                "  Enter sandbox: cert-x-gen sandbox enter {}",
-                name
-            ))?;
+            term.write_line(&format!("  Enter sandbox: cxg sandbox enter {}", name))?;
 
             Ok(())
         }
@@ -2679,7 +2676,7 @@ async fn run_sandbox_command(cmd: cli::SandboxCommand) -> Result<()> {
             let cfg = SandboxConfigFile::load()?;
 
             let sandbox_name = name.or_else(|| cfg.default_sandbox.clone())
-                .ok_or_else(|| Error::config("No sandbox specified and no default set. Use: cert-x-gen sandbox set-default <name>"))?;
+                .ok_or_else(|| Error::config("No sandbox specified and no default set. Use: cxg sandbox set-default <name>"))?;
 
             term.write_line(&format!(
                 "{} Entering sandbox: {}",
@@ -2780,9 +2777,7 @@ async fn run_sandbox_command(cmd: cli::SandboxCommand) -> Result<()> {
 
             if cfg.sandboxes.is_empty() {
                 term.write_line(&format!("  No sandboxes configured"))?;
-                term.write_line(&format!(
-                    "\nCreate one: cert-x-gen sandbox create my-sandbox"
-                ))?;
+                term.write_line(&format!("\nCreate one: cxg sandbox create my-sandbox"))?;
             } else {
                 for (name, config) in &cfg.sandboxes {
                     let is_default = cfg.default_sandbox.as_ref() == Some(name);
@@ -2822,7 +2817,7 @@ async fn run_sandbox_command(cmd: cli::SandboxCommand) -> Result<()> {
 
             let cfg = SandboxConfigFile::load()?;
             let (_name, config) = cfg.get_default_sandbox().ok_or_else(|| {
-                Error::config("No default sandbox set. Use: cert-x-gen sandbox set-default <name>")
+                Error::config("No default sandbox set. Use: cxg sandbox set-default <name>")
             })?;
 
             let sandbox = DockerSandbox::new(config.clone());
@@ -3264,7 +3259,7 @@ async fn handle_providers_command(action: cli::ProviderAction) -> Result<()> {
             }
 
             println!();
-            println!("Use 'cert-x-gen ai providers test <name>' to test a provider");
+            println!("Use 'cxg ai providers test <name>' to test a provider");
             println!();
 
             Ok(())

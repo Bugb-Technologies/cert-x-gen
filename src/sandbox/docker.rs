@@ -357,7 +357,7 @@ impl DockerSandbox {
             content.push_str("ENV PATH=\"/root/.cargo/bin:${PATH}\"\n\n");
         }
 
-        // Note: cert-x-gen CLI is NOT installed inside the container
+        // Note: cxg CLI is NOT installed inside the container
         // The host CLI uses 'docker exec' to run commands inside the container
         // This provides transparent execution without needing the binary inside
 
@@ -482,7 +482,7 @@ impl DockerSandbox {
                 .unwrap_or_else(|| "Could not retrieve logs".to_string());
 
             return Err(Error::command(format!(
-                "Container started but immediately exited.\n\nContainer logs:\n{}\n\nThis usually means the container's CMD is not keeping it alive.\nTry rebuilding: cert-x-gen sandbox delete {} --force && cert-x-gen sandbox create {}",
+                "Container started but immediately exited.\n\nContainer logs:\n{}\n\nThis usually means the container's CMD is not keeping it alive.\nTry rebuilding: cxg sandbox delete {} --force && cxg sandbox create {}",
                 logs,
                 self.config.name,
                 self.config.name
@@ -547,8 +547,8 @@ impl DockerSandbox {
             .map_err(|e| Error::command(format!("Failed to execute command in container: {}", e)))
     }
 
-    /// Execute cert-x-gen CLI command inside container
-    /// Note: This doesn't actually run cert-x-gen binary inside container
+    /// Execute cxg CLI command inside container
+    /// Note: This doesn't actually run cxg binary inside container
     /// Instead, it returns Ok to signal that the command should be executed
     /// by the host CLI with container context
     pub async fn exec_cli(&self, _cli_args: &[String]) -> Result<()> {

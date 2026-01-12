@@ -291,5 +291,5 @@ Found a security issue? Please report it responsibly. See [SECURITY.md](SECURITY
 
 <p align="center">
   <b>Ready to scan smarter?</b><br>
-  <code>cargo install cert-x-gen</code>
+  <code>cargo install cxg</code>
 </p>

@@ -91,13 +91,13 @@ help:
 	@echo "=========================================="
 	@echo ""
 	@echo "Installation targets:"
-	@echo "  install        - Install cert-x-gen and templates to $(PREFIX)"
-	@echo "  uninstall      - Remove cert-x-gen from system"
+	@echo "  install        - Install cxg and templates to $(PREFIX)"
+	@echo "  uninstall      - Remove cxg from system"
 	@echo "  install-system - Install to /usr instead of /usr/local"
 	@echo ""
 	@echo "Available targets:"
-	@echo "  build          - Build the cert-x-gen binary"
-	@echo "  install        - Install the cert-x-gen binary globally (requires permissions)"
+	@echo "  build          - Build the cxg binary"
+	@echo "  install        - Install the cxg binary globally (requires permissions)"
 	@echo "  test-all       - Test all templates across all languages"
 	@echo "  test-c         - Test C templates only"
 	@echo "  test-cpp       - Test C++ templates only"
@@ -135,10 +135,10 @@ help:
 	@echo "  make test-c VERBOSE=true"
 	@echo "  make stats"
 
-# Build the cert-x-gen binary
+# Build the cxg binary
 .PHONY: build
 build:
-	@echo "$(BLUE)[INFO]$(NC) Building cert-x-gen..."
+	@echo "$(BLUE)[INFO]$(NC) Building cxg..."
 	@cargo build --release
 	@echo "$(GREEN)[SUCCESS]$(NC) Build completed"
 

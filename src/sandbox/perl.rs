@@ -146,7 +146,7 @@ pub async fn install_modules(sandbox: &Sandbox, modules: &[&str]) -> Result<()> 
             tracing::warn!(
                 "Please install cpanm: curl -L https://cpanmin.us | perl - App::cpanminus"
             );
-            tracing::info!("Or re-run 'cert-x-gen sandbox init' to attempt automatic installation");
+            tracing::info!("Or re-run 'cxg sandbox init' to attempt automatic installation");
             return Ok(()); // Don't fail, just skip
         }
     }
