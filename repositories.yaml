@@ -7,7 +7,7 @@ default_branch: main
 # User-configured repositories
 repositories:
   - name: official
-    url: https://github.com/BugB-Tech/cert-x-gen-templates.git
+    url: https://github.com/Bugb-Technologies/cert-x-gen-templates.git
     branch: main
     local_path: ~/.cert-x-gen/templates/official
     enabled: true

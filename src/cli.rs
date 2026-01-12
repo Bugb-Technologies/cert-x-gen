@@ -786,9 +786,9 @@ EXAMPLES:
   cxg template info sql-injection-detection
 
   # Validate templates
-  cxg template validate templates/
-  cxg template validate templates/python/ --recursive
-  cxg template validate templates/c/redis-check.c
+  cxg template validate ~/.cert-x-gen/templates/
+  cxg template validate ./my-templates/ --recursive
+  cxg template validate ./redis-check.c
 
   # Update templates from repository
   cxg template update
@@ -796,10 +796,10 @@ EXAMPLES:
 
   # Create new template from skeleton
   cxg template create --id my-check --language python --name \"My Check\"
-  cxg template create --id redis-test --language c --output ./templates/
+  cxg template create --id redis-test --language c --output ./my-templates/
 
   # Test a template
-  cxg template test --template templates/c/redis.c --target 192.168.1.100
+  cxg template test --template ./my-template.c --target 192.168.1.100
   cxg template test --template redis-unauthenticated --target localhost --debug"
 )]
 pub struct TemplateCommand {

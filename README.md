@@ -106,6 +106,38 @@ cxg search --language python --severity critical
 cxg template list
 ```
 
+## 📦 Templates
+
+Detection templates are maintained in a separate repository for easier community contributions and updates:
+
+**🔗 [cert-x-gen-templates](https://github.com/Bugb-Technologies/cert-x-gen-templates)**
+
+### Getting Templates
+
+```bash
+# Templates auto-download on first scan
+cxg scan --scope example.com
+# [INFO] Templates not found. Installing from GitHub...
+
+# Manual update
+cxg template update
+
+# Check what's installed
+cxg template list
+```
+
+### For Template Developers
+
+```bash
+# Clone the templates repository
+git clone https://github.com/Bugb-Technologies/cert-x-gen-templates.git
+
+# Use local templates during development
+cxg scan --scope example.com --template-dir ./cert-x-gen-templates/templates
+
+# Contribute new templates via PR to the templates repo
+```
+
 
 ## 🛠 Supported Languages
 
