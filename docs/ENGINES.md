@@ -671,40 +671,40 @@ CERT-X-GEN includes a powerful search feature to discover templates:
 ### Basic Search
 ```bash
 # Search for templates containing "redis"
-cert-x-gen search --query "redis"
+cxg search --query "redis"
 
 # Search by language
-cert-x-gen search --language python
+cxg search --language python
 
 # Search by severity
-cert-x-gen search --severity critical
+cxg search --severity critical
 
 # Search by tags
-cert-x-gen search --tags "database,unauthenticated"
+cxg search --tags "database,unauthenticated"
 ```
 
 ### Advanced Search
 ```bash
 # Search with regex
-cert-x-gen search --query "redis|mysql|postgres" --regex
+cxg search --query "redis|mysql|postgres" --regex
 
 # Search in template content
-cert-x-gen search --query "curl" --content
+cxg search --query "curl" --content
 
 # Multiple filters
-cert-x-gen search --language c --severity high --tags "injection"
+cxg search --language c --severity high --tags "injection"
 
 # Output formats
-cert-x-gen search --query "redis" --format json
-cert-x-gen search --query "redis" --format csv
-cert-x-gen search --query "redis" --format table
+cxg search --query "redis" --format json
+cxg search --query "redis" --format csv
+cxg search --query "redis" --format table
 ```
 
 ### Search Integration
 ```bash
 # Use search results in scanning
-TEMPLATES=$(cert-x-gen search --query "redis" --ids-only | tr '\n' ',')
-cert-x-gen scan --target example.com --templates "$TEMPLATES"
+TEMPLATES=$(cxg search --query "redis" --ids-only | tr '\n' ',')
+cxg scan --target example.com --templates "$TEMPLATES"
 ```
 
 ---
@@ -766,7 +766,7 @@ Add your security scanning logic to the template.
 ### 4. Test Your Template
 ```bash
 # Test with a specific target
-cert-x-gen scan --target example.com --template my-template
+cxg scan --target example.com --template my-template
 ```
 
 ### 5. Share Your Template

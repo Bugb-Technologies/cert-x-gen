@@ -8,7 +8,7 @@ SHAREDIR = $(PREFIX)/share/cert-x-gen
 TEMPLATEDIR = $(SHAREDIR)/templates
 
 # Binary name
-BINARY = cert-x-gen
+BINARY = cxg
 
 # Detect OS
 UNAME_S := $(shell uname -s)
@@ -37,7 +37,7 @@ TARGET_DIR := target
 RELEASE_DIR := $(TARGET_DIR)/release
 
 # Binary paths
-BINARY_NAME := cert-x-gen
+BINARY_NAME := cxg
 CERT_X_GEN := $(RELEASE_DIR)/$(BINARY_NAME)
 INSTALL_BIN_DIR := $(DESTDIR)$(PREFIX)/bin
 TEST_SCRIPT := test-all-templates.sh

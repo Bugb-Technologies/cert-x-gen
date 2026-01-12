@@ -64,7 +64,6 @@ impl Executor {
         // Process targets in parallel with semaphore control
         stream::iter(&job.targets)
             .map(|target| {
-                let job = job;
                 let findings = Arc::clone(&findings);
                 let executor = self;
 

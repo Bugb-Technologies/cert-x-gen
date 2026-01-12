@@ -405,9 +405,9 @@ pub struct SandboxStatus {
 }
 
 impl SandboxStatus {
-    /// Check if all enabled languages are ready
+    /// Check if sandbox is initialized and ready
     pub fn all_ready(&self) -> bool {
-        self.initialized && (self.python_ready || !self.python_ready) // All or none
+        self.initialized
     }
 
     /// Get ready languages

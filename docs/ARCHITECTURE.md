@@ -258,8 +258,8 @@ The search system integrates seamlessly with the scanning workflow:
 
 ```bash
 # Use search results in scanning
-TEMPLATES=$(cert-x-gen search --query "redis" --ids-only | tr '\n' ',')
-cert-x-gen scan --target example.com --templates "$TEMPLATES"
+TEMPLATES=$(cxg search --query "redis" --ids-only | tr '\n' ',')
+cxg scan --target example.com --templates "$TEMPLATES"
 ```
 
 ---

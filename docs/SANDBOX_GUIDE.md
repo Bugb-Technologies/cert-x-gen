@@ -32,13 +32,13 @@ The sandbox supports **8 programming languages**:
 Initialize all language environments:
 
 ```bash
-cert-x-gen sandbox init
+cxg sandbox init
 ```
 
 Initialize specific languages only:
 
 ```bash
-cert-x-gen sandbox init --languages python,javascript,ruby
+cxg sandbox init --languages python,javascript,ruby
 ```
 
 ### 2. Check Status
@@ -46,7 +46,7 @@ cert-x-gen sandbox init --languages python,javascript,ruby
 View sandbox status and ready languages:
 
 ```bash
-cert-x-gen sandbox status
+cxg sandbox status
 ```
 
 Output:
@@ -73,19 +73,19 @@ Install additional packages for any language:
 
 ```bash
 # Python packages
-cert-x-gen sandbox install python requests beautifulsoup4 selenium
+cxg sandbox install python requests beautifulsoup4 selenium
 
 # JavaScript/Node packages
-cert-x-gen sandbox install javascript axios cheerio puppeteer
+cxg sandbox install javascript axios cheerio puppeteer
 
 # Ruby gems
-cert-x-gen sandbox install ruby rest-client nokogiri
+cxg sandbox install ruby rest-client nokogiri
 
 # Perl modules
-cert-x-gen sandbox install perl LWP::UserAgent JSON::XS
+cxg sandbox install perl LWP::UserAgent JSON::XS
 
 # PHP packages
-cert-x-gen sandbox install php guzzlehttp/guzzle symfony/yaml
+cxg sandbox install php guzzlehttp/guzzle symfony/yaml
 ```
 
 ### 4. Access Sandbox Shell
@@ -93,7 +93,7 @@ cert-x-gen sandbox install php guzzlehttp/guzzle symfony/yaml
 Open a shell in the sandbox environment:
 
 ```bash
-cert-x-gen sandbox shell
+cxg sandbox shell
 ```
 
 This opens a bash shell with all sandbox environment variables set.
@@ -101,7 +101,7 @@ This opens a bash shell with all sandbox environment variables set.
 ### 5. Get Sandbox Location
 
 ```bash
-cert-x-gen sandbox path
+cxg sandbox path
 ```
 
 ## Directory Structure
@@ -244,82 +244,82 @@ JAVA_HOME=/path/to/sandbox/java
 
 ```bash
 # Initialize all languages
-cert-x-gen sandbox init
+cxg sandbox init
 
 # Initialize specific languages
-cert-x-gen sandbox init --languages python,javascript
+cxg sandbox init --languages python,javascript
 
 # Force re-initialization
-cert-x-gen sandbox init --force
+cxg sandbox init --force
 
 # Use custom directory
-cert-x-gen sandbox init --directory /custom/path
+cxg sandbox init --directory /custom/path
 ```
 
 ### Check Status
 
 ```bash
-cert-x-gen sandbox status
+cxg sandbox status
 ```
 
 ### Install Packages
 
 ```bash
-# Syntax: cert-x-gen sandbox install <language> <package1> [package2] [...]
+# Syntax: cxg sandbox install <language> <package1> [package2] [...]
 
 # Python
-cert-x-gen sandbox install python requests beautifulsoup4
+cxg sandbox install python requests beautifulsoup4
 
 # JavaScript
-cert-x-gen sandbox install javascript axios cheerio
+cxg sandbox install javascript axios cheerio
 
 # Ruby
-cert-x-gen sandbox install ruby nokogiri
+cxg sandbox install ruby nokogiri
 
 # Perl
-cert-x-gen sandbox install perl JSON::XS
+cxg sandbox install perl JSON::XS
 
 # PHP
-cert-x-gen sandbox install php guzzlehttp/guzzle
+cxg sandbox install php guzzlehttp/guzzle
 ```
 
 ### Clean Sandbox
 
 ```bash
 # Prompt for confirmation
-cert-x-gen sandbox clean
+cxg sandbox clean
 
 # Force clean without confirmation
-cert-x-gen sandbox clean --force
+cxg sandbox clean --force
 
 # Clean specific language only
-cert-x-gen sandbox clean --language python --force
+cxg sandbox clean --language python --force
 ```
 
 ### Access Shell
 
 ```bash
 # Open default shell (bash)
-cert-x-gen sandbox shell
+cxg sandbox shell
 
 # Open specific shell
-cert-x-gen sandbox shell --language python
+cxg sandbox shell --language python
 ```
 
 ### Get Path
 
 ```bash
-cert-x-gen sandbox path
+cxg sandbox path
 ```
 
 ### Update Packages
 
 ```bash
 # Update all languages
-cert-x-gen sandbox update
+cxg sandbox update
 
 # Update specific language
-cert-x-gen sandbox update --language python
+cxg sandbox update --language python
 ```
 
 ## Configuration
@@ -345,17 +345,17 @@ You can customize the sandbox by editing the configuration file:
 
 1. Get sandbox path:
    ```bash
-   cert-x-gen sandbox path
+   cxg sandbox path
    ```
 
 2. Edit config file:
    ```bash
-   vim $(cert-x-gen sandbox path)/config.yaml
+   vim $(cxg sandbox path)/config.yaml
    ```
 
 3. Reinitialize:
    ```bash
-   cert-x-gen sandbox init --force
+   cxg sandbox init --force
    ```
 
 ## Usage in Templates
@@ -420,13 +420,13 @@ Install packages not in the default set:
 
 ```bash
 # Python: ML libraries
-cert-x-gen sandbox install python tensorflow scikit-learn
+cxg sandbox install python tensorflow scikit-learn
 
 # JavaScript: Testing frameworks
-cert-x-gen sandbox install javascript jest mocha chai
+cxg sandbox install javascript jest mocha chai
 
 # Ruby: Rails
-cert-x-gen sandbox install ruby rails
+cxg sandbox install ruby rails
 
 # Go: Testing tools
 # (Go modules are installed automatically when templates are executed)
@@ -438,10 +438,10 @@ Specify package versions:
 
 ```bash
 # Python
-cert-x-gen sandbox install python "requests==2.31.0" "beautifulsoup4>=4.12.0"
+cxg sandbox install python "requests==2.31.0" "beautifulsoup4>=4.12.0"
 
 # JavaScript
-cert-x-gen sandbox install javascript "axios@^1.6.0" "cheerio@~1.0.0"
+cxg sandbox install javascript "axios@^1.6.0" "cheerio@~1.0.0"
 ```
 
 ### 3. Development Mode
@@ -450,7 +450,7 @@ For template development, you can work directly in the sandbox:
 
 ```bash
 # Open sandbox shell
-cert-x-gen sandbox shell
+cxg sandbox shell
 
 # Navigate to your templates directory
 cd /path/to/templates
@@ -478,12 +478,12 @@ cert-x-gen -vvv sandbox install python requests
 ### Sandbox Not Initialized
 
 ```
-Error: Sandbox not initialized. Run 'cert-x-gen sandbox init' first.
+Error: Sandbox not initialized. Run 'cxg sandbox init' first.
 ```
 
 **Solution**: Initialize the sandbox:
 ```bash
-cert-x-gen sandbox init
+cxg sandbox init
 ```
 
 ### Language Runtime Not Found
@@ -523,7 +523,7 @@ Error: Permission denied: /path/to/sandbox
 
 **Solution**: The sandbox directory should be in your user directory. If using a custom location, ensure you have write permissions:
 ```bash
-cert-x-gen sandbox init --directory ~/my-sandbox
+cxg sandbox init --directory ~/my-sandbox
 ```
 
 ### Out of Disk Space
@@ -534,7 +534,7 @@ Error: No space left on device
 
 **Solution**: Clean the sandbox to free up space:
 ```bash
-cert-x-gen sandbox clean --force
+cxg sandbox clean --force
 ```
 
 ## Best Practices
@@ -543,7 +543,7 @@ cert-x-gen sandbox clean --force
 
 Initialize the sandbox when first installing cert-x-gen:
 ```bash
-cert-x-gen sandbox init
+cxg sandbox init
 ```
 
 ### 2. Keep Packages Minimal
@@ -551,31 +551,31 @@ cert-x-gen sandbox init
 Only install packages you actually need:
 ```bash
 # Good: Install specific packages
-cert-x-gen sandbox install python requests beautifulsoup4
+cxg sandbox install python requests beautifulsoup4
 
 # Avoid: Installing everything
-# cert-x-gen sandbox install python `pip list | awk '{print $1}'`
+# cxg sandbox install python `pip list | awk '{print $1}'`
 ```
 
 ### 3. Use Version Pins
 
 Pin critical package versions in your templates:
 ```bash
-cert-x-gen sandbox install python "requests==2.31.0"
+cxg sandbox install python "requests==2.31.0"
 ```
 
 ### 4. Regular Updates
 
 Update packages periodically:
 ```bash
-cert-x-gen sandbox update
+cxg sandbox update
 ```
 
 ### 5. Clean Unused Languages
 
 If you don't use certain languages, disable them:
 ```bash
-cert-x-gen sandbox init --languages python,javascript
+cxg sandbox init --languages python,javascript
 ```
 
 ## Security Considerations
@@ -604,10 +604,10 @@ Keep dependencies updated:
 
 ```bash
 # Update all packages
-cert-x-gen sandbox update
+cxg sandbox update
 
 # Or manually update critical packages
-cert-x-gen sandbox install python --upgrade requests
+cxg sandbox install python --upgrade requests
 ```
 
 ## Performance Tips
@@ -616,15 +616,15 @@ cert-x-gen sandbox install python --upgrade requests
 
 Initialize sandbox before scanning:
 ```bash
-cert-x-gen sandbox init && cert-x-gen scan --target example.com
+cxg sandbox init && cxg scan --target example.com
 ```
 
 ### 2. Parallel Installation
 
 Install packages for multiple languages in parallel:
 ```bash
-cert-x-gen sandbox install python requests & \
-cert-x-gen sandbox install javascript axios & \
+cxg sandbox install python requests & \
+cxg sandbox install javascript axios & \
 wait
 ```
 
@@ -632,8 +632,8 @@ wait
 
 The sandbox caches packages. Clean periodically:
 ```bash
-cert-x-gen sandbox clean --force
-cert-x-gen sandbox init
+cxg sandbox clean --force
+cxg sandbox init
 ```
 
 ## FAQ
@@ -647,7 +647,7 @@ cert-x-gen sandbox init
 
 Get the exact path:
 ```bash
-cert-x-gen sandbox path
+cxg sandbox path
 ```
 
 ### Q: Can I use my system packages?
@@ -664,15 +664,15 @@ cert-x-gen sandbox path
 
 **A**: Yes, use different directories:
 ```bash
-cert-x-gen sandbox init --directory ~/sandbox1
-cert-x-gen sandbox init --directory ~/sandbox2
+cxg sandbox init --directory ~/sandbox1
+cxg sandbox init --directory ~/sandbox2
 ```
 
 ### Q: How do I backup my sandbox?
 
 **A**: Simply copy the sandbox directory:
 ```bash
-cp -r $(cert-x-gen sandbox path) ~/sandbox-backup
+cp -r $(cxg sandbox path) ~/sandbox-backup
 ```
 
 ### Q: Can I share sandboxes between users?

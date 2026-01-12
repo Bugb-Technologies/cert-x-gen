@@ -74,5 +74,5 @@ jobs:
       - run: cargo build --release --target ${{ matrix.target }}
       - uses: actions/upload-artifact@v4
         with:
-          name: cert-x-gen-${{ matrix.target }}
-          path: target/${{ matrix.target }}/release/cert-x-gen
+          name: cxg-${{ matrix.target }}
+          path: target/${{ matrix.target }}/release/cxg

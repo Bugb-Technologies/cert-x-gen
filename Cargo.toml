@@ -10,7 +10,7 @@ keywords = ["security", "scanning", "vulnerability", "pentesting"]
 categories = ["command-line-utilities", "network-programming"]
 
 [[bin]]
-name = "cert-x-gen"
+name = "cxg"
 path = "src/main.rs"
 
 [dependencies]

@@ -31,13 +31,13 @@ Traditional vulnerability scanners limit you to YAML-only templates. **CERT-X-GE
 
 ```bash
 # Run a Python template
-cert-x-gen scan --scope example.com --templates redis-check.py
+cxg scan --scope example.com --templates redis-check.py
 
 # Run a C template for high-performance scanning  
-cert-x-gen scan --scope 192.168.1.0/24 --templates network-probe.c
+cxg scan --scope 192.168.1.0/24 --templates network-probe.c
 
 # Mix languages in the same scan
-cert-x-gen scan --scope target.com --template-language python,rust,yaml
+cxg scan --scope target.com --template-language python,rust,yaml
 ```
 
 ### When to Use CERT-X-GEN
@@ -81,29 +81,29 @@ cargo install --path .
 
 ```bash
 # Basic scan
-cert-x-gen scan --scope example.com
+cxg scan --scope example.com
 
 # Scan with specific templates
-cert-x-gen scan --scope example.com --templates redis-unauthenticated
+cxg scan --scope example.com --templates redis-unauthenticated
 
 # Scan with port specification
-cert-x-gen scan --scope example.com --ports 80,443,8080
+cxg scan --scope example.com --ports 80,443,8080
 
 # Scan a CIDR range
-cert-x-gen scan --scope 192.168.1.0/24 --top-ports 100
+cxg scan --scope 192.168.1.0/24 --top-ports 100
 ```
 
 ### Template Search
 
 ```bash
 # Search for templates
-cert-x-gen search --query "redis"
+cxg search --query "redis"
 
 # Filter by language and severity
-cert-x-gen search --language python --severity critical
+cxg search --language python --severity critical
 
 # List all templates
-cert-x-gen template list
+cxg template list
 ```
 
 
@@ -213,13 +213,13 @@ Generate templates from natural language using local or cloud LLMs:
 
 ```bash
 # Configure AI (supports Ollama, OpenAI, Anthropic, DeepSeek)
-cert-x-gen ai setup
+cxg ai setup
 
 # Generate a template
-cert-x-gen ai generate "detect exposed MongoDB without authentication" --language python
+cxg ai generate "detect exposed MongoDB without authentication" --language python
 
 # Check provider status
-cert-x-gen ai status
+cxg ai status
 ```
 
 ## 📖 Documentation
@@ -243,10 +243,10 @@ CERT-X-GEN can be configured via:
 
 ```bash
 # Generate a config file
-cert-x-gen config generate --output cert-x-gen.yaml
+cxg config generate --output cert-x-gen.yaml
 
 # Use a config file
-cert-x-gen scan --config cert-x-gen.yaml --scope example.com
+cxg scan --config cert-x-gen.yaml --scope example.com
 ```
 
 ## 🤝 Contributing
