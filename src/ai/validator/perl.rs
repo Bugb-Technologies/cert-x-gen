@@ -52,7 +52,8 @@ fn check_perl_patterns(code: &str) -> Vec<TemplateDiagnostic> {
     // Check for two-argument open (security risk)
     for (line_num, line) in code.lines().enumerate() {
         // Pattern: open(FH, "file") instead of open(FH, '<', "file")
-        if let Ok(re) = regex::Regex::new(r#"open\s*\(\s*\$?\w+\s*,\s*['"<>|+]?[^,'"]+['"]?\s*\)"#) {
+        if let Ok(re) = regex::Regex::new(r#"open\s*\(\s*\$?\w+\s*,\s*['"<>|+]?[^,'"]+['"]?\s*\)"#)
+        {
             if re.is_match(line) && !line.contains(", '<',") && !line.contains(", '>',") {
                 diagnostics.push(
                     TemplateDiagnostic::warning(
@@ -68,7 +69,10 @@ fn check_perl_patterns(code: &str) -> Vec<TemplateDiagnostic> {
 
     // Check for print without json output
     for (line_num, line) in code.lines().enumerate() {
-        if line.trim().starts_with("print ") && !line.contains("encode_json") && !line.contains("to_json") {
+        if line.trim().starts_with("print ")
+            && !line.contains("encode_json")
+            && !line.contains("to_json")
+        {
             if !line.contains("{") && !line.trim().starts_with('#') {
                 diagnostics.push(
                     TemplateDiagnostic::info(

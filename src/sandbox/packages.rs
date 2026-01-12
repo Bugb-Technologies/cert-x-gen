@@ -6,28 +6,20 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PackageManifest {
     /// Programming language name
-
     pub language: String,
     /// Essential packages required for basic functionality
-
     pub essential: Vec<String>,
     /// Security-related packages
-
     pub security: Vec<String>,
     /// Web-related packages
-
     pub web: Vec<String>,
     /// Network-related packages
-
     pub network: Vec<String>,
     /// Parsing and data processing packages
-
     pub parsing: Vec<String>,
     /// Database client packages
-
     pub databases: Vec<String>,
     /// Utility packages
-
     pub utilities: Vec<String>,
 }
 
@@ -115,9 +107,7 @@ pub fn python_manifest() -> PackageManifest {
 pub fn javascript_manifest() -> PackageManifest {
     PackageManifest {
         language: "javascript".to_string(),
-        essential: vec![
-            "npm".to_string(),
-        ],
+        essential: vec!["npm".to_string()],
         security: vec![
             "axios".to_string(),
             "node-fetch".to_string(),
@@ -170,9 +160,7 @@ pub fn javascript_manifest() -> PackageManifest {
 pub fn ruby_manifest() -> PackageManifest {
     PackageManifest {
         language: "ruby".to_string(),
-        essential: vec![
-            "bundler".to_string(),
-        ],
+        essential: vec!["bundler".to_string()],
         security: vec![
             "rest-client".to_string(),
             "httparty".to_string(),
@@ -212,9 +200,7 @@ pub fn ruby_manifest() -> PackageManifest {
 pub fn perl_manifest() -> PackageManifest {
     PackageManifest {
         language: "perl".to_string(),
-        essential: vec![
-            "App::cpanminus".to_string(),
-        ],
+        essential: vec!["App::cpanminus".to_string()],
         security: vec![
             "LWP::UserAgent".to_string(),
             "HTTP::Request".to_string(),
@@ -227,10 +213,7 @@ pub fn perl_manifest() -> PackageManifest {
             "Mojolicious".to_string(),
             "Dancer2".to_string(),
         ],
-        network: vec![
-            "IO::Socket::INET".to_string(),
-            "Net::DNS".to_string(),
-        ],
+        network: vec!["IO::Socket::INET".to_string(), "Net::DNS".to_string()],
         parsing: vec![
             "JSON".to_string(),
             "YAML".to_string(),
@@ -256,9 +239,7 @@ pub fn perl_manifest() -> PackageManifest {
 pub fn php_manifest() -> PackageManifest {
     PackageManifest {
         language: "php".to_string(),
-        essential: vec![
-            "composer/composer".to_string(),
-        ],
+        essential: vec!["composer/composer".to_string()],
         security: vec![
             "guzzlehttp/guzzle".to_string(),
             "phpseclib/phpseclib".to_string(),
@@ -271,10 +252,7 @@ pub fn php_manifest() -> PackageManifest {
             "symfony/symfony".to_string(),
             "laravel/framework".to_string(),
         ],
-        network: vec![
-            "react/socket".to_string(),
-            "ratchet/ratchet".to_string(),
-        ],
+        network: vec!["react/socket".to_string(), "ratchet/ratchet".to_string()],
         parsing: vec![
             "symfony/yaml".to_string(),
             "symfony/serializer".to_string(),
@@ -308,9 +286,7 @@ pub fn go_manifest() -> PackageManifest {
             "github.com/gorilla/mux".to_string(),
             "github.com/PuerkitoBio/goquery".to_string(),
         ],
-        network: vec![
-            "github.com/gorilla/websocket".to_string(),
-        ],
+        network: vec!["github.com/gorilla/websocket".to_string()],
         parsing: vec![
             "gopkg.in/yaml.v3".to_string(),
             "encoding/json".to_string(),
@@ -390,9 +366,7 @@ pub fn java_manifest() -> PackageManifest {
             "org.jsoup:jsoup".to_string(),
             "org.springframework.boot:spring-boot-starter-web".to_string(),
         ],
-        network: vec![
-            "io.netty:netty-all".to_string(),
-        ],
+        network: vec!["io.netty:netty-all".to_string()],
         parsing: vec![
             "com.fasterxml.jackson.core:jackson-databind".to_string(),
             "org.yaml:snakeyaml".to_string(),

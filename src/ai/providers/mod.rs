@@ -59,16 +59,16 @@ use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
 // Provider implementations
-pub mod ollama;
-pub mod openai;
 pub mod anthropic;
 pub mod deepseek;
+pub mod ollama;
+pub mod openai;
 
 // Re-export for convenience
-pub use ollama::OllamaProvider;
-pub use openai::OpenAIProvider;
 pub use anthropic::AnthropicProvider;
 pub use deepseek::DeepSeekProvider;
+pub use ollama::OllamaProvider;
+pub use openai::OpenAIProvider;
 
 /// Options for controlling LLM generation behavior
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -81,7 +81,7 @@ pub struct GenerationOptions {
     /// - Claude 3.5 Sonnet: 200000
     /// - DeepSeek Coder: 16384
     pub max_tokens: Option<u32>,
-    
+
     /// Sampling temperature (0.0-2.0)
     ///
     /// - 0.0: Deterministic, focused output
@@ -89,7 +89,7 @@ pub struct GenerationOptions {
     /// - 1.0: More creative, varied output
     /// - 2.0: Very creative, potentially inconsistent
     pub temperature: Option<f32>,
-    
+
     /// Request timeout
     ///
     /// Recommended timeouts:
@@ -116,28 +116,28 @@ impl Default for GenerationOptions {
 pub struct ProviderHealthStatus {
     /// Provider name
     pub provider: String,
-    
+
     /// Overall health status
     pub healthy: bool,
-    
+
     /// Connection status (can reach the endpoint)
     pub connection: ConnectionStatus,
-    
+
     /// Authentication status
     pub authentication: AuthStatus,
-    
+
     /// Response time in milliseconds
     pub response_time_ms: Option<u64>,
-    
+
     /// Available models count
     pub models_available: Option<usize>,
-    
+
     /// Available models (sample, max 5)
     pub models: Vec<ModelInfo>,
-    
+
     /// Any error messages or warnings
     pub messages: Vec<String>,
-    
+
     /// Additional provider-specific information
     pub metadata: std::collections::HashMap<String, String>,
 }
@@ -147,10 +147,10 @@ pub struct ProviderHealthStatus {
 pub enum ConnectionStatus {
     /// Successfully connected to the provider
     Connected,
-    
+
     /// Failed to connect (network error, wrong endpoint, etc.)
     Failed,
-    
+
     /// Connection not tested yet
     Untested,
 }
@@ -168,16 +168,16 @@ impl ConnectionStatus {
 pub enum AuthStatus {
     /// Authentication succeeded
     Authenticated,
-    
+
     /// Authentication failed (invalid API key, etc.)
     Failed,
-    
+
     /// No authentication required (e.g., local providers)
     NotRequired,
-    
+
     /// Authentication not configured (API key missing)
     NotConfigured,
-    
+
     /// Authentication not tested yet
     Untested,
 }
@@ -205,17 +205,17 @@ impl ProviderHealthStatus {
             metadata: std::collections::HashMap::new(),
         }
     }
-    
+
     /// Mark as healthy if all checks passed
     pub fn update_health(&mut self) {
         self.healthy = self.connection.is_ok() && self.authentication.is_ok();
     }
-    
+
     /// Add a message (warning or info)
     pub fn add_message(&mut self, message: impl Into<String>) {
         self.messages.push(message.into());
     }
-    
+
     /// Add metadata
     pub fn add_metadata(&mut self, key: impl Into<String>, value: impl Into<String>) {
         self.metadata.insert(key.into(), value.into());
@@ -227,20 +227,20 @@ impl ProviderHealthStatus {
 pub struct ModelInfo {
     /// Unique model identifier (e.g., "codellama:13b", "gpt-4")
     pub id: String,
-    
+
     /// Human-readable model name
     pub name: String,
-    
+
     /// Provider name (e.g., "ollama", "openai")
     pub provider: String,
-    
+
     /// Model size in bytes (for local models)
     pub size: Option<u64>,
-    
+
     /// Model capabilities/features
     #[serde(default)]
     pub capabilities: Vec<String>,
-    
+
     /// Context window size (max input tokens)
     pub context_window: Option<u32>,
 }
@@ -257,25 +257,25 @@ impl ModelInfo {
             context_window: None,
         }
     }
-    
+
     /// Builder method to set size
     pub fn with_size(mut self, size: u64) -> Self {
         self.size = Some(size);
         self
     }
-    
+
     /// Builder method to set context window
     pub fn with_context_window(mut self, tokens: u32) -> Self {
         self.context_window = Some(tokens);
         self
     }
-    
+
     /// Builder method to add capability
     pub fn with_capability(mut self, capability: impl Into<String>) -> Self {
         self.capabilities.push(capability.into());
         self
     }
-    
+
     /// Format size as human-readable string
     pub fn size_human_readable(&self) -> String {
         match self.size {
@@ -284,7 +284,7 @@ impl ModelInfo {
                 const GB: u64 = 1_073_741_824;
                 const MB: u64 = 1_048_576;
                 const KB: u64 = 1_024;
-                
+
                 if bytes >= GB {
                     format!("{:.2} GB", bytes as f64 / GB as f64)
                 } else if bytes >= MB {
@@ -366,7 +366,7 @@ pub trait LLMProvider: Send + Sync {
     ///
     /// The name is used for configuration lookup and user-facing displays.
     fn name(&self) -> &str;
-    
+
     /// Check if the provider is currently available
     ///
     /// This method should perform a quick check to determine if the provider
@@ -386,7 +386,7 @@ pub trait LLMProvider: Send + Sync {
     /// - `true` if the provider is ready to use
     /// - `false` if the provider is unavailable or misconfigured
     fn is_available(&self) -> bool;
-    
+
     /// Generate code/text from a prompt
     ///
     /// This is the core method that sends a prompt to the LLM and returns
@@ -426,12 +426,8 @@ pub trait LLMProvider: Send + Sync {
     /// # Ok(())
     /// # }
     /// ```
-    async fn generate(
-        &self,
-        prompt: &str,
-        options: GenerationOptions,
-    ) -> Result<String>;
-    
+    async fn generate(&self, prompt: &str, options: GenerationOptions) -> Result<String>;
+
     /// List all available models for this provider
     ///
     /// Returns metadata about models that can be used with this provider.
@@ -458,8 +454,8 @@ pub trait LLMProvider: Send + Sync {
     /// # async fn example<P: LLMProvider>(provider: &P) -> anyhow::Result<()> {
     /// let models = provider.list_models().await?;
     /// for model in models {
-    ///     println!("{}: {} ({})", 
-    ///         model.id, 
+    ///     println!("{}: {} ({})",
+    ///         model.id,
     ///         model.name,
     ///         model.size_human_readable()
     ///     );
@@ -468,7 +464,7 @@ pub trait LLMProvider: Send + Sync {
     /// # }
     /// ```
     async fn list_models(&self) -> Result<Vec<ModelInfo>>;
-    
+
     /// Estimate the cost of generating with this prompt
     ///
     /// For cloud providers that charge per token, this method estimates
@@ -497,7 +493,7 @@ pub trait LLMProvider: Send + Sync {
     /// # use cert_x_gen::ai::providers::LLMProvider;
     /// # async fn example<P: LLMProvider>(provider: &P) -> anyhow::Result<()> {
     /// let prompt = "Write a security scanner in Python";
-    /// 
+    ///
     /// if let Some(cost) = provider.estimate_cost(prompt) {
     ///     println!("Estimated cost: ${:.4}", cost);
     ///     
@@ -513,7 +509,7 @@ pub trait LLMProvider: Send + Sync {
     fn estimate_cost(&self, _prompt: &str) -> Option<f64> {
         None // Default: no cost (for local providers)
     }
-    
+
     /// Perform a comprehensive health check on the provider
     ///
     /// This method tests the provider's connectivity, authentication, model
@@ -534,7 +530,7 @@ pub trait LLMProvider: Send + Sync {
     /// # use cert_x_gen::ai::providers::LLMProvider;
     /// # async fn example<P: LLMProvider>(provider: &P) -> anyhow::Result<()> {
     /// let health = provider.health_check().await?;
-    /// 
+    ///
     /// if health.healthy {
     ///     println!("✓ Provider is healthy");
     ///     if let Some(rt) = health.response_time_ms {
@@ -556,7 +552,7 @@ pub trait LLMProvider: Send + Sync {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_generation_options_default() {
         let options = GenerationOptions::default();
@@ -564,7 +560,7 @@ mod tests {
         assert_eq!(options.temperature, Some(0.7));
         assert!(options.timeout.is_some());
     }
-    
+
     #[test]
     fn test_model_info_builder() {
         let model = ModelInfo::new(
@@ -576,7 +572,7 @@ mod tests {
         .with_context_window(8192)
         .with_capability("code-generation")
         .with_capability("chat");
-        
+
         assert_eq!(model.id, "test-model");
         assert_eq!(model.name, "Test Model");
         assert_eq!(model.provider, "test-provider");
@@ -584,25 +580,25 @@ mod tests {
         assert_eq!(model.context_window, Some(8192));
         assert_eq!(model.capabilities.len(), 2);
     }
-    
+
     #[test]
     fn test_model_info_size_formatting() {
         let model_gb = ModelInfo::new("test".to_string(), "Test".to_string(), "test".to_string())
             .with_size(5_368_709_120); // 5 GB
         assert_eq!(model_gb.size_human_readable(), "5.00 GB");
-        
+
         let model_mb = ModelInfo::new("test".to_string(), "Test".to_string(), "test".to_string())
             .with_size(157_286_400); // 150 MB
         assert_eq!(model_mb.size_human_readable(), "150.00 MB");
-        
+
         let model_kb = ModelInfo::new("test".to_string(), "Test".to_string(), "test".to_string())
             .with_size(10_240); // 10 KB
         assert_eq!(model_kb.size_human_readable(), "10.00 KB");
-        
+
         let model_none = ModelInfo::new("test".to_string(), "Test".to_string(), "test".to_string());
         assert_eq!(model_none.size_human_readable(), "Unknown");
     }
-    
+
     #[test]
     fn test_generation_options_serialization() {
         let options = GenerationOptions {
@@ -610,10 +606,10 @@ mod tests {
             temperature: Some(0.5),
             timeout: Some(Duration::from_secs(30)),
         };
-        
+
         let json = serde_json::to_string(&options).unwrap();
         let deserialized: GenerationOptions = serde_json::from_str(&json).unwrap();
-        
+
         assert_eq!(deserialized.max_tokens, Some(2000));
         assert_eq!(deserialized.temperature, Some(0.5));
     }

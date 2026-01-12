@@ -156,7 +156,7 @@ pub struct TemplateConfig {
 impl Default for TemplateConfig {
     fn default() -> Self {
         Self {
-            directories: vec![],  // Empty - will use discovery system
+            directories: vec![], // Empty - will use discovery system
             use_system_templates: true,
             use_user_templates: true,
             use_local_templates: true,

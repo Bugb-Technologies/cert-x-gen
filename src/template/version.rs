@@ -12,16 +12,16 @@ use std::time::{SystemTime, UNIX_EPOCH};
 pub struct TemplateVersion {
     /// Current template version (git commit hash or tag)
     pub current_version: String,
-    
+
     /// Last time templates were checked for updates (Unix timestamp)
     pub last_checked: i64,
-    
+
     /// Last time templates were updated (Unix timestamp)
     pub last_updated: i64,
-    
+
     /// Directory where templates are stored
     pub templates_directory: String,
-    
+
     /// Whether auto-update check is enabled
     pub auto_check_enabled: bool,
 }
@@ -68,8 +68,8 @@ impl TemplateVersion {
 
     /// Get the default config path (~/.cert-x-gen/.templates-config.json)
     pub fn default_config_path() -> Result<PathBuf> {
-        let home_dir = dirs::home_dir()
-            .ok_or_else(|| Error::config("Failed to get home directory"))?;
+        let home_dir =
+            dirs::home_dir().ok_or_else(|| Error::config("Failed to get home directory"))?;
 
         Ok(home_dir.join(".cert-x-gen").join(".templates-config.json"))
     }
@@ -90,7 +90,7 @@ impl TemplateVersion {
 
         let now = Self::current_timestamp();
         let one_hour = 3600; // seconds
-        
+
         now - self.last_checked > one_hour
     }
 
@@ -134,14 +134,14 @@ mod tests {
     #[test]
     fn test_should_check_for_updates() {
         let mut version = TemplateVersion::default();
-        
+
         // Should check when never checked before
         assert!(version.should_check_for_updates());
-        
+
         // Should not check immediately after checking
         version.mark_checked();
         assert!(!version.should_check_for_updates());
-        
+
         // Should check after 1 hour (simulate by setting old timestamp)
         version.last_checked = TemplateVersion::current_timestamp() - 3601;
         assert!(version.should_check_for_updates());
@@ -151,7 +151,7 @@ mod tests {
     fn test_disable_auto_check() {
         let mut version = TemplateVersion::default();
         assert!(version.auto_check_enabled);
-        
+
         version.disable_auto_check();
         assert!(!version.auto_check_enabled);
         assert!(!version.should_check_for_updates());
@@ -186,10 +186,10 @@ mod tests {
     fn test_update_version() {
         let mut version = TemplateVersion::default();
         let old_timestamp = version.last_updated;
-        
+
         std::thread::sleep(std::time::Duration::from_millis(10));
         version.update_version("v2.0.0".to_string());
-        
+
         assert_eq!(version.current_version, "v2.0.0");
         assert!(version.last_updated > old_timestamp);
         assert!(version.last_checked > old_timestamp);

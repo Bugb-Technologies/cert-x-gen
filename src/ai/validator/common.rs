@@ -16,7 +16,11 @@ impl CommonValidator {
     }
 
     /// Run all common validators
-    pub fn validate(&self, code: &str, language: TemplateLanguage) -> Result<Vec<TemplateDiagnostic>> {
+    pub fn validate(
+        &self,
+        code: &str,
+        language: TemplateLanguage,
+    ) -> Result<Vec<TemplateDiagnostic>> {
         let mut diagnostics = Vec::new();
 
         // Check for empty code
@@ -69,10 +73,13 @@ impl CommonValidator {
     /// Check for skeleton template placeholders
     fn check_skeleton_placeholders(&self, code: &str) -> Vec<TemplateDiagnostic> {
         let mut diagnostics = Vec::new();
-        
+
         let skeleton_patterns = vec![
             ("YOUR_TEMPLATE_NAME", "Template name not customized"),
-            ("YOUR_VULNERABILITY_CHECK", "Vulnerability check not implemented"),
+            (
+                "YOUR_VULNERABILITY_CHECK",
+                "Vulnerability check not implemented",
+            ),
             ("YOUR_LOGIC_HERE", "Logic placeholder not replaced"),
             ("TODO:", "TODO comment found"),
             ("FIXME:", "FIXME comment found"),
@@ -99,24 +106,25 @@ impl CommonValidator {
     /// Check for missing CERT_X_GEN_TARGET_HOST usage
     fn check_missing_target_host(&self, code: &str) -> Option<TemplateDiagnostic> {
         // Check if template uses the target host env var
-        if !code.contains("CERT_X_GEN_TARGET_HOST") 
+        if !code.contains("CERT_X_GEN_TARGET_HOST")
             && !code.contains("target.address")
             && !code.contains("{{Hostname}}")
-            && !code.contains("{{BaseURL}}") {
-            
+            && !code.contains("{{BaseURL}}")
+        {
             // Find where to suggest adding it (after shebang/imports)
-            let suggest_line = code.lines()
+            let suggest_line = code
+                .lines()
                 .enumerate()
                 .find(|(_, line)| {
-                    !line.trim().is_empty() 
-                        && !line.starts_with("#!") 
+                    !line.trim().is_empty()
+                        && !line.starts_with("#!")
                         && !line.starts_with("import ")
                         && !line.starts_with("from ")
                         && !line.starts_with("//")
                 })
                 .map(|(idx, _)| idx + 1)
                 .unwrap_or(1);
-            
+
             Some(
                 TemplateDiagnostic::warning(
                     "common.missing_target_host",
@@ -124,7 +132,7 @@ impl CommonValidator {
                      Templates should be dynamic. \
                      Add: HOST = os.environ.get('CERT_X_GEN_TARGET_HOST') or similar",
                 )
-                .with_location(suggest_line, None)
+                .with_location(suggest_line, None),
             )
         } else {
             None
@@ -136,11 +144,16 @@ impl CommonValidator {
         let mut diagnostics = Vec::new();
 
         // Check for hardcoded IP addresses (common mistake)
-        let ip_regex = regex::Regex::new(r"\b(?:192\.168|10\.|172\.1[6-9]\.|172\.2[0-9]\.|172\.3[0-1]\.)\d{1,3}\.\d{1,3}\b")
-            .unwrap();
-        
+        let ip_regex = regex::Regex::new(
+            r"\b(?:192\.168|10\.|172\.1[6-9]\.|172\.2[0-9]\.|172\.3[0-1]\.)\d{1,3}\.\d{1,3}\b",
+        )
+        .unwrap();
+
         for (line_num, line) in code.lines().enumerate() {
-            if ip_regex.is_match(line) && !line.trim_start().starts_with('#') && !line.trim_start().starts_with("//") {
+            if ip_regex.is_match(line)
+                && !line.trim_start().starts_with('#')
+                && !line.trim_start().starts_with("//")
+            {
                 diagnostics.push(
                     TemplateDiagnostic::warning(
                         "common.hardcoded_ip",
@@ -162,7 +175,10 @@ impl CommonValidator {
         for (pattern_str, msg) in secret_patterns {
             if let Ok(pattern) = regex::Regex::new(pattern_str) {
                 for (line_num, line) in code.lines().enumerate() {
-                    if pattern.is_match(line) && !line.trim_start().starts_with('#') && !line.trim_start().starts_with("//") {
+                    if pattern.is_match(line)
+                        && !line.trim_start().starts_with('#')
+                        && !line.trim_start().starts_with("//")
+                    {
                         diagnostics.push(
                             TemplateDiagnostic::warning(
                                 "common.hardcoded_secret",
@@ -179,9 +195,20 @@ impl CommonValidator {
     }
 
     /// Check if template outputs JSON findings
-    fn check_json_output(&self, code: &str, language: TemplateLanguage) -> Option<TemplateDiagnostic> {
+    fn check_json_output(
+        &self,
+        code: &str,
+        language: TemplateLanguage,
+    ) -> Option<TemplateDiagnostic> {
         // Skip check for compiled languages (they typically use native Finding struct)
-        if matches!(language, TemplateLanguage::Rust | TemplateLanguage::C | TemplateLanguage::Cpp | TemplateLanguage::Java | TemplateLanguage::Go) {
+        if matches!(
+            language,
+            TemplateLanguage::Rust
+                | TemplateLanguage::C
+                | TemplateLanguage::Cpp
+                | TemplateLanguage::Java
+                | TemplateLanguage::Go
+        ) {
             return None;
         }
 
@@ -208,7 +235,7 @@ impl CommonValidator {
     fn check_metadata_completeness(&self, code: &str) -> Vec<TemplateDiagnostic> {
         let mut diagnostics = Vec::new();
         let parsed = parse_metadata_from_comments(code);
-        
+
         // Check if template has any metadata at all
         if !parsed.has_metadata() {
             diagnostics.push(
@@ -221,7 +248,7 @@ impl CommonValidator {
             );
             return diagnostics;
         }
-        
+
         // Check for specific missing required fields
         let missing = parsed.missing_required_fields();
         if !missing.is_empty() {
@@ -235,10 +262,10 @@ impl CommonValidator {
                         missing_list
                     ),
                 )
-                .with_location(1, None)
+                .with_location(1, None),
             );
         }
-        
+
         // Check for empty tags
         if parsed.tags.is_empty() {
             diagnostics.push(
@@ -247,7 +274,7 @@ impl CommonValidator {
                     "Template has no tags. Add @tags: with comma-separated values for filtering \
                      (e.g., @tags: redis, database, unauthenticated, cwe-306)",
                 )
-                .with_location(1, None)
+                .with_location(1, None),
             );
         } else if parsed.tags.len() < 2 {
             diagnostics.push(
@@ -261,7 +288,7 @@ impl CommonValidator {
                 .with_location(1, None)
             );
         }
-        
+
         // Check severity validity
         if let Some(ref severity) = parsed.severity {
             let valid_severities = ["critical", "high", "medium", "low", "info", "informational"];
@@ -278,7 +305,7 @@ impl CommonValidator {
                 );
             }
         }
-        
+
         // Optional: Check for CWE reference (recommended)
         if parsed.cwe.is_empty() {
             diagnostics.push(
@@ -287,10 +314,10 @@ impl CommonValidator {
                     "Consider adding a CWE reference with @cwe: for vulnerability classification \
                      (e.g., @cwe: CWE-306)",
                 )
-                .with_location(1, None)
+                .with_location(1, None),
             );
         }
-        
+
         diagnostics
     }
 }

@@ -12,7 +12,10 @@ use tracing::{debug, info};
 use super::config::AIConfig;
 use super::parser::ResponseParser;
 use super::prompt::PromptBuilder;
-use super::providers::{AnthropicProvider, DeepSeekProvider, GenerationOptions, LLMProvider, OllamaProvider, OpenAIProvider, ProviderHealthStatus};
+use super::providers::{
+    AnthropicProvider, DeepSeekProvider, GenerationOptions, LLMProvider, OllamaProvider,
+    OpenAIProvider, ProviderHealthStatus,
+};
 use super::validator::TemplateValidator;
 
 /// Main AI manager for template generation
@@ -20,16 +23,16 @@ use super::validator::TemplateValidator;
 pub struct AIManager {
     /// AI configuration
     config: AIConfig,
-    
+
     /// Template output directory
     output_dir: PathBuf,
-    
+
     /// Prompt builder for generating context-aware prompts
     prompt_builder: PromptBuilder,
-    
+
     /// Response parser for cleaning LLM output
     parser: ResponseParser,
-    
+
     /// Template validator for syntax checking
     validator: TemplateValidator,
 }
@@ -42,13 +45,20 @@ impl AIManager {
         let prompt_builder = PromptBuilder::new();
         let parser = ResponseParser::new();
         let validator = TemplateValidator::new();
-        
+
         // Ensure output directory exists
-        std::fs::create_dir_all(&output_dir)
-            .with_context(|| format!("Failed to create output directory: {}", output_dir.display()))?;
-        
-        info!("Initialized AI manager with default provider: {}", config.default_provider_name());
-        
+        std::fs::create_dir_all(&output_dir).with_context(|| {
+            format!(
+                "Failed to create output directory: {}",
+                output_dir.display()
+            )
+        })?;
+
+        info!(
+            "Initialized AI manager with default provider: {}",
+            config.default_provider_name()
+        );
+
         Ok(Self {
             config,
             output_dir,
@@ -57,17 +67,21 @@ impl AIManager {
             validator,
         })
     }
-    
+
     /// Create a new AI manager with custom configuration
     pub fn with_config(config: AIConfig) -> Result<Self> {
         let output_dir = Self::default_output_dir()?;
         let prompt_builder = PromptBuilder::new();
         let parser = ResponseParser::new();
         let validator = TemplateValidator::new();
-        
-        std::fs::create_dir_all(&output_dir)
-            .with_context(|| format!("Failed to create output directory: {}", output_dir.display()))?;
-        
+
+        std::fs::create_dir_all(&output_dir).with_context(|| {
+            format!(
+                "Failed to create output directory: {}",
+                output_dir.display()
+            )
+        })?;
+
         Ok(Self {
             config,
             output_dir,
@@ -76,25 +90,27 @@ impl AIManager {
             validator,
         })
     }
-    
+
     /// Get the default output directory for AI-generated templates
     fn default_output_dir() -> Result<PathBuf> {
-        let home = dirs::home_dir()
-            .context("Failed to determine home directory")?;
-        
-        Ok(home.join(".cert-x-gen").join("templates").join("ai-generated"))
+        let home = dirs::home_dir().context("Failed to determine home directory")?;
+
+        Ok(home
+            .join(".cert-x-gen")
+            .join("templates")
+            .join("ai-generated"))
     }
-    
+
     /// Set custom output directory
     pub fn set_output_dir<P: Into<PathBuf>>(&mut self, dir: P) {
         self.output_dir = dir.into();
     }
-    
+
     /// Get the current output directory
     pub fn output_dir(&self) -> &PathBuf {
         &self.output_dir
     }
-    
+
     /// Generate a template from a natural language prompt
     ///
     /// # Arguments
@@ -131,12 +147,12 @@ impl AIManager {
     ) -> Result<String> {
         // Determine which provider to use
         let provider = provider_name.unwrap_or_else(|| self.config.default_provider_name());
-        
+
         info!(
             "Generating {} template for: '{}' using provider: {}",
             language, prompt, provider
         );
-        
+
         // Check if provider is configured and enabled
         if !self.config.is_provider_enabled(provider) {
             anyhow::bail!(
@@ -145,55 +161,65 @@ impl AIManager {
                 AIConfig::config_path()?.display()
             );
         }
-        
+
         // Create the provider instance
         let llm_provider: Box<dyn LLMProvider> = match provider {
             "ollama" => {
-                let provider_config = self.config.get_provider("ollama")
+                let provider_config = self
+                    .config
+                    .get_provider("ollama")
                     .context("Ollama provider configuration not found")?;
-                
-                let endpoint = provider_config.endpoint
+
+                let endpoint = provider_config
+                    .endpoint
                     .clone()
                     .unwrap_or_else(|| "http://localhost:11434".to_string());
-                
+
                 let model = provider_config.model.clone();
-                
+
                 Box::new(OllamaProvider::new(endpoint, model))
             }
             "openai" => {
-                let provider_config = self.config.get_provider("openai")
+                let provider_config = self
+                    .config
+                    .get_provider("openai")
                     .context("OpenAI provider configuration not found")?;
-                
+
                 let api_key = provider_config.api_key
                     .clone()
                     .context("OpenAI API key not configured. Set OPENAI_API_KEY environment variable or add to config.")?;
-                
+
                 let model = provider_config.model.clone();
-                
+
                 Box::new(OpenAIProvider::new(api_key, model))
             }
             "anthropic" => {
-                let provider_config = self.config.get_provider("anthropic")
+                let provider_config = self
+                    .config
+                    .get_provider("anthropic")
                     .context("Anthropic provider configuration not found")?;
-                
+
                 let api_key = provider_config.api_key
                     .clone()
                     .context("Anthropic API key not configured. Set ANTHROPIC_API_KEY environment variable or add to config.")?;
-                
+
                 let model = provider_config.model.clone();
-                
+
                 Box::new(AnthropicProvider::new(api_key, model))
             }
             "deepseek" => {
-                let provider_config = self.config.get_provider("deepseek")
+                let provider_config = self
+                    .config
+                    .get_provider("deepseek")
                     .context("DeepSeek provider configuration not found")?;
-                
-                let api_key = provider_config.api_key
+
+                let api_key = provider_config
+                    .api_key
                     .clone()
                     .context("DeepSeek API key not configured")?;
-                
+
                 let model = provider_config.model.clone();
-                
+
                 Box::new(DeepSeekProvider::new(api_key, model))
             }
             _ => {
@@ -204,7 +230,7 @@ impl AIManager {
                 );
             }
         };
-        
+
         // Check if the provider is actually available
         if !llm_provider.is_available() {
             anyhow::bail!(
@@ -212,44 +238,54 @@ impl AIManager {
                 provider
             );
         }
-        
+
         // Build a context-aware prompt using the PromptBuilder (Task 1.4)
         info!("Building context-aware prompt for {} template...", language);
-        let llm_prompt = self.prompt_builder.build_generation_prompt(prompt, language);
-        
+        let llm_prompt = self
+            .prompt_builder
+            .build_generation_prompt(prompt, language);
+
         debug!("Generated prompt length: {} chars", llm_prompt.len());
-        
+
         // Configure generation options from provider config
         let provider_config = self.config.get_provider(provider).unwrap();
         let options = GenerationOptions {
             max_tokens: provider_config.max_tokens,
             temperature: provider_config.temperature,
-            timeout: provider_config.timeout_secs.map(std::time::Duration::from_secs),
+            timeout: provider_config
+                .timeout_secs
+                .map(std::time::Duration::from_secs),
         };
-        
+
         // Generate the template
         info!("Calling LLM provider for generation...");
         let generated_code = llm_provider.generate(&llm_prompt, options).await?; // Show actual error
-        
-        info!("Template generated successfully ({} chars)", generated_code.len());
-        
+
+        info!(
+            "Template generated successfully ({} chars)",
+            generated_code.len()
+        );
+
         // Task 1.5: Parse the response to extract clean template code
         info!("Parsing response to extract clean template code...");
-        let parsed_code = self.parser.parse(&generated_code, language)
+        let parsed_code = self
+            .parser
+            .parse(&generated_code, language)
             .context("Failed to parse LLM response")?;
-        
+
         debug!("Parsed template length: {} chars", parsed_code.len());
-        
+
         // Task 1.6: Validate the template
         info!("Validating template syntax and structure...");
-        self.validator.validate(&parsed_code, language)
+        self.validator
+            .validate(&parsed_code, language)
             .context("Template validation failed")?;
-        
+
         info!("Template validation passed successfully!");
-        
+
         Ok(parsed_code)
     }
-    
+
     /// List available providers
     pub fn list_providers(&self) -> Vec<(String, bool)> {
         self.config
@@ -258,7 +294,7 @@ impl AIManager {
             .map(|(name, config)| (name.clone(), config.enabled))
             .collect()
     }
-    
+
     /// Check if a specific provider is available
     ///
     /// This checks both configuration and actual availability (e.g., is Ollama running?)
@@ -266,46 +302,55 @@ impl AIManager {
         if !self.config.is_provider_enabled(provider_name) {
             return Ok(false);
         }
-        
+
         // Create the provider and check availability
         let provider: Box<dyn LLMProvider> = match provider_name {
             "ollama" => {
-                let provider_config = self.config.get_provider("ollama")
+                let provider_config = self
+                    .config
+                    .get_provider("ollama")
                     .context("Ollama provider configuration not found")?;
-                
-                let endpoint = provider_config.endpoint
+
+                let endpoint = provider_config
+                    .endpoint
                     .clone()
                     .unwrap_or_else(|| "http://localhost:11434".to_string());
-                
+
                 let model = provider_config.model.clone();
-                
+
                 Box::new(OllamaProvider::new(endpoint, model))
             }
             "openai" => {
-                let provider_config = self.config.get_provider("openai")
+                let provider_config = self
+                    .config
+                    .get_provider("openai")
                     .context("OpenAI provider configuration not found")?;
-                
+
                 let api_key = provider_config.api_key.clone().unwrap_or_default();
                 let model = provider_config.model.clone();
-                
+
                 Box::new(OpenAIProvider::new(api_key, model))
             }
             "anthropic" => {
-                let provider_config = self.config.get_provider("anthropic")
+                let provider_config = self
+                    .config
+                    .get_provider("anthropic")
                     .context("Anthropic provider configuration not found")?;
-                
+
                 let api_key = provider_config.api_key.clone().unwrap_or_default();
                 let model = provider_config.model.clone();
-                
+
                 Box::new(AnthropicProvider::new(api_key, model))
             }
             "deepseek" => {
-                let provider_config = self.config.get_provider("deepseek")
+                let provider_config = self
+                    .config
+                    .get_provider("deepseek")
                     .context("DeepSeek provider configuration not found")?;
-                
+
                 let api_key = provider_config.api_key.clone().unwrap_or_default();
                 let model = provider_config.model.clone();
-                
+
                 Box::new(DeepSeekProvider::new(api_key, model))
             }
             _ => {
@@ -313,20 +358,20 @@ impl AIManager {
                 return Ok(false);
             }
         };
-        
+
         Ok(provider.is_available())
     }
-    
+
     /// Get current configuration
     pub fn config(&self) -> &AIConfig {
         &self.config
     }
-    
+
     /// Get the prompt builder
     pub fn prompt_builder(&self) -> &PromptBuilder {
         &self.prompt_builder
     }
-    
+
     /// Save a generated template to a file
     ///
     /// # Arguments
@@ -345,17 +390,17 @@ impl AIManager {
         language: TemplateLanguage,
     ) -> Result<PathBuf> {
         let file_path = self.output_dir.join(filename);
-        
+
         debug!("Saving {} template to: {}", language, file_path.display());
-        
+
         std::fs::write(&file_path, template_code)
             .with_context(|| format!("Failed to save template to {}", file_path.display()))?;
-        
+
         info!("Successfully saved template: {}", file_path.display());
-        
+
         Ok(file_path)
     }
-    
+
     /// Generate a filename for a template based on the prompt
     ///
     /// This is a public wrapper around the private filename generation logic.
@@ -371,7 +416,7 @@ impl AIManager {
     pub fn generate_filename(&self, prompt: &str, language: TemplateLanguage) -> String {
         self.create_filename_from_prompt(prompt, language)
     }
-    
+
     /// Generate and save a template in one operation
     ///
     /// This is a convenience method that combines generation and saving.
@@ -383,18 +428,20 @@ impl AIManager {
         custom_filename: Option<&str>,
     ) -> Result<PathBuf> {
         // Generate the template
-        let template_code = self.generate_template(prompt, language, provider_name).await?;
-        
+        let template_code = self
+            .generate_template(prompt, language, provider_name)
+            .await?;
+
         // Create filename from prompt if not provided
         let filename = match custom_filename {
             Some(name) => name.to_string(),
             None => self.create_filename_from_prompt(prompt, language),
         };
-        
+
         // Save and return path
         self.save_template(&template_code, &filename, language)
     }
-    
+
     /// Create a safe filename from a prompt
     fn create_filename_from_prompt(&self, prompt: &str, language: TemplateLanguage) -> String {
         // Convert prompt to kebab-case
@@ -403,24 +450,24 @@ impl AIManager {
             .chars()
             .map(|c| if c.is_alphanumeric() { c } else { '-' })
             .collect::<String>();
-        
+
         // Remove consecutive dashes
         let safe_name = safe_name
             .split('-')
             .filter(|s| !s.is_empty())
             .collect::<Vec<_>>()
             .join("-");
-        
+
         // Truncate if too long
         let safe_name = if safe_name.len() > 50 {
             &safe_name[..50]
         } else {
             &safe_name
         };
-        
+
         // Add timestamp for uniqueness
         let timestamp = chrono::Utc::now().format("%Y%m%d%H%M%S");
-        
+
         // Add appropriate extension
         let extension = match language {
             TemplateLanguage::Python => "py",
@@ -436,7 +483,7 @@ impl AIManager {
             TemplateLanguage::Perl => "pl",
             TemplateLanguage::Php => "php",
         };
-        
+
         format!("{}-{}.{}", safe_name, timestamp, extension)
     }
 }
@@ -486,45 +533,61 @@ impl AIManager {
     /// ```
     pub async fn test_provider(&self, provider_name: &str) -> Result<ProviderHealthStatus> {
         use crate::ai::providers::*;
-        
+
         match provider_name.to_lowercase().as_str() {
             "ollama" => {
-                let provider_config = self.config.get_provider("ollama")
+                let provider_config = self
+                    .config
+                    .get_provider("ollama")
                     .ok_or_else(|| anyhow::anyhow!("Ollama provider not configured"))?;
-                let endpoint = provider_config.endpoint.clone()
+                let endpoint = provider_config
+                    .endpoint
+                    .clone()
                     .unwrap_or_else(|| "http://localhost:11434".to_string());
                 let model = provider_config.model.clone();
-                
+
                 let provider = OllamaProvider::new(endpoint, model);
                 provider.health_check().await
             }
             "openai" => {
-                let provider_config = self.config.get_provider("openai")
+                let provider_config = self
+                    .config
+                    .get_provider("openai")
                     .ok_or_else(|| anyhow::anyhow!("OpenAI provider not configured"))?;
-                let api_key = provider_config.api_key.clone()
+                let api_key = provider_config
+                    .api_key
+                    .clone()
                     .unwrap_or_else(|| "${OPENAI_API_KEY}".to_string());
                 let model = provider_config.model.clone();
-                
+
                 let provider = OpenAIProvider::new(api_key, model);
                 provider.health_check().await
             }
             "anthropic" => {
-                let provider_config = self.config.get_provider("anthropic")
+                let provider_config = self
+                    .config
+                    .get_provider("anthropic")
                     .ok_or_else(|| anyhow::anyhow!("Anthropic provider not configured"))?;
-                let api_key = provider_config.api_key.clone()
+                let api_key = provider_config
+                    .api_key
+                    .clone()
                     .unwrap_or_else(|| "${ANTHROPIC_API_KEY}".to_string());
                 let model = provider_config.model.clone();
-                
+
                 let provider = AnthropicProvider::new(api_key, model);
                 provider.health_check().await
             }
             "deepseek" => {
-                let provider_config = self.config.get_provider("deepseek")
+                let provider_config = self
+                    .config
+                    .get_provider("deepseek")
                     .ok_or_else(|| anyhow::anyhow!("DeepSeek provider not configured"))?;
-                let api_key = provider_config.api_key.clone()
+                let api_key = provider_config
+                    .api_key
+                    .clone()
                     .unwrap_or_else(|| "${DEEPSEEK_API_KEY}".to_string());
                 let model = provider_config.model.clone();
-                
+
                 let provider = DeepSeekProvider::new(api_key, model);
                 provider.health_check().await
             }
@@ -538,47 +601,48 @@ impl AIManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_create_manager() {
         let manager = AIManager::new();
         assert!(manager.is_ok());
-        
+
         let manager = manager.unwrap();
-        assert!(manager.output_dir().exists() || !manager.output_dir().exists()); // Just check it's a valid path
+        assert!(manager.output_dir().exists() || !manager.output_dir().exists());
+        // Just check it's a valid path
     }
-    
+
     #[test]
     fn test_filename_generation() {
         let manager = AIManager::new().unwrap();
-        
+
         let filename = manager.create_filename_from_prompt(
             "detect Redis without authentication",
             TemplateLanguage::Python,
         );
-        
+
         assert!(filename.contains("detect"));
         assert!(filename.contains("redis"));
         assert!(filename.ends_with(".py"));
         assert!(filename.len() < 100); // Reasonable length
     }
-    
+
     #[test]
     fn test_list_providers() {
         let manager = AIManager::new().unwrap();
         let providers = manager.list_providers();
-        
+
         assert!(!providers.is_empty());
         assert!(providers.iter().any(|(name, _)| name == "ollama"));
     }
-    
+
     #[test]
     fn test_prompt_builder_integration() {
         let manager = AIManager::new().unwrap();
-        
+
         // Verify prompt builder is accessible
         let builder = manager.prompt_builder();
-        
+
         // Test that it can build prompts for all languages
         let languages = vec![
             TemplateLanguage::Python,
@@ -586,13 +650,11 @@ mod tests {
             TemplateLanguage::Yaml,
             TemplateLanguage::Rust,
         ];
-        
+
         for language in languages {
-            let prompt = builder.build_generation_prompt(
-                "detect Redis without authentication",
-                language,
-            );
-            
+            let prompt =
+                builder.build_generation_prompt("detect Redis without authentication", language);
+
             // Verify prompt contains key elements
             assert!(!prompt.is_empty());
             assert!(prompt.contains("Redis"));
@@ -600,12 +662,12 @@ mod tests {
             assert!(prompt.len() > 500); // Substantial prompt
         }
     }
-    
+
     #[test]
     fn test_prompt_builder_skeletons() {
         let manager = AIManager::new().unwrap();
         let builder = manager.prompt_builder();
-        
+
         // Verify all supported languages have skeletons except YAML
         assert!(builder.has_skeleton(TemplateLanguage::Python));
         assert!(builder.has_skeleton(TemplateLanguage::JavaScript));
@@ -618,26 +680,24 @@ mod tests {
         assert!(builder.has_skeleton(TemplateLanguage::Perl));
         assert!(builder.has_skeleton(TemplateLanguage::Php));
         assert!(builder.has_skeleton(TemplateLanguage::Shell));
-        
+
         // YAML doesn't have a skeleton (it's declarative)
         assert!(!builder.has_skeleton(TemplateLanguage::Yaml));
     }
-    
+
     #[tokio::test]
     async fn test_generate_template_ollama_check() {
         let manager = AIManager::new().unwrap();
-        
+
         // Check if Ollama is available
         let is_available = manager.is_provider_available("ollama").await.unwrap();
-        
+
         if !is_available {
             // If Ollama is not running, generation should fail with helpful error
-            let result = manager.generate_template(
-                "test prompt",
-                TemplateLanguage::Python,
-                None,
-            ).await;
-            
+            let result = manager
+                .generate_template("test prompt", TemplateLanguage::Python, None)
+                .await;
+
             assert!(result.is_err());
             let err_msg = result.unwrap_err().to_string();
             assert!(err_msg.contains("not available") || err_msg.contains("ollama serve"));
@@ -647,25 +707,27 @@ mod tests {
             println!("Ollama is available - integration tests can run");
         }
     }
-    
+
     #[tokio::test]
     #[ignore] // Only run with --ignored when Ollama is available
     async fn test_real_generation_with_ollama() {
         let manager = AIManager::new().unwrap();
-        
+
         // Check if Ollama is available
         if !manager.is_provider_available("ollama").await.unwrap() {
             eprintln!("Skipping: Ollama not available");
             return;
         }
-        
+
         // Try generating a simple template
-        let result = manager.generate_template(
-            "write a one-line Python comment",
-            TemplateLanguage::Python,
-            Some("ollama"),
-        ).await;
-        
+        let result = manager
+            .generate_template(
+                "write a one-line Python comment",
+                TemplateLanguage::Python,
+                Some("ollama"),
+            )
+            .await;
+
         assert!(result.is_ok());
         let template = result.unwrap();
         assert!(!template.is_empty());

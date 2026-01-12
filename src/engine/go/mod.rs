@@ -1,6 +1,9 @@
 //! Go template engine implementation
 
-use crate::engine::common::{build_env_vars, create_metadata, execute_command, generate_cache_key, get_cache_dir, parse_findings, check_tool_available};
+use crate::engine::common::{
+    build_env_vars, check_tool_available, create_metadata, execute_command, generate_cache_key,
+    get_cache_dir, parse_findings,
+};
 use crate::error::{Error, Result};
 use crate::template::{Template, TemplateEngine};
 use crate::types::{Context, Finding, Protocol, Target, TemplateLanguage};
@@ -27,7 +30,7 @@ impl GoEngine {
             cache_dir: get_cache_dir("go"),
         }
     }
-    
+
     /// Compile and execute Go template
     async fn execute_go_template(
         &self,
@@ -37,45 +40,45 @@ impl GoEngine {
     ) -> Result<Vec<Finding>> {
         // Ensure cache directory exists
         tokio::fs::create_dir_all(&self.cache_dir).await?;
-        
+
         // Generate cache key and binary path
         let cache_key = generate_cache_key(template_path)?;
-        let binary_name = template_path.file_stem()
+        let binary_name = template_path
+            .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("template");
-        let binary_path = self.cache_dir.join(format!("{}-{}", binary_name, cache_key));
-        
+        let binary_path = self
+            .cache_dir
+            .join(format!("{}-{}", binary_name, cache_key));
+
         // Check if binary exists and is newer than source
         if !binary_path.exists() || self.is_source_newer(template_path, &binary_path).await? {
             // Compile Go template
             self.compile_template(template_path, &binary_path).await?;
         }
-        
+
         // Build environment variables
         let env_vars = build_env_vars(target, context)?;
-        
+
         // Execute compiled binary (no arguments, uses environment variables)
-        let stdout = execute_command(
-            &binary_path.to_string_lossy(),
-            &[],
-            &env_vars,
-        ).await?;
-        
+        let stdout = execute_command(&binary_path.to_string_lossy(), &[], &env_vars).await?;
+
         // Parse findings from JSON output
-        let template_id = template_path.file_stem()
+        let template_id = template_path
+            .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("unknown")
             .to_string();
-        
+
         parse_findings(&stdout, target, &template_id)
     }
-    
+
     /// Compile Go template to binary
     async fn compile_template(&self, source_path: &Path, binary_path: &Path) -> Result<()> {
         if !check_tool_available("go").await {
             return Err(Error::Execution("Go compiler not found".to_string()));
         }
-        
+
         let output = Command::new(&self.go_path)
             .arg("build")
             .arg("-o")
@@ -86,20 +89,23 @@ impl GoEngine {
             .output()
             .await
             .map_err(|e| Error::Execution(format!("Failed to compile Go template: {}", e)))?;
-        
+
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(Error::Execution(format!("Go compilation failed: {}", stderr)));
+            return Err(Error::Execution(format!(
+                "Go compilation failed: {}",
+                stderr
+            )));
         }
-        
+
         Ok(())
     }
-    
+
     /// Check if source file is newer than binary
     async fn is_source_newer(&self, source: &Path, binary: &Path) -> Result<bool> {
         let source_meta = tokio::fs::metadata(source).await?;
         let binary_meta = tokio::fs::metadata(binary).await?;
-        
+
         Ok(source_meta.modified()? > binary_meta.modified()?)
     }
 }
@@ -130,19 +136,21 @@ struct GoTemplate {
 #[async_trait]
 impl Template for GoTemplate {
     async fn execute(&self, target: &Target, context: &Context) -> Result<Vec<Finding>> {
-        self.engine.execute_go_template(&self.path, target, context).await
+        self.engine
+            .execute_go_template(&self.path, target, context)
+            .await
     }
-    
+
     fn validate(&self) -> Result<()> {
         if !self.path.exists() {
             return Err(Error::Io(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
-                format!("Template not found: {:?}", self.path)
+                format!("Template not found: {:?}", self.path),
             )));
         }
         Ok(())
     }
-    
+
     fn metadata(&self) -> &crate::types::TemplateMetadata {
         &self.metadata
     }
@@ -152,7 +160,7 @@ impl Template for GoTemplate {
 impl TemplateEngine for GoEngine {
     async fn load_template(&self, path: &Path) -> Result<Box<dyn Template>> {
         let metadata = create_metadata(path, TemplateLanguage::Go);
-        
+
         Ok(Box::new(GoTemplate {
             path: path.to_path_buf(),
             engine: self.clone(),
@@ -174,7 +182,12 @@ impl TemplateEngine for GoEngine {
     }
 
     fn supported_protocols(&self) -> Vec<Protocol> {
-        vec![Protocol::Http, Protocol::Https, Protocol::Tcp, Protocol::Udp]
+        vec![
+            Protocol::Http,
+            Protocol::Https,
+            Protocol::Tcp,
+            Protocol::Udp,
+        ]
     }
 
     fn name(&self) -> &str {

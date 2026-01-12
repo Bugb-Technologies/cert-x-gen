@@ -44,7 +44,7 @@ pub use manager::AIManager;
 pub use parser::ResponseParser;
 pub use prompt::PromptBuilder;
 pub use providers::{
-    AuthStatus, ConnectionStatus, DeepSeekProvider, GenerationOptions, LLMProvider, ModelInfo, 
+    AuthStatus, ConnectionStatus, DeepSeekProvider, GenerationOptions, LLMProvider, ModelInfo,
     OllamaProvider, ProviderHealthStatus,
 };
 pub use validator::TemplateValidator;

@@ -10,18 +10,20 @@ pub fn parse_target(target: &str) -> Result<(String, Option<u16>)> {
         // URL format
         let url = url::Url::parse(target)
             .map_err(|e| Error::invalid_target(target, format!("Invalid URL: {}", e)))?;
-        
-        let host = url.host_str()
+
+        let host = url
+            .host_str()
             .ok_or_else(|| Error::invalid_target(target, "No host in URL"))?
             .to_string();
-        
+
         let port = url.port();
         Ok((host, port))
     } else if let Some(pos) = target.rfind(':') {
         // host:port format
         let host = target[..pos].to_string();
         let port_str = &target[pos + 1..];
-        let port = port_str.parse::<u16>()
+        let port = port_str
+            .parse::<u16>()
             .map_err(|_| Error::invalid_target(target, "Invalid port number"))?;
         Ok((host, Some(port)))
     } else {
@@ -33,29 +35,36 @@ pub fn parse_target(target: &str) -> Result<(String, Option<u16>)> {
 /// Parse CIDR notation into list of IP addresses
 pub fn parse_cidr(cidr: &str) -> Result<Vec<IpAddr>> {
     use ipnetwork::IpNetwork;
-    
-    let network = cidr.parse::<IpNetwork>()
+
+    let network = cidr
+        .parse::<IpNetwork>()
         .map_err(|e| Error::Parse(format!("Invalid CIDR: {}", e)))?;
-    
+
     Ok(network.iter().collect())
 }
 
 /// Parse port range (e.g., "80-443" or "8000-9000")
 pub fn parse_port_range(range: &str) -> Result<Vec<u16>> {
     if let Some(pos) = range.find('-') {
-        let start = range[..pos].parse::<u16>()
+        let start = range[..pos]
+            .parse::<u16>()
             .map_err(|_| Error::Parse(format!("Invalid port: {}", &range[..pos])))?;
-        let end = range[pos + 1..].parse::<u16>()
+        let end = range[pos + 1..]
+            .parse::<u16>()
             .map_err(|_| Error::Parse(format!("Invalid port: {}", &range[pos + 1..])))?;
-        
+
         if start > end {
-            return Err(Error::Parse(format!("Invalid port range: {} > {}", start, end)));
+            return Err(Error::Parse(format!(
+                "Invalid port range: {} > {}",
+                start, end
+            )));
         }
-        
+
         Ok((start..=end).collect())
     } else {
         // Single port
-        let port = range.parse::<u16>()
+        let port = range
+            .parse::<u16>()
             .map_err(|_| Error::Parse(format!("Invalid port: {}", range)))?;
         Ok(vec![port])
     }
@@ -64,11 +73,11 @@ pub fn parse_port_range(range: &str) -> Result<Vec<u16>> {
 /// Parse duration string (e.g., "30s", "5m", "1h")
 pub fn parse_duration(duration: &str) -> Result<std::time::Duration> {
     let duration = duration.trim();
-    
+
     if duration.is_empty() {
         return Err(Error::Parse("Empty duration".to_string()));
     }
-    
+
     let (value_str, unit) = if duration.ends_with("ms") {
         (&duration[..duration.len() - 2], "ms")
     } else if duration.ends_with('s') {
@@ -80,10 +89,11 @@ pub fn parse_duration(duration: &str) -> Result<std::time::Duration> {
     } else {
         (duration, "s") // Default to seconds
     };
-    
-    let value: u64 = value_str.parse()
+
+    let value: u64 = value_str
+        .parse()
         .map_err(|_| Error::Parse(format!("Invalid duration value: {}", value_str)))?;
-    
+
     Ok(match unit {
         "ms" => std::time::Duration::from_millis(value),
         "s" => std::time::Duration::from_secs(value),
@@ -100,14 +110,14 @@ pub fn extract_domain(input: &str) -> String {
             return host.to_string();
         }
     }
-    
+
     // Remove port if present
     if let Some(pos) = input.rfind(':') {
         if let Ok(_) = input[pos + 1..].parse::<u16>() {
             return input[..pos].to_string();
         }
     }
-    
+
     input.to_string()
 }
 
@@ -116,32 +126,32 @@ pub fn is_valid_domain(domain: &str) -> bool {
     if domain.is_empty() || domain.len() > 253 {
         return false;
     }
-    
+
     // Check if it's an IP address
     if IpAddr::from_str(domain).is_ok() {
         return true;
     }
-    
+
     // Basic domain validation
     let parts: Vec<&str> = domain.split('.').collect();
     if parts.len() < 2 {
         return false;
     }
-    
+
     for part in parts {
         if part.is_empty() || part.len() > 63 {
             return false;
         }
-        
+
         if !part.chars().all(|c| c.is_alphanumeric() || c == '-') {
             return false;
         }
-        
+
         if part.starts_with('-') || part.ends_with('-') {
             return false;
         }
     }
-    
+
     true
 }
 
@@ -150,19 +160,19 @@ pub fn format_bytes(bytes: u64) -> String {
     const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
     let mut size = bytes as f64;
     let mut unit_index = 0;
-    
+
     while size >= 1024.0 && unit_index < UNITS.len() - 1 {
         size /= 1024.0;
         unit_index += 1;
     }
-    
+
     format!("{:.2} {}", size, UNITS[unit_index])
 }
 
 /// Format duration as human-readable string
 pub fn format_duration(duration: std::time::Duration) -> String {
     let secs = duration.as_secs();
-    
+
     if secs < 60 {
         format!("{:.2}s", duration.as_secs_f64())
     } else if secs < 3600 {
@@ -192,9 +202,8 @@ pub fn mask_sensitive(input: &str) -> String {
 /// Return the top N most common ports based on curated frequency data
 pub fn top_ports(count: u16) -> Vec<u16> {
     const TOP_PORTS: [u16; 30] = [
-        80, 443, 8080, 8443, 8000, 22, 21, 25, 110, 995, 143, 993, 53, 3389, 5900, 3306,
-        5432, 27017, 6379, 9200, 15672, 27018, 5000, 8081, 4443, 139, 445, 7001, 11211,
-        50070,
+        80, 443, 8080, 8443, 8000, 22, 21, 25, 110, 995, 143, 993, 53, 3389, 5900, 3306, 5432,
+        27017, 6379, 9200, 15672, 27018, 5000, 8081, 4443, 139, 445, 7001, 11211, 50070,
     ];
 
     if count == 0 {
@@ -238,15 +247,30 @@ mod tests {
 
     #[test]
     fn test_parse_duration() {
-        assert_eq!(parse_duration("30s").unwrap(), std::time::Duration::from_secs(30));
-        assert_eq!(parse_duration("5m").unwrap(), std::time::Duration::from_secs(300));
-        assert_eq!(parse_duration("1h").unwrap(), std::time::Duration::from_secs(3600));
-        assert_eq!(parse_duration("500ms").unwrap(), std::time::Duration::from_millis(500));
+        assert_eq!(
+            parse_duration("30s").unwrap(),
+            std::time::Duration::from_secs(30)
+        );
+        assert_eq!(
+            parse_duration("5m").unwrap(),
+            std::time::Duration::from_secs(300)
+        );
+        assert_eq!(
+            parse_duration("1h").unwrap(),
+            std::time::Duration::from_secs(3600)
+        );
+        assert_eq!(
+            parse_duration("500ms").unwrap(),
+            std::time::Duration::from_millis(500)
+        );
     }
 
     #[test]
     fn test_extract_domain() {
-        assert_eq!(extract_domain("https://example.com:443/path"), "example.com");
+        assert_eq!(
+            extract_domain("https://example.com:443/path"),
+            "example.com"
+        );
         assert_eq!(extract_domain("example.com:8080"), "example.com");
         assert_eq!(extract_domain("example.com"), "example.com");
     }

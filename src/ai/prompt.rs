@@ -12,9 +12,10 @@ use std::collections::HashMap;
 mod embedded_skeletons {
     // Embed all 11 skeleton templates at compile time
     // These will be included in the binary, ensuring they're always available
-    
+
     pub const PYTHON: &str = include_str!("../../templates/skeleton/python-template-skeleton.py");
-    pub const JAVASCRIPT: &str = include_str!("../../templates/skeleton/javascript-template-skeleton.js");
+    pub const JAVASCRIPT: &str =
+        include_str!("../../templates/skeleton/javascript-template-skeleton.js");
     pub const RUST: &str = include_str!("../../templates/skeleton/rust-template-skeleton.rs");
     pub const C: &str = include_str!("../../templates/skeleton/c-template-skeleton.c");
     pub const CPP: &str = include_str!("../../templates/skeleton/cpp-template-skeleton.cpp");
@@ -30,7 +31,8 @@ mod embedded_skeletons {
 /// These are hardcoded since they're small and serve as examples
 #[allow(dead_code)]
 mod yaml_examples {
-    pub const YAML_SKELETON: &str = include_str!("../../templates/skeleton/yaml-template-skeleton.yaml");
+    pub const YAML_SKELETON: &str =
+        include_str!("../../templates/skeleton/yaml-template-skeleton.yaml");
 
     pub const REDIS_UNAUTH: &str = r#"id: redis-unauth
 info:
@@ -173,7 +175,7 @@ impl PromptBuilder {
     /// This never fails since all templates are embedded at compile-time.
     pub fn new() -> Self {
         let mut skeleton_templates = HashMap::new();
-        
+
         // Load all embedded skeleton templates
         // These are available at compile-time, so this never fails
         skeleton_templates.insert(TemplateLanguage::Python, embedded_skeletons::PYTHON);
@@ -187,19 +189,17 @@ impl PromptBuilder {
         skeleton_templates.insert(TemplateLanguage::Perl, embedded_skeletons::PERL);
         skeleton_templates.insert(TemplateLanguage::Php, embedded_skeletons::PHP);
         skeleton_templates.insert(TemplateLanguage::Shell, embedded_skeletons::SHELL);
-        
-        Self {
-            skeleton_templates,
-        }
+
+        Self { skeleton_templates }
     }
-    
+
     /// Get the appropriate skeleton template for a language
     ///
     /// Returns None only for YAML (which is declarative and doesn't use skeletons)
     pub fn get_skeleton(&self, language: TemplateLanguage) -> Option<&str> {
         self.skeleton_templates.get(&language).copied()
     }
-    
+
     /// Build a context-aware generation prompt for the LLM
     ///
     /// This creates a comprehensive prompt that includes:
@@ -218,7 +218,7 @@ impl PromptBuilder {
             _ => self.build_code_prompt(user_request, language),
         }
     }
-    
+
     /// Build prompt for YAML templates (declarative)
     fn build_yaml_prompt(&self, user_request: &str) -> String {
         format!(
@@ -286,16 +286,17 @@ Generate the YAML template now:
             yaml_skeleton = yaml_examples::YAML_SKELETON,
         )
     }
-    
+
     /// Build prompt for code-based templates (procedural languages)
     fn build_code_prompt(&self, user_request: &str, language: TemplateLanguage) -> String {
-        let skeleton = self.get_skeleton(language)
+        let skeleton = self
+            .get_skeleton(language)
             .unwrap_or("No skeleton template available for this language");
-        
+
         let language_name = format!("{}", language);
         let file_extension = Self::get_file_extension(language);
         let language_context = Self::get_language_context(language);
-        
+
         format!(
             r#"You are a security researcher creating vulnerability detection templates for CERT-X-GEN.
 
@@ -444,7 +445,7 @@ Generate the CUSTOMIZED {language_name} template for "{user_request}" now:
             memcached_example = yaml_examples::MEMCACHED_EXPOSED,
         )
     }
-    
+
     /// Get language-specific context and requirements
     fn get_language_context(language: TemplateLanguage) -> &'static str {
         match language {
@@ -536,12 +537,10 @@ Generate the CUSTOMIZED {language_name} template for "{user_request}" now:
                  - Build JSON output manually or use jq\n\
                  - Echo JSON to stdout"
             }
-            TemplateLanguage::Yaml => {
-                "YAML is declarative - this shouldn't be called"
-            }
+            TemplateLanguage::Yaml => "YAML is declarative - this shouldn't be called",
         }
     }
-    
+
     /// Get file extension for code blocks in prompts
     fn get_file_extension(language: TemplateLanguage) -> &'static str {
         match language {
@@ -559,12 +558,12 @@ Generate the CUSTOMIZED {language_name} template for "{user_request}" now:
             TemplateLanguage::Shell => "bash",
         }
     }
-    
+
     /// Get a list of all supported languages that have skeleton templates
     pub fn supported_languages(&self) -> Vec<TemplateLanguage> {
         self.skeleton_templates.keys().copied().collect()
     }
-    
+
     /// Check if a language has a skeleton template available
     pub fn has_skeleton(&self, language: TemplateLanguage) -> bool {
         self.skeleton_templates.contains_key(&language)

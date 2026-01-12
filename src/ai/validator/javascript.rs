@@ -33,7 +33,7 @@ fn check_console_output(code: &str) -> Vec<TemplateDiagnostic> {
 
     for (line_num, line) in code.lines().enumerate() {
         let trimmed = line.trim();
-        
+
         // Skip comments
         if trimmed.starts_with("//") || trimmed.starts_with("/*") || trimmed.starts_with("*") {
             continue;
@@ -41,8 +41,7 @@ fn check_console_output(code: &str) -> Vec<TemplateDiagnostic> {
 
         // Check console.log without JSON.stringify
         if trimmed.contains("console.log(") && !found_console_warning {
-            let is_json = trimmed.contains("JSON.stringify")
-                || trimmed.contains("JSON.parse");
+            let is_json = trimmed.contains("JSON.stringify") || trimmed.contains("JSON.parse");
 
             if !is_json {
                 // Check if it's debug output

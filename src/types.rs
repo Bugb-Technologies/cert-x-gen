@@ -215,7 +215,7 @@ impl Target {
             None
         }
     }
-    
+
     /// Create variants with both HTTP and HTTPS for flexible testing
     /// This allows a single HTTP template to test both protocols
     pub fn with_both_schemes(&self) -> Vec<Target> {
@@ -234,7 +234,7 @@ impl Target {
             vec![self.clone()]
         }
     }
-    
+
     /// Smart scheme selection based on port
     pub fn infer_scheme(&self) -> Protocol {
         match self.port {

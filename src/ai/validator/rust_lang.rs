@@ -31,16 +31,14 @@ fn check_rust_patterns(code: &str) -> Vec<TemplateDiagnostic> {
     // Check for excessive unwrap() usage
     let unwrap_count = code.matches(".unwrap()").count();
     if unwrap_count > 3 {
-        diagnostics.push(
-            TemplateDiagnostic::warning(
-                "rust.excessive_unwrap",
-                format!(
-                    "Found {} .unwrap() calls. Consider using ? operator or proper error handling \
+        diagnostics.push(TemplateDiagnostic::warning(
+            "rust.excessive_unwrap",
+            format!(
+                "Found {} .unwrap() calls. Consider using ? operator or proper error handling \
                      to avoid panics in production templates.",
-                    unwrap_count
-                ),
-            )
-        );
+                unwrap_count
+            ),
+        ));
     } else if unwrap_count > 0 {
         // Find first unwrap location
         for (line_num, line) in code.lines().enumerate() {
@@ -102,24 +100,20 @@ fn check_rust_patterns(code: &str) -> Vec<TemplateDiagnostic> {
     // Check for mut references with potential aliasing
     let mut_ref_count = code.matches("&mut ").count();
     if mut_ref_count > 5 {
-        diagnostics.push(
-            TemplateDiagnostic::info(
-                "rust.many_mut_refs",
-                "Many mutable references detected. Ensure no aliasing issues exist.",
-            )
-        );
+        diagnostics.push(TemplateDiagnostic::info(
+            "rust.many_mut_refs",
+            "Many mutable references detected. Ensure no aliasing issues exist.",
+        ));
     }
 
     // Check for String::from vs .to_string() consistency
     let string_from_count = code.matches("String::from(").count();
     let to_string_count = code.matches(".to_string()").count();
     if string_from_count > 0 && to_string_count > 0 && string_from_count + to_string_count > 5 {
-        diagnostics.push(
-            TemplateDiagnostic::info(
-                "rust.string_conversion_style",
-                "Mixed String::from() and .to_string() usage. Consider using one style consistently.",
-            )
-        );
+        diagnostics.push(TemplateDiagnostic::info(
+            "rust.string_conversion_style",
+            "Mixed String::from() and .to_string() usage. Consider using one style consistently.",
+        ));
     }
 
     // Check for vec![] in function signatures (inefficient)

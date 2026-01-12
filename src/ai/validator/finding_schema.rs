@@ -9,7 +9,7 @@ use anyhow::Result;
 /// Required fields in a Finding object
 pub const FINDING_REQUIRED_FIELDS: &[&str] = &[
     "template_id",
-    "template_name", 
+    "template_name",
     "severity",
     "host",
     "matched_at",
@@ -17,22 +17,12 @@ pub const FINDING_REQUIRED_FIELDS: &[&str] = &[
 
 /// Optional but recommended fields
 #[allow(dead_code)]
-pub const FINDING_RECOMMENDED_FIELDS: &[&str] = &[
-    "description",
-    "matched_value",
-    "timestamp",
-    "tags",
-];
+pub const FINDING_RECOMMENDED_FIELDS: &[&str] =
+    &["description", "matched_value", "timestamp", "tags"];
 
 /// Valid severity values
-pub const VALID_SEVERITIES: &[&str] = &[
-    "critical",
-    "high",
-    "medium",
-    "low",
-    "info",
-    "informational",
-];
+pub const VALID_SEVERITIES: &[&str] =
+    &["critical", "high", "medium", "low", "info", "informational"];
 
 /// Validator for Finding output schema
 #[derive(Debug)]
@@ -77,13 +67,11 @@ impl FindingSchemaValidator {
             || code.contains("FINDINGS");
 
         if !has_findings_array {
-            diagnostics.push(
-                TemplateDiagnostic::info(
-                    "schema.no_findings_array",
-                    "No 'findings' array detected. CERT-X-GEN expects output with a 'findings' array. \
+            diagnostics.push(TemplateDiagnostic::info(
+                "schema.no_findings_array",
+                "No 'findings' array detected. CERT-X-GEN expects output with a 'findings' array. \
                      Structure: {\"findings\": [{...}], \"metadata\": {...}}",
-                )
-            );
+            ));
         }
 
         diagnostics
@@ -105,19 +93,19 @@ impl FindingSchemaValidator {
                 field.to_uppercase(),
             ];
 
-            let has_field = field_patterns.iter().any(|p| code_lower.contains(&p.to_lowercase()));
+            let has_field = field_patterns
+                .iter()
+                .any(|p| code_lower.contains(&p.to_lowercase()));
 
             if !has_field {
-                diagnostics.push(
-                    TemplateDiagnostic::info(
-                        format!("schema.missing_{}", field),
-                        format!(
-                            "Required Finding field '{}' not found in template. \
+                diagnostics.push(TemplateDiagnostic::info(
+                    format!("schema.missing_{}", field),
+                    format!(
+                        "Required Finding field '{}' not found in template. \
                              Ensure findings include this field.",
-                            field
-                        ),
-                    )
-                );
+                        field
+                    ),
+                ));
             }
         }
 
@@ -144,7 +132,8 @@ impl FindingSchemaValidator {
                         let sev = severity.as_str().to_lowercase();
                         if !VALID_SEVERITIES.contains(&sev.as_str()) {
                             // Find line number
-                            let line_num = code.lines()
+                            let line_num = code
+                                .lines()
                                 .enumerate()
                                 .find(|(_, line)| line.contains(severity.as_str()))
                                 .map(|(i, _)| i + 1);
@@ -188,13 +177,11 @@ impl FindingSchemaValidator {
                 || code.contains("new Date()");
 
             if !has_iso_format {
-                diagnostics.push(
-                    TemplateDiagnostic::info(
-                        "schema.timestamp_format",
-                        "Timestamp field found but no ISO 8601 formatting detected. \
+                diagnostics.push(TemplateDiagnostic::info(
+                    "schema.timestamp_format",
+                    "Timestamp field found but no ISO 8601 formatting detected. \
                          Use ISO 8601 format (e.g., 2024-01-15T10:30:00Z) for timestamps.",
-                    )
-                );
+                ));
             }
         }
 

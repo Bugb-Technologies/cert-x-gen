@@ -31,21 +31,33 @@ fn check_php_patterns(code: &str) -> Vec<TemplateDiagnostic> {
     // Check for dangerous functions
     let dangerous_funcs = vec![
         ("eval(", "eval() is dangerous - avoid if possible"),
-        ("unserialize(", "unserialize() with untrusted data is a security risk"),
-        ("assert(", "assert() can execute code - avoid with user input"),
-        ("create_function(", "create_function() is deprecated and dangerous"),
-        ("preg_replace(/e", "preg_replace /e modifier is deprecated and dangerous"),
+        (
+            "unserialize(",
+            "unserialize() with untrusted data is a security risk",
+        ),
+        (
+            "assert(",
+            "assert() can execute code - avoid with user input",
+        ),
+        (
+            "create_function(",
+            "create_function() is deprecated and dangerous",
+        ),
+        (
+            "preg_replace(/e",
+            "preg_replace /e modifier is deprecated and dangerous",
+        ),
     ];
 
     for (func, msg) in dangerous_funcs {
         for (line_num, line) in code.lines().enumerate() {
-            if line.contains(func) && !line.trim().starts_with("//") && !line.trim().starts_with("#") {
+            if line.contains(func)
+                && !line.trim().starts_with("//")
+                && !line.trim().starts_with("#")
+            {
                 diagnostics.push(
-                    TemplateDiagnostic::error(
-                        "php.dangerous_function",
-                        msg,
-                    )
-                    .with_location(line_num + 1, None),
+                    TemplateDiagnostic::error("php.dangerous_function", msg)
+                        .with_location(line_num + 1, None),
                 );
                 break;
             }
@@ -54,7 +66,9 @@ fn check_php_patterns(code: &str) -> Vec<TemplateDiagnostic> {
 
     // Check for SQL injection patterns
     for (line_num, line) in code.lines().enumerate() {
-        if (line.contains("mysql_query") || line.contains("mysqli_query") || line.contains("->query"))
+        if (line.contains("mysql_query")
+            || line.contains("mysqli_query")
+            || line.contains("->query"))
             && (line.contains("$_GET") || line.contains("$_POST") || line.contains("$_REQUEST"))
         {
             diagnostics.push(
@@ -102,22 +116,18 @@ fn check_php_patterns(code: &str) -> Vec<TemplateDiagnostic> {
 
     // Check for error display in production
     if code.contains("display_errors") && code.contains("On") {
-        diagnostics.push(
-            TemplateDiagnostic::warning(
-                "php.display_errors",
-                "display_errors should be Off in production to prevent information leakage.",
-            )
-        );
+        diagnostics.push(TemplateDiagnostic::warning(
+            "php.display_errors",
+            "display_errors should be Off in production to prevent information leakage.",
+        ));
     }
 
     // Check for short open tag
     if code.contains("<?=") || (code.contains("<?") && !code.contains("<?php")) {
-        diagnostics.push(
-            TemplateDiagnostic::info(
-                "php.short_open_tag",
-                "Short open tags (<? or <?=) may not work on all PHP installations. Use <?php.",
-            )
-        );
+        diagnostics.push(TemplateDiagnostic::info(
+            "php.short_open_tag",
+            "Short open tags (<? or <?=) may not work on all PHP installations. Use <?php.",
+        ));
     }
 
     // Check for deprecated mysql_ functions

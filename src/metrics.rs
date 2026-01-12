@@ -1,27 +1,25 @@
 //! Metrics collection and instrumentation
 
 use crate::error::Result;
-use prometheus::{
-    Counter, CounterVec, Gauge, Histogram, HistogramVec, Opts, Registry,
-};
+use prometheus::{Counter, CounterVec, Gauge, Histogram, HistogramVec, Opts, Registry};
 use std::sync::Arc;
 
 /// Metrics collector for CERT-X-GEN
 #[derive(Debug)]
 pub struct MetricsCollector {
     registry: Arc<Registry>,
-    
+
     // Counters
     scans_total: Counter,
     templates_executed: Counter,
     findings_total: CounterVec,
     errors_total: CounterVec,
-    
+
     // Gauges
     active_scans: Gauge,
     active_workers: Gauge,
     templates_loaded: Gauge,
-    
+
     // Histograms
     scan_duration: Histogram,
     template_execution_duration: HistogramVec,
@@ -86,7 +84,9 @@ impl MetricsCollector {
                 "certxgen_scan_duration_seconds",
                 "Duration of scan execution in seconds",
             )
-            .buckets(vec![1.0, 5.0, 10.0, 30.0, 60.0, 300.0, 600.0, 1800.0, 3600.0]),
+            .buckets(vec![
+                1.0, 5.0, 10.0, 30.0, 60.0, 300.0, 600.0, 1800.0, 3600.0,
+            ]),
         )?;
         registry.register(Box::new(scan_duration.clone()))?;
 
@@ -236,13 +236,13 @@ mod tests {
     #[test]
     fn test_metrics_collector() {
         let collector = MetricsCollector::new().unwrap();
-        
+
         collector.inc_scans();
         collector.inc_templates_executed();
         collector.inc_findings("critical");
         collector.set_active_scans(5);
         collector.observe_scan_duration(10.5);
-        
+
         let export = collector.export_prometheus();
         assert!(export.is_ok());
     }
@@ -250,7 +250,7 @@ mod tests {
     #[test]
     fn test_timing_guard() {
         let collector = MetricsCollector::new().unwrap();
-        
+
         {
             let _guard = TimingGuard::new(|duration| {
                 assert!(duration >= 0.0);

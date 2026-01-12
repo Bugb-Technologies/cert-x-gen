@@ -23,7 +23,7 @@ impl RubyEngine {
             ruby_path: "ruby".to_string(),
         }
     }
-    
+
     /// Execute Ruby template
     async fn execute_ruby_template(
         &self,
@@ -32,23 +32,25 @@ impl RubyEngine {
         context: &Context,
     ) -> Result<Vec<Finding>> {
         tracing::debug!("Ruby engine executing template: {:?}", template_path);
-        
+
         // Build environment variables
         let env_vars = build_env_vars(target, context)?;
-        
+
         // Execute Ruby script
         let stdout = execute_command(
             &self.ruby_path,
             &[template_path.to_string_lossy().to_string()],
             &env_vars,
-        ).await?;
-        
+        )
+        .await?;
+
         // Parse findings from JSON output
-        let template_id = template_path.file_stem()
+        let template_id = template_path
+            .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("unknown")
             .to_string();
-        
+
         parse_findings(&stdout, target, &template_id)
     }
 }
@@ -78,19 +80,21 @@ struct RubyTemplate {
 #[async_trait]
 impl Template for RubyTemplate {
     async fn execute(&self, target: &Target, context: &Context) -> Result<Vec<Finding>> {
-        self.engine.execute_ruby_template(&self.path, target, context).await
+        self.engine
+            .execute_ruby_template(&self.path, target, context)
+            .await
     }
-    
+
     fn validate(&self) -> Result<()> {
         if !self.path.exists() {
             return Err(Error::Io(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
-                format!("Template not found: {:?}", self.path)
+                format!("Template not found: {:?}", self.path),
             )));
         }
         Ok(())
     }
-    
+
     fn metadata(&self) -> &crate::types::TemplateMetadata {
         &self.metadata
     }
@@ -100,7 +104,7 @@ impl Template for RubyTemplate {
 impl TemplateEngine for RubyEngine {
     async fn load_template(&self, path: &Path) -> Result<Box<dyn Template>> {
         let metadata = create_metadata(path, TemplateLanguage::Ruby);
-        
+
         Ok(Box::new(RubyTemplate {
             path: path.to_path_buf(),
             engine: self.clone(),
@@ -122,7 +126,12 @@ impl TemplateEngine for RubyEngine {
     }
 
     fn supported_protocols(&self) -> Vec<Protocol> {
-        vec![Protocol::Http, Protocol::Https, Protocol::Tcp, Protocol::Udp]
+        vec![
+            Protocol::Http,
+            Protocol::Https,
+            Protocol::Tcp,
+            Protocol::Udp,
+        ]
     }
 
     fn name(&self) -> &str {

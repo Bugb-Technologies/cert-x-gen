@@ -86,15 +86,28 @@ pub struct Cli {
     pub config: Option<PathBuf>,
 
     /// Auto-update templates before running (like Nuclei's behavior)
-    #[arg(long, global = true, help = "Automatically update templates before running scan")]
+    #[arg(
+        long,
+        global = true,
+        help = "Automatically update templates before running scan"
+    )]
     pub auto_update_templates: bool,
 
     /// Disable automatic template update check (like Nuclei's -duc flag)
-    #[arg(long, global = true, help = "Disable automatic template update check on startup")]
+    #[arg(
+        long,
+        global = true,
+        help = "Disable automatic template update check on startup"
+    )]
     pub disable_update_check: bool,
 
     /// Update templates on every startup (aggressive mode)
-    #[arg(long, global = true, conflicts_with = "disable_update_check", help = "Force template update on every startup (aggressive)")]
+    #[arg(
+        long,
+        global = true,
+        conflicts_with = "disable_update_check",
+        help = "Force template update on every startup (aggressive)"
+    )]
     pub update_templates_on_startup: bool,
 }
 
@@ -496,7 +509,10 @@ pub struct ScanArgs {
     pub top_ports: Option<u16>,
 
     /// Override template default ports completely (comma-separated)
-    #[arg(long, help = "Replace template ports entirely. Use for complete control over port selection")]
+    #[arg(
+        long,
+        help = "Replace template ports entirely. Use for complete control over port selection"
+    )]
     pub override_ports: Option<String>,
 
     // Protocol specification
@@ -520,15 +536,25 @@ pub struct ScanArgs {
     pub templates: Vec<String>,
 
     /// Custom template directory path
-    #[arg(long, help = "Use templates from custom directory instead of default location")]
+    #[arg(
+        long,
+        help = "Use templates from custom directory instead of default location"
+    )]
     pub template_dir: Option<PathBuf>,
 
     /// Filter by vulnerability tags (comma-separated)
-    #[arg(long, help = "Filter by tags. Common: database,injection,xss,rce,lfi,ssrf,auth")]
+    #[arg(
+        long,
+        help = "Filter by tags. Common: database,injection,xss,rce,lfi,ssrf,auth"
+    )]
     pub tags: Option<String>,
 
     /// Filter by severity level (critical, high, medium, low, info)
-    #[arg(long, value_enum, help = "Filter by severity. Example: critical,high for quick assessment")]
+    #[arg(
+        long,
+        value_enum,
+        help = "Filter by severity. Example: critical,high for quick assessment"
+    )]
     pub severity: Option<Vec<SeverityArg>>,
 
     /// Exclude templates matching pattern (supports wildcards)
@@ -536,12 +562,17 @@ pub struct ScanArgs {
     pub exclude_templates: Option<String>,
 
     /// Filter templates by programming language
-    #[arg(long, value_enum, value_name = "LANG", help = "Filter by language (e.g., python,rust,c)")]
+    #[arg(
+        long,
+        value_enum,
+        value_name = "LANG",
+        help = "Filter by language (e.g., python,rust,c)"
+    )]
     pub template_language: Option<Vec<LanguageArg>>,
 
     // Execution options
     /// Number of worker threads (default: CPU cores)
-    /// 
+    ///
     /// Note: In async/await context, this is informational and doesn't directly control
     /// thread count. The actual concurrency is controlled by --parallel-targets and
     /// --parallel-templates. This option is kept for compatibility and may be used
@@ -550,103 +581,184 @@ pub struct ScanArgs {
     pub threads: usize,
 
     /// Number of targets to scan simultaneously
-    #[arg(long, default_value_t = 50, help = "Concurrent target scans. Lower for production (10-25), higher for internal (50-100)")]
+    #[arg(
+        long,
+        default_value_t = 50,
+        help = "Concurrent target scans. Lower for production (10-25), higher for internal (50-100)"
+    )]
     pub parallel_targets: usize,
 
     /// Number of templates to run concurrently per target
-    #[arg(long, default_value_t = 10, help = "Concurrent templates per target. Balance between speed and target load")]
+    #[arg(
+        long,
+        default_value_t = 10,
+        help = "Concurrent templates per target. Balance between speed and target load"
+    )]
     pub parallel_templates: usize,
 
     /// Timeout duration (supports: s=seconds, m=minutes, h=hours)
-    #[arg(long, default_value = "30s", help = "Max wait time for responses. Examples: 30s, 2m, 1h. Increase for slow networks")]
+    #[arg(
+        long,
+        default_value = "30s",
+        help = "Max wait time for responses. Examples: 30s, 2m, 1h. Increase for slow networks"
+    )]
     pub timeout: String,
 
     /// Number of retry attempts for failed requests
-    #[arg(long, default_value_t = 1, help = "Retry attempts for transient failures. Higher for unreliable networks")]
+    #[arg(
+        long,
+        default_value_t = 1,
+        help = "Retry attempts for transient failures. Higher for unreliable networks"
+    )]
     pub retry: u32,
 
     /// Rate limit in requests per second (prevents overwhelming targets)
-    #[arg(long, help = "Max requests/sec. Use 10-50 for production, 100+ for internal. Prevents WAF/IPS triggers")]
+    #[arg(
+        long,
+        help = "Max requests/sec. Use 10-50 for production, 100+ for internal. Prevents WAF/IPS triggers"
+    )]
     pub rate_limit: Option<u32>,
 
     // Scanning modes
     /// Enable aggressive mode (WARNING: intrusive, may cause disruption)
-    #[arg(long, help = "Aggressive scanning with intrusive checks. Use only with permission on controlled systems")]
+    #[arg(
+        long,
+        help = "Aggressive scanning with intrusive checks. Use only with permission on controlled systems"
+    )]
     pub aggressive: bool,
 
     /// Enable stealth mode (slower, harder to detect)
-    #[arg(long, help = "Stealth mode: randomized timing, reduced footprint. Evades IDS/IPS/WAF detection")]
+    #[arg(
+        long,
+        help = "Stealth mode: randomized timing, reduced footprint. Evades IDS/IPS/WAF detection"
+    )]
     pub stealth: bool,
 
     /// Passive mode (no active probing, safest option)
-    #[arg(long, help = "Passive scanning: analyze responses only, no active probes. Limited detection but safest")]
+    #[arg(
+        long,
+        help = "Passive scanning: analyze responses only, no active probes. Limited detection but safest"
+    )]
     pub passive: bool,
 
     /// Safe mode (excludes potentially harmful checks like DoS)
-    #[arg(long, help = "Safe mode: no DoS or resource exhaustion checks. Recommended for production systems")]
+    #[arg(
+        long,
+        help = "Safe mode: no DoS or resource exhaustion checks. Recommended for production systems"
+    )]
     pub safe: bool,
 
     // Network options
     /// Proxy URL (supports HTTP, HTTPS, SOCKS5)
-    #[arg(long, help = "Route traffic through proxy. Examples: http://proxy:8080, socks5://127.0.0.1:1080")]
+    #[arg(
+        long,
+        help = "Route traffic through proxy. Examples: http://proxy:8080, socks5://127.0.0.1:1080"
+    )]
     pub proxy: Option<String>,
 
     /// Custom User-Agent header (default: cert-x-gen/<version>)
-    #[arg(long, help = "Custom User-Agent for mimicking browsers/tools. Example: \"Mozilla/5.0...\"")]
+    #[arg(
+        long,
+        help = "Custom User-Agent for mimicking browsers/tools. Example: \"Mozilla/5.0...\""
+    )]
     pub user_agent: Option<String>,
 
     /// Custom HTTP headers (key:value, repeatable for multiple headers)
-    #[arg(long, help = "Add custom headers. Example: \"Authorization: Bearer token\". Use multiple times for multiple headers")]
+    #[arg(
+        long,
+        help = "Add custom headers. Example: \"Authorization: Bearer token\". Use multiple times for multiple headers"
+    )]
     pub header: Option<Vec<String>>,
 
     /// Cookies (key=value, repeatable for multiple cookies)
-    #[arg(long, help = "Add cookies for authenticated scans. Example: \"session=abc123\". Use multiple times")]
+    #[arg(
+        long,
+        help = "Add cookies for authenticated scans. Example: \"session=abc123\". Use multiple times"
+    )]
     pub cookie: Option<Vec<String>>,
 
     /// Follow HTTP redirects automatically (enabled by default)
-    #[arg(long, help = "Follow HTTP redirects. Useful for discovering redirect chains and final destinations")]
+    #[arg(
+        long,
+        help = "Follow HTTP redirects. Useful for discovering redirect chains and final destinations"
+    )]
     pub follow_redirects: bool,
 
     /// Maximum number of redirects to follow (prevents infinite loops)
-    #[arg(long, default_value_t = 5, help = "Max redirect hops. Prevents infinite redirect loops")]
+    #[arg(
+        long,
+        default_value_t = 5,
+        help = "Max redirect hops. Prevents infinite redirect loops"
+    )]
     pub max_redirects: usize,
 
     // Output options
     /// Output file basename (extensions added automatically)
-    #[arg(short, long, default_value = "scan-results", help = "Output basename. Creates: <basename>.json, <basename>.csv, etc.")]
+    #[arg(
+        short,
+        long,
+        default_value = "scan-results",
+        help = "Output basename. Creates: <basename>.json, <basename>.csv, etc."
+    )]
     pub output: String,
 
     /// Output formats (comma-separated: json,html,sarif,csv,xml)
-    #[arg(long, default_value = "json", help = "Output formats. json=automation, csv=spreadsheet, sarif=CI/CD, html=visual, xml=enterprise")]
+    #[arg(
+        long,
+        default_value = "json",
+        help = "Output formats. json=automation, csv=spreadsheet, sarif=CI/CD, html=visual, xml=enterprise"
+    )]
     pub output_format: String,
 
     /// Enable real-time streaming output (results shown as found)
-    #[arg(long, help = "Stream results in real-time. Useful for long scans where you want immediate feedback")]
+    #[arg(
+        long,
+        help = "Stream results in real-time. Useful for long scans where you want immediate feedback"
+    )]
     pub stream: bool,
 
     /// Quiet mode (suppress non-essential output)
-    #[arg(short, long, help = "Minimal output: only critical info and errors. Ideal for scripting and automation")]
+    #[arg(
+        short,
+        long,
+        help = "Minimal output: only critical info and errors. Ideal for scripting and automation"
+    )]
     pub quiet: bool,
 
     // Advanced options
     /// Resume previously interrupted scan by scan ID
-    #[arg(long, help = "Resume scan from where it stopped. Scan state is auto-saved for recovery from crashes")]
+    #[arg(
+        long,
+        help = "Resume scan from where it stopped. Scan state is auto-saved for recovery from crashes"
+    )]
     pub resume: Option<String>,
 
     /// Enable distributed scanning mode (horizontal scaling)
-    #[arg(long, help = "Distributed mode: coordinate with other scanners for massive scans across multiple machines")]
+    #[arg(
+        long,
+        help = "Distributed mode: coordinate with other scanners for massive scans across multiple machines"
+    )]
     pub distributed: bool,
 
     /// Coordinator URL for distributed scanning (required with --distributed)
-    #[arg(long, help = "Coordinator manages work distribution. Example: http://coordinator:8080")]
+    #[arg(
+        long,
+        help = "Coordinator manages work distribution. Example: http://coordinator:8080"
+    )]
     pub coordinator: Option<String>,
 
     /// Unique worker ID for distributed scanning (auto-generated if not set)
-    #[arg(long, help = "Worker identifier in distributed mode. Example: scanner-01, worker-east-1")]
+    #[arg(
+        long,
+        help = "Worker identifier in distributed mode. Example: scanner-01, worker-east-1"
+    )]
     pub worker_id: Option<String>,
 
     /// Configuration profile name from config file
-    #[arg(long, help = "Use named profile from config. Allows quick switching between scan scenarios")]
+    #[arg(
+        long,
+        help = "Use named profile from config. Allows quick switching between scan scenarios"
+    )]
     pub profile: Option<String>,
 }
 
@@ -1047,9 +1159,9 @@ pub struct SandboxCommand {
 }
 
 /// Sandbox environment management
-/// 
+///
 /// CERT-X-GEN supports two types of sandboxes:
-/// 
+///
 /// 1. Docker Sandbox (RECOMMENDED - True Isolation):
 ///    - Complete OS-level isolation using Docker containers
 ///    - Fresh Python, Ruby, Node, Go, Java, etc. inside container
@@ -1057,25 +1169,25 @@ pub struct SandboxCommand {
 ///    - Auto-enter on CLI start
 ///    - Access to local network and files
 ///    - Commands: create, enter, delete, set-default, info
-/// 
+///
 /// 2. Package Sandbox (Legacy - Package-Level Isolation):
 ///    - Python venv, npm node_modules, gem isolation
 ///    - Uses host system's language runtimes
 ///    - Simple directory-based isolation
 ///    - Commands: init, status, install, clean
-/// 
+///
 /// Use 'cert-x-gen sandbox info' to check Docker availability.
 /// Use 'cert-x-gen sandbox create <name>' to create a Docker sandbox.
 #[derive(Debug, Clone, Subcommand)]
 pub enum SandboxAction {
     /// Initialize package-level sandbox (legacy mode)
-    /// 
+    ///
     /// Creates isolated package directories for Python (venv), JavaScript (node_modules),
     /// Ruby (gems), etc. This mode uses your host system's language runtimes.
-    /// 
+    ///
     /// Note: This is a lightweight alternative to Docker sandboxes. For true isolation,
     /// use 'cert-x-gen sandbox create <name>' to create a Docker-based sandbox.
-    /// 
+    ///
     /// The init command is smart:
     /// - First run: Sets up all language environments and installs packages
     /// - Subsequent runs: Only adds new languages or packages (skips existing)
@@ -1415,7 +1527,7 @@ pub enum AiAction {
     /// Generate a new template from natural language
     Generate {
         /// Natural language description of what to detect
-        /// 
+        ///
         /// Examples:
         ///   "detect Redis without authentication"
         ///   "find SQL injection vulnerabilities"
@@ -1462,10 +1574,7 @@ pub enum AiAction {
         output: Option<PathBuf>,
 
         /// Test the generated template immediately
-        #[arg(
-            long,
-            help = "Test the generated template after creation"
-        )]
+        #[arg(long, help = "Test the generated template after creation")]
         test: bool,
 
         /// Target to test against (requires --test)
@@ -1478,11 +1587,7 @@ pub enum AiAction {
         test_target: Option<String>,
 
         /// Force overwrite if file exists
-        #[arg(
-            short = 'f',
-            long,
-            help = "Overwrite output file if it already exists"
-        )]
+        #[arg(short = 'f', long, help = "Overwrite output file if it already exists")]
         force: bool,
 
         /// Show generation cost estimate (for cloud providers)
@@ -1538,7 +1643,7 @@ TROUBLESHOOTING:
 #[derive(Subcommand, Debug)]
 pub enum ProviderAction {
     /// List all available providers
-    /// 
+    ///
     /// Shows which providers are configured and available.
     /// Use --detailed to see more information about each provider.
     List {
@@ -1548,13 +1653,13 @@ pub enum ProviderAction {
     },
 
     /// Test connection to a specific provider
-    /// 
+    ///
     /// Performs comprehensive health checks including:
     /// - Connection testing
     /// - Authentication verification  
     /// - Response time measurement
     /// - Model availability check
-    /// 
+    ///
     /// Provides helpful diagnostic information if issues are found.
     Test {
         /// Provider name to test (ollama, openai, anthropic, deepseek)
@@ -1562,9 +1667,8 @@ pub enum ProviderAction {
     },
 
     /// Show status of all configured providers
-    /// 
+    ///
     /// Tests all enabled providers and displays their health status.
     /// Quick way to see which providers are ready to use.
     Status,
 }
-

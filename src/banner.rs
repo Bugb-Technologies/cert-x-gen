@@ -6,8 +6,9 @@ use console::{style, Term};
 pub fn display_banner() {
     let term = Term::stdout();
     let version = env!("CARGO_PKG_VERSION");
-    
-    let banner = format!(r#"
+
+    let banner = format!(
+        r#"
  ██████╗███████╗██████╗ ████████╗     ██╗  ██╗      ██████╗ ███████╗███╗   ██╗
 ██╔════╝██╔════╝██╔══██╗╚══██╔══╝     ╚██╗██╔╝     ██╔════╝ ██╔════╝████╗  ██║
 ██║     █████╗  ██████╔╝   ██║  █████╗ ╚███╔╝█████╗██║  ███╗█████╗  ██╔██╗ ██║
@@ -15,7 +16,9 @@ pub fn display_banner() {
 ╚██████╗███████╗██║  ██║   ██║        ██╔╝ ██╗     ╚██████╔╝███████╗██║ ╚████║
  ╚═════╝╚══════╝╚═╝  ╚═╝   ╚═╝        ╚═╝  ╚═╝      ╚═════╝ ╚══════╝╚═╝  ╚═══╝
                      Security Scanner v{} - by Bugb
-"#, version);
+"#,
+        version
+    );
 
     // Print banner in cyan
     let _ = term.write_line(&style(banner).cyan().to_string());
@@ -26,6 +29,11 @@ pub fn display_banner() {
 /// Display minimal banner (for quiet mode)
 pub fn display_minimal_banner() {
     let version = env!("CARGO_PKG_VERSION");
-    println!("{}", style(format!("CERT-X-GEN v{} - Security Scanner", version)).cyan().bold());
+    println!(
+        "{}",
+        style(format!("CERT-X-GEN v{} - Security Scanner", version))
+            .cyan()
+            .bold()
+    );
     println!("{}", style("=".repeat(80)).dim());
 }

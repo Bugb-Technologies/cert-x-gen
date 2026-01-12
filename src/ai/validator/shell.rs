@@ -70,9 +70,11 @@ fn check_json_contract(code: &str) -> Vec<TemplateDiagnostic> {
     }
 
     // Should use cat <<EOF or similar for JSON output
-    let has_heredoc = code.contains("cat <<EOF") || code.contains("cat << EOF") 
-        || code.contains("cat <<'EOF'") || code.contains("cat <<\"EOF\"");
-    
+    let has_heredoc = code.contains("cat <<EOF")
+        || code.contains("cat << EOF")
+        || code.contains("cat <<'EOF'")
+        || code.contains("cat <<\"EOF\"");
+
     if !has_heredoc && !code.contains("jq") {
         diagnostics.push(TemplateDiagnostic::warning(
             "shell.no_heredoc_json",
@@ -82,10 +84,11 @@ fn check_json_contract(code: &str) -> Vec<TemplateDiagnostic> {
     }
 
     // Check if JSON output is at the end (last significant code block)
-    let lines: Vec<&str> = code.lines()
+    let lines: Vec<&str> = code
+        .lines()
         .filter(|l| !l.trim().is_empty() && !l.trim_start().starts_with('#'))
         .collect();
-    
+
     if let Some(last_lines) = lines.last_chunk::<20>() {
         let end_block = last_lines.join("\n");
         if !end_block.contains("cat <<") && !end_block.contains("echo '{") {
@@ -103,13 +106,19 @@ fn check_json_contract(code: &str) -> Vec<TemplateDiagnostic> {
 /// Check for problematic output statements that break JSON
 fn check_output_statements(code: &str) -> Vec<TemplateDiagnostic> {
     let mut diagnostics = Vec::new();
-    
+
     // Patterns that indicate human-readable output
     let problematic_patterns = vec![
         ("echo -e", "echo with escape sequences (colors) detected"),
         ("printf.*\\\\033", "ANSI escape sequences detected"),
-        ("log_finding", "log_finding function may output human text instead of collecting JSON"),
-        ("print_remediation", "print_remediation may output text before JSON"),
+        (
+            "log_finding",
+            "log_finding function may output human text instead of collecting JSON",
+        ),
+        (
+            "print_remediation",
+            "print_remediation may output text before JSON",
+        ),
         ("usage()", "usage() function called may output help text"),
     ];
 
@@ -137,7 +146,7 @@ fn check_output_statements(code: &str) -> Vec<TemplateDiagnostic> {
     let mut in_heredoc = false;
     for (line_num, line) in code.lines().enumerate() {
         let trimmed = line.trim();
-        
+
         // Track heredoc boundaries
         if trimmed.contains("cat <<") {
             in_heredoc = true;
@@ -147,19 +156,19 @@ fn check_output_statements(code: &str) -> Vec<TemplateDiagnostic> {
             in_heredoc = false;
             continue;
         }
-        
+
         // Check for echo/printf outside heredoc (but allow in functions that build JSON)
         if !in_heredoc && !trimmed.starts_with('#') {
-            if (trimmed.starts_with("echo ") || trimmed.contains("printf ")) 
-                && !trimmed.contains("FINDINGS=") 
-                && !trimmed.contains("$(") 
-                && !line.contains("add_finding") {
-                
+            if (trimmed.starts_with("echo ") || trimmed.contains("printf "))
+                && !trimmed.contains("FINDINGS=")
+                && !trimmed.contains("$(")
+                && !line.contains("add_finding")
+            {
                 // Skip if it's clearly building JSON
-                if !trimmed.contains("\"findings\"") 
+                if !trimmed.contains("\"findings\"")
                     && !trimmed.contains("\"metadata\"")
-                    && !trimmed.contains("template_id") {
-                    
+                    && !trimmed.contains("template_id")
+                {
                     diagnostics.push(
                         TemplateDiagnostic::warning(
                             "shell.echo_outside_json",
@@ -197,8 +206,11 @@ fn check_ansi_colors(code: &str) -> Vec<TemplateDiagnostic> {
                 diagnostics.push(
                     TemplateDiagnostic::error(
                         "shell.ansi_colors",
-                        format!("{} detected. ANSI color codes will break JSON output. \
-                                Remove all color formatting from shell templates.", name),
+                        format!(
+                            "{} detected. ANSI color codes will break JSON output. \
+                                Remove all color formatting from shell templates.",
+                            name
+                        ),
                     )
                     .with_location(line_num + 1, None),
                 );
@@ -209,9 +221,10 @@ fn check_ansi_colors(code: &str) -> Vec<TemplateDiagnostic> {
 
     // Check for ASCII art / box drawing
     if code.contains("╔") || code.contains("║") || code.contains("═") {
-        if let Some(line_num) = code.lines().position(|l| 
-            l.contains("╔") || l.contains("║") || l.contains("═")
-        ) {
+        if let Some(line_num) = code
+            .lines()
+            .position(|l| l.contains("╔") || l.contains("║") || l.contains("═"))
+        {
             diagnostics.push(
                 TemplateDiagnostic::error(
                     "shell.ascii_art",
@@ -279,7 +292,9 @@ echo -e "${RED}Error${NC}"
 echo "Some output"
 "#;
         let diags = validate(code).unwrap();
-        assert!(diags.iter().any(|d| d.code.contains("missing_findings_field")));
+        assert!(diags
+            .iter()
+            .any(|d| d.code.contains("missing_findings_field")));
     }
 
     #[test]
@@ -305,8 +320,14 @@ EOF
 "#;
         let diags = validate(code).unwrap();
         // Should have minimal warnings
-        let errors: Vec<_> = diags.iter().filter(|d| d.severity == super::super::DiagnosticSeverity::Error).collect();
-        assert!(errors.is_empty(), "Should have no errors for valid template");
+        let errors: Vec<_> = diags
+            .iter()
+            .filter(|d| d.severity == super::super::DiagnosticSeverity::Error)
+            .collect();
+        assert!(
+            errors.is_empty(),
+            "Should have no errors for valid template"
+        );
     }
 
     #[test]

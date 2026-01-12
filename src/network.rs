@@ -3,12 +3,16 @@
 use crate::config::Config;
 use crate::error::{Error, Result};
 use crate::session::SessionManager;
+use governor::{
+    clock::DefaultClock,
+    state::{InMemoryState, NotKeyed},
+    Quota, RateLimiter,
+};
 use reqwest::{Client, ClientBuilder, Response};
 use std::collections::HashMap;
 use std::num::NonZeroU32;
 use std::sync::Arc;
 use std::time::Duration;
-use governor::{Quota, RateLimiter, state::{NotKeyed, InMemoryState}, clock::DefaultClock};
 
 /// Type alias for the rate limiter used in NetworkClient
 type ClientRateLimiter = RateLimiter<NotKeyed, InMemoryState, DefaultClock>;
@@ -30,13 +34,16 @@ impl NetworkClient {
     }
 
     /// Create a new network client with existing session manager
-    pub async fn with_session(config: Arc<Config>, session_manager: Arc<SessionManager>) -> Result<Self> {
+    pub async fn with_session(
+        config: Arc<Config>,
+        session_manager: Arc<SessionManager>,
+    ) -> Result<Self> {
         let mut builder = ClientBuilder::new()
             .timeout(Duration::from_secs(config.network.timeout_secs))
             .user_agent(&config.network.user_agent)
             .pool_max_idle_per_host(config.network.connection_pool_size)
             .pool_idle_timeout(Duration::from_secs(30));
-        
+
         // NOTE: We intentionally do NOT use .http2_prior_knowledge() here.
         // That setting forces HTTP/2 without negotiation, which breaks compatibility
         // with HTTP/1.1-only servers (like Ollama, many REST APIs, etc.).
@@ -68,7 +75,9 @@ impl NetworkClient {
         let rate_limiter = if let Some(rate_limit) = config.network.rate_limit {
             if rate_limit > 0 {
                 // Create a quota that allows `rate_limit` requests per second
-                let quota = Quota::per_second(NonZeroU32::new(rate_limit).unwrap_or(NonZeroU32::new(1).unwrap()));
+                let quota = Quota::per_second(
+                    NonZeroU32::new(rate_limit).unwrap_or(NonZeroU32::new(1).unwrap()),
+                );
                 Some(Arc::new(RateLimiter::direct(quota)))
             } else {
                 None
@@ -77,9 +86,9 @@ impl NetworkClient {
             None
         };
 
-        Ok(Self { 
-            client, 
-            config, 
+        Ok(Self {
+            client,
+            config,
             session_manager,
             rate_limiter,
         })
@@ -96,7 +105,11 @@ impl NetworkClient {
     }
 
     /// Make a GET request with headers
-    pub async fn get_with_headers(&self, url: &str, headers: HashMap<String, String>) -> Result<Response> {
+    pub async fn get_with_headers(
+        &self,
+        url: &str,
+        headers: HashMap<String, String>,
+    ) -> Result<Response> {
         let max_retries = self.config.execution.max_retries;
         let mut attempt = 0;
         let domain = crate::utils::extract_domain(url);
@@ -109,7 +122,10 @@ impl NetworkClient {
                 let base_delay = Duration::from_millis(500); // Base delay of 500ms
                 let jitter = fastrand::u64(0..=base_delay.as_millis() as u64 / 2); // Random 0-50% of base
                 let delay = base_delay + Duration::from_millis(jitter);
-                tracing::debug!("Stealth mode: Adding random delay of {:?} before request", delay);
+                tracing::debug!(
+                    "Stealth mode: Adding random delay of {:?} before request",
+                    delay
+                );
                 tokio::time::sleep(delay).await;
             }
 
@@ -142,9 +158,15 @@ impl NetworkClient {
                     if status.is_server_error() && attempt < max_retries {
                         tracing::warn!("Server error {} for {}, retrying...", status.as_u16(), url);
                         attempt += 1;
-                        let base_delay = Duration::from_secs(self.config.execution.retry_delay_secs);
+                        let base_delay =
+                            Duration::from_secs(self.config.execution.retry_delay_secs);
                         let delay = base_delay * 2_u32.pow(attempt - 1);
-                        tracing::debug!("Retrying {} after {:?} (attempt {})", url, delay, attempt + 1);
+                        tracing::debug!(
+                            "Retrying {} after {:?} (attempt {})",
+                            url,
+                            delay,
+                            attempt + 1
+                        );
                         tokio::time::sleep(delay).await;
                         continue;
                     }
@@ -155,17 +177,23 @@ impl NetworkClient {
                 }
                 Err(e) => {
                     // Check if error is retryable
-                    let is_retryable = e.is_timeout() 
-                        || e.is_connect() 
-                        || e.is_request() 
+                    let is_retryable = e.is_timeout()
+                        || e.is_connect()
+                        || e.is_request()
                         || matches!(e.status(), Some(status) if status.is_server_error());
 
                     if is_retryable && attempt < max_retries {
                         tracing::warn!("Request failed for {}: {}, retrying...", url, e);
                         attempt += 1;
-                        let base_delay = Duration::from_secs(self.config.execution.retry_delay_secs);
+                        let base_delay =
+                            Duration::from_secs(self.config.execution.retry_delay_secs);
                         let delay = base_delay * 2_u32.pow(attempt - 1);
-                        tracing::debug!("Retrying {} after {:?} (attempt {})", url, delay, attempt + 1);
+                        tracing::debug!(
+                            "Retrying {} after {:?} (attempt {})",
+                            url,
+                            delay,
+                            attempt + 1
+                        );
                         tokio::time::sleep(delay).await;
                         continue;
                     }
@@ -182,7 +210,12 @@ impl NetworkClient {
     }
 
     /// Make a POST request with headers
-    pub async fn post_with_headers(&self, url: &str, body: String, headers: HashMap<String, String>) -> Result<Response> {
+    pub async fn post_with_headers(
+        &self,
+        url: &str,
+        body: String,
+        headers: HashMap<String, String>,
+    ) -> Result<Response> {
         let max_retries = self.config.execution.max_retries;
         let mut attempt = 0;
         let domain = crate::utils::extract_domain(url);
@@ -195,7 +228,10 @@ impl NetworkClient {
                 let base_delay = Duration::from_millis(500); // Base delay of 500ms
                 let jitter = fastrand::u64(0..=base_delay.as_millis() as u64 / 2); // Random 0-50% of base
                 let delay = base_delay + Duration::from_millis(jitter);
-                tracing::debug!("Stealth mode: Adding random delay of {:?} before request", delay);
+                tracing::debug!(
+                    "Stealth mode: Adding random delay of {:?} before request",
+                    delay
+                );
                 tokio::time::sleep(delay).await;
             }
 
@@ -228,9 +264,15 @@ impl NetworkClient {
                     if status.is_server_error() && attempt < max_retries {
                         tracing::warn!("Server error {} for {}, retrying...", status.as_u16(), url);
                         attempt += 1;
-                        let base_delay = Duration::from_secs(self.config.execution.retry_delay_secs);
+                        let base_delay =
+                            Duration::from_secs(self.config.execution.retry_delay_secs);
                         let delay = base_delay * 2_u32.pow(attempt - 1);
-                        tracing::debug!("Retrying {} after {:?} (attempt {})", url, delay, attempt + 1);
+                        tracing::debug!(
+                            "Retrying {} after {:?} (attempt {})",
+                            url,
+                            delay,
+                            attempt + 1
+                        );
                         tokio::time::sleep(delay).await;
                         continue;
                     }
@@ -241,17 +283,23 @@ impl NetworkClient {
                 }
                 Err(e) => {
                     // Check if error is retryable
-                    let is_retryable = e.is_timeout() 
-                        || e.is_connect() 
-                        || e.is_request() 
+                    let is_retryable = e.is_timeout()
+                        || e.is_connect()
+                        || e.is_request()
                         || matches!(e.status(), Some(status) if status.is_server_error());
 
                     if is_retryable && attempt < max_retries {
                         tracing::warn!("Request failed for {}: {}, retrying...", url, e);
                         attempt += 1;
-                        let base_delay = Duration::from_secs(self.config.execution.retry_delay_secs);
+                        let base_delay =
+                            Duration::from_secs(self.config.execution.retry_delay_secs);
                         let delay = base_delay * 2_u32.pow(attempt - 1);
-                        tracing::debug!("Retrying {} after {:?} (attempt {})", url, delay, attempt + 1);
+                        tracing::debug!(
+                            "Retrying {} after {:?} (attempt {})",
+                            url,
+                            delay,
+                            attempt + 1
+                        );
                         tokio::time::sleep(delay).await;
                         continue;
                     }
@@ -266,7 +314,11 @@ impl NetworkClient {
     async fn process_response_cookies(&self, domain: &str, response: &Response) {
         for cookie in response.headers().get_all("set-cookie") {
             if let Ok(cookie_str) = cookie.to_str() {
-                if let Err(e) = self.session_manager.parse_set_cookie(domain, cookie_str).await {
+                if let Err(e) = self
+                    .session_manager
+                    .parse_set_cookie(domain, cookie_str)
+                    .await
+                {
                     tracing::warn!("Failed to parse cookie: {}", e);
                 }
             }
@@ -401,14 +453,14 @@ impl DnsResolver {
 
     /// Resolve hostname to IP addresses
     pub async fn resolve(&self, hostname: &str) -> Result<Vec<std::net::IpAddr>> {
-        let response = self
-            .resolver
-            .lookup_ip(hostname)
-            .await
-            .map_err(|e| Error::DnsResolution {
-                hostname: hostname.to_string(),
-                error: e.to_string(),
-            })?;
+        let response =
+            self.resolver
+                .lookup_ip(hostname)
+                .await
+                .map_err(|e| Error::DnsResolution {
+                    hostname: hostname.to_string(),
+                    error: e.to_string(),
+                })?;
 
         Ok(response.iter().collect())
     }

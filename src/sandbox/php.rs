@@ -2,8 +2,8 @@
 
 use crate::error::{Error, Result};
 use crate::sandbox::Sandbox;
-use std::process::Command;
 use std::fs;
+use std::process::Command;
 
 /// Initialize PHP environment
 pub async fn init_environment(sandbox: &Sandbox) -> Result<()> {
@@ -11,9 +11,9 @@ pub async fn init_environment(sandbox: &Sandbox) -> Result<()> {
 
     // Check if PHP is available, attempt installation if missing
     use crate::sandbox::runtime_installer::ensure_runtime_available;
-    
+
     let php_available = ensure_runtime_available("php", &["php"]).await?;
-    
+
     if !php_available {
         tracing::warn!("PHP not available and automatic installation failed");
         tracing::warn!("Skipping PHP sandbox initialization");
@@ -33,17 +33,18 @@ pub async fn init_environment(sandbox: &Sandbox) -> Result<()> {
         .map_err(|e| Error::config(format!("Failed to create composer.json: {}", e)))?;
 
     // Install Composer if not available
-    let composer_check = Command::new("composer")
-        .arg("--version")
-        .output();
+    let composer_check = Command::new("composer").arg("--version").output();
 
     if composer_check.is_ok() {
         // Install comprehensive packages from manifest
         let manifest = crate::sandbox::packages::php_manifest();
         let all_packages = manifest.all_packages();
         let package_refs: Vec<&str> = all_packages.iter().map(|s| s.as_str()).collect();
-        
-        tracing::info!("Installing {} PHP packages (this may take a few minutes)...", package_refs.len());
+
+        tracing::info!(
+            "Installing {} PHP packages (this may take a few minutes)...",
+            package_refs.len()
+        );
         install_packages(sandbox, &package_refs).await?;
     } else {
         tracing::warn!("Composer not found, skipping PHP package installation");
@@ -68,10 +69,19 @@ pub async fn install_packages(sandbox: &Sandbox, packages: &[&str]) -> Result<()
             .args(&["require", package])
             .current_dir(&php_dir)
             .output()
-            .map_err(|e| Error::command(format!("Failed to install Composer package {}: {}", package, e)))?;
+            .map_err(|e| {
+                Error::command(format!(
+                    "Failed to install Composer package {}: {}",
+                    package, e
+                ))
+            })?;
 
         if !output.status.success() {
-            tracing::warn!("Failed to install package {}: {}", package, String::from_utf8_lossy(&output.stderr));
+            tracing::warn!(
+                "Failed to install package {}: {}",
+                package,
+                String::from_utf8_lossy(&output.stderr)
+            );
         }
     }
 
@@ -88,13 +98,13 @@ pub async fn execute_script(
     let mut cmd = Command::new("php");
     cmd.arg(script_path);
     cmd.args(args);
-    
+
     for (key, value) in sandbox.get_env_vars() {
         cmd.env(key, value);
     }
-    
+
     cmd.current_dir(sandbox.root_dir().join("php"));
-    
+
     cmd.output()
         .map_err(|e| Error::command(format!("Failed to execute PHP script: {}", e)))
 }

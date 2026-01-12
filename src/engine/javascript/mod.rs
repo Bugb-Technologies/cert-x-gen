@@ -23,7 +23,7 @@ impl JavaScriptEngine {
             node_path: "node".to_string(),
         }
     }
-    
+
     /// Execute JavaScript template
     async fn execute_js_template(
         &self,
@@ -32,17 +32,18 @@ impl JavaScriptEngine {
         context: &Context,
     ) -> Result<Vec<Finding>> {
         tracing::debug!("JavaScript engine executing template: {:?}", template_path);
-        
+
         // Build environment variables
         let env_vars = build_env_vars(target, context)?;
-        
+
         // Execute Node.js script
         let stdout = execute_command(
             &self.node_path,
             &[template_path.to_string_lossy().to_string()],
             &env_vars,
-        ).await?;
-        
+        )
+        .await?;
+
         // Try to find JSON in output (Node.js may have console.log output)
         let json_str = if let Some(json_start) = stdout.rfind("__CERT_X_GEN_FINDINGS__:") {
             tracing::debug!("Found JSON marker at position {}", json_start);
@@ -52,13 +53,14 @@ impl JavaScriptEngine {
             tracing::debug!("No JSON marker found, parsing entire stdout");
             stdout.as_ref()
         };
-        
+
         // Parse findings from JSON output
-        let template_id = template_path.file_stem()
+        let template_id = template_path
+            .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("unknown")
             .to_string();
-        
+
         parse_findings(json_str, target, &template_id)
     }
 }
@@ -88,19 +90,21 @@ struct JavaScriptTemplate {
 #[async_trait]
 impl Template for JavaScriptTemplate {
     async fn execute(&self, target: &Target, context: &Context) -> Result<Vec<Finding>> {
-        self.engine.execute_js_template(&self.path, target, context).await
+        self.engine
+            .execute_js_template(&self.path, target, context)
+            .await
     }
-    
+
     fn validate(&self) -> Result<()> {
         if !self.path.exists() {
             return Err(Error::Io(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
-                format!("Template not found: {:?}", self.path)
+                format!("Template not found: {:?}", self.path),
             )));
         }
         Ok(())
     }
-    
+
     fn metadata(&self) -> &crate::types::TemplateMetadata {
         &self.metadata
     }
@@ -110,7 +114,7 @@ impl Template for JavaScriptTemplate {
 impl TemplateEngine for JavaScriptEngine {
     async fn load_template(&self, path: &Path) -> Result<Box<dyn Template>> {
         let metadata = create_metadata(path, TemplateLanguage::JavaScript);
-        
+
         Ok(Box::new(JavaScriptTemplate {
             path: path.to_path_buf(),
             engine: self.clone(),
@@ -132,7 +136,12 @@ impl TemplateEngine for JavaScriptEngine {
     }
 
     fn supported_protocols(&self) -> Vec<Protocol> {
-        vec![Protocol::Http, Protocol::Https, Protocol::Tcp, Protocol::Udp]
+        vec![
+            Protocol::Http,
+            Protocol::Https,
+            Protocol::Tcp,
+            Protocol::Udp,
+        ]
     }
 
     fn name(&self) -> &str {

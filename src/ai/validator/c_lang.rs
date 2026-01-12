@@ -33,22 +33,34 @@ fn check_c_security(code: &str) -> Vec<TemplateDiagnostic> {
     // Check for dangerous functions (more detailed than enhanced validator)
     let dangerous_functions = vec![
         ("gets(", "gets() is dangerous - use fgets() instead"),
-        ("sprintf(", "sprintf() can overflow - use snprintf() instead"),
-        ("strcpy(", "strcpy() can overflow - use strncpy() or strlcpy()"),
-        ("strcat(", "strcat() can overflow - use strncat() or strlcat()"),
-        ("scanf(\"%s\"", "scanf %s can overflow - use %Ns with buffer size"),
+        (
+            "sprintf(",
+            "sprintf() can overflow - use snprintf() instead",
+        ),
+        (
+            "strcpy(",
+            "strcpy() can overflow - use strncpy() or strlcpy()",
+        ),
+        (
+            "strcat(",
+            "strcat() can overflow - use strncat() or strlcat()",
+        ),
+        (
+            "scanf(\"%s\"",
+            "scanf %s can overflow - use %Ns with buffer size",
+        ),
         ("vsprintf(", "vsprintf() can overflow - use vsnprintf()"),
     ];
 
     for (func, msg) in dangerous_functions {
         for (line_num, line) in code.lines().enumerate() {
-            if line.contains(func) && !line.trim().starts_with("//") && !line.trim().starts_with("/*") {
+            if line.contains(func)
+                && !line.trim().starts_with("//")
+                && !line.trim().starts_with("/*")
+            {
                 diagnostics.push(
-                    TemplateDiagnostic::error(
-                        "c.dangerous_function",
-                        msg,
-                    )
-                    .with_location(line_num + 1, None),
+                    TemplateDiagnostic::error("c.dangerous_function", msg)
+                        .with_location(line_num + 1, None),
                 );
                 break;
             }
@@ -74,12 +86,10 @@ fn check_c_security(code: &str) -> Vec<TemplateDiagnostic> {
 
     // Check for signed/unsigned comparison
     if code.contains("< 0") && code.contains("size_t") {
-        diagnostics.push(
-            TemplateDiagnostic::info(
-                "c.signed_unsigned",
-                "Code uses size_t with signed comparison. size_t is unsigned and never < 0.",
-            )
-        );
+        diagnostics.push(TemplateDiagnostic::info(
+            "c.signed_unsigned",
+            "Code uses size_t with signed comparison. size_t is unsigned and never < 0.",
+        ));
     }
 
     diagnostics
@@ -92,31 +102,29 @@ fn check_c_patterns(code: &str) -> Vec<TemplateDiagnostic> {
     // Check for malloc without free (simple heuristic)
     let malloc_count = code.matches("malloc(").count() + code.matches("calloc(").count();
     let free_count = code.matches("free(").count();
-    
+
     if malloc_count > free_count + 1 {
-        diagnostics.push(
-            TemplateDiagnostic::warning(
-                "c.potential_memory_leak",
-                format!(
-                    "Found {} allocations but only {} free() calls. Check for memory leaks.",
-                    malloc_count, free_count
-                ),
-            )
-        );
+        diagnostics.push(TemplateDiagnostic::warning(
+            "c.potential_memory_leak",
+            format!(
+                "Found {} allocations but only {} free() calls. Check for memory leaks.",
+                malloc_count, free_count
+            ),
+        ));
     }
 
     // Check for null pointer checks after malloc
     if code.contains("malloc(") || code.contains("calloc(") {
-        let has_null_check = code.contains("== NULL") || code.contains("!= NULL") 
-            || code.contains("if (") || code.contains("if(");
-        
+        let has_null_check = code.contains("== NULL")
+            || code.contains("!= NULL")
+            || code.contains("if (")
+            || code.contains("if(");
+
         if !has_null_check {
-            diagnostics.push(
-                TemplateDiagnostic::warning(
-                    "c.no_malloc_check",
-                    "Memory allocation without NULL check. malloc()/calloc() can fail.",
-                )
-            );
+            diagnostics.push(TemplateDiagnostic::warning(
+                "c.no_malloc_check",
+                "Memory allocation without NULL check. malloc()/calloc() can fail.",
+            ));
         }
     }
 
@@ -129,7 +137,10 @@ fn check_c_patterns(code: &str) -> Vec<TemplateDiagnostic> {
                 diagnostics.push(
                     TemplateDiagnostic::warning(
                         "c.unchecked_return",
-                        format!("Return value of {} not checked. These functions can fail.", func),
+                        format!(
+                            "Return value of {} not checked. These functions can fail.",
+                            func
+                        ),
                     )
                     .with_location(line_num + 1, None),
                 );
@@ -175,7 +186,8 @@ mod tests {
 
     #[test]
     fn test_memory_leak_detection() {
-        let code = "void* p1 = malloc(10);\nvoid* p2 = malloc(20);\nvoid* p3 = malloc(30);\nfree(p1);";
+        let code =
+            "void* p1 = malloc(10);\nvoid* p2 = malloc(20);\nvoid* p3 = malloc(30);\nfree(p1);";
         let diags = check_c_patterns(code);
         assert!(diags.iter().any(|d| d.code == "c.potential_memory_leak"));
     }

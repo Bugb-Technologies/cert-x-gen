@@ -309,12 +309,12 @@ impl Matcher {
                 // TLS matching requires connection metadata
                 // For now, we'll check if the response headers indicate TLS info
                 // Full implementation would require integration with TLS handshake analysis
-                
+
                 // Check for TLS version in headers (some servers expose this)
                 let headers_str = response.headers_string().to_lowercase();
-                
+
                 let mut matched = false;
-                
+
                 if let Some(tls_versions) = versions {
                     for version in tls_versions {
                         if headers_str.contains(&format!("tls {}", version.to_lowercase())) {
@@ -323,7 +323,7 @@ impl Matcher {
                         }
                     }
                 }
-                
+
                 if let Some(vuln_checks) = vulnerabilities {
                     for vuln in vuln_checks {
                         match vuln.to_lowercase().as_str() {
@@ -337,7 +337,7 @@ impl Matcher {
                         }
                     }
                 }
-                
+
                 // Note: Full TLS matching requires access to connection metadata
                 // This is a simplified implementation
                 tracing::warn!("TLS matcher requires connection metadata for accurate detection");
@@ -352,37 +352,40 @@ impl Matcher {
                 // DNS matching requires DNS resolution
                 // This would be implemented with DNS-specific responses
                 // For now, we check if the response contains DNS-related information
-                
+
                 let body_str = response.body_string();
                 let mut matched = false;
-                
+
                 // Check if record type is mentioned
                 if body_str.contains(record_type) {
                     matched = true;
                 }
-                
+
                 // Check pattern if provided
                 if let Some(p) = pattern {
                     if let Ok(re) = Regex::new(p) {
                         matched = matched && re.is_match(&body_str);
                     }
                 }
-                
+
                 // Check specific value if provided
                 if let Some(v) = value {
                     matched = matched && body_str.contains(v);
                 }
-                
+
                 // Note: Full DNS matching requires DNS query responses
                 tracing::warn!("DNS matcher requires DNS-specific protocol handler");
                 Ok(matched)
             }
 
-            MatcherType::Diff { baseline, threshold } => {
+            MatcherType::Diff {
+                baseline,
+                threshold,
+            } => {
                 // Calculate difference between current response and baseline
                 let current = response.body_string();
                 let similarity = calculate_similarity(&current, baseline);
-                
+
                 // If similarity is below threshold, responses are different
                 let difference_percentage = 100 - similarity;
                 Ok(difference_percentage >= *threshold as usize)
@@ -428,25 +431,25 @@ fn calculate_similarity(s1: &str, s2: &str) -> usize {
     if s1.is_empty() && s2.is_empty() {
         return 100;
     }
-    
+
     if s1.is_empty() || s2.is_empty() {
         return 0;
     }
-    
+
     // Simple character-based similarity
     let chars1: Vec<char> = s1.chars().collect();
     let chars2: Vec<char> = s2.chars().collect();
-    
+
     let max_len = chars1.len().max(chars2.len());
     let min_len = chars1.len().min(chars2.len());
-    
+
     let mut matches = 0;
     for i in 0..min_len {
         if chars1.get(i) == chars2.get(i) {
             matches += 1;
         }
     }
-    
+
     ((matches as f64 / max_len as f64) * 100.0) as usize
 }
 

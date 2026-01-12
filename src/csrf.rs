@@ -88,7 +88,10 @@ impl CsrfDetector {
 
     /// Extract CSRF token from meta tag
     fn extract_meta_token(&self, html: &str) -> Option<CsrfToken> {
-        let re = Regex::new(r#"<meta[^>]*name\s*=\s*["']csrf-token["'][^>]*content\s*=\s*["']([^"']*)["'][^>]*>"#).ok()?;
+        let re = Regex::new(
+            r#"<meta[^>]*name\s*=\s*["']csrf-token["'][^>]*content\s*=\s*["']([^"']*)["'][^>]*>"#,
+        )
+        .ok()?;
         re.captures(html).and_then(|cap| {
             cap.get(1).map(|m| CsrfToken {
                 name: "csrf-token".to_string(),
@@ -116,23 +119,24 @@ impl CsrfDetector {
 
         // Extract all forms
         let form_re = Regex::new(r#"<form[^>]*>([\s\S]*?)</form>"#).unwrap();
-        
+
         for form_match in form_re.captures_iter(html) {
             let form_html = form_match.get(1).map(|m| m.as_str()).unwrap_or("");
-            
+
             // Check if form has CSRF token
             let has_csrf = self.detect_tokens(form_html).is_empty() == false;
-            
+
             // Check if form modifies state (POST, PUT, DELETE)
             let is_state_changing = self.is_state_changing_form(&form_match[0]);
-            
+
             if is_state_changing && !has_csrf {
                 findings.push(CsrfFinding {
                     severity: Severity::High,
                     title: "Missing CSRF Token in Form".to_string(),
                     description: "State-changing form lacks CSRF protection".to_string(),
                     form_action: self.extract_form_action(&form_match[0]),
-                    recommendation: "Add CSRF token to protect against cross-site request forgery".to_string(),
+                    recommendation: "Add CSRF token to protect against cross-site request forgery"
+                        .to_string(),
                 });
             }
         }
@@ -149,7 +153,8 @@ impl CsrfDetector {
     /// Extract form action
     fn extract_form_action(&self, form_html: &str) -> Option<String> {
         let action_re = Regex::new(r#"action\s*=\s*["']([^"']*)["']"#).ok()?;
-        action_re.captures(form_html)
+        action_re
+            .captures(form_html)
             .and_then(|cap| cap.get(1).map(|m| m.as_str().to_string()))
     }
 
@@ -188,7 +193,7 @@ impl CsrfDetector {
         if token.is_empty() {
             return "MODIFIED".to_string();
         }
-        
+
         let mut chars: Vec<char> = token.chars().collect();
         if let Some(first) = chars.first_mut() {
             *first = if first.is_uppercase() { 'X' } else { 'x' };

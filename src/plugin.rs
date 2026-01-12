@@ -104,7 +104,11 @@ impl PluginManager {
     pub fn notify_error(&self, error: &Error) {
         for plugin in self.plugins.values() {
             if let Err(e) = plugin.on_error(error) {
-                tracing::error!("Plugin {} error on error notification: {}", plugin.name(), e);
+                tracing::error!(
+                    "Plugin {} error on error notification: {}",
+                    plugin.name(),
+                    e
+                );
             }
         }
     }
@@ -268,7 +272,7 @@ mod tests {
     fn test_plugin_manager() {
         let mut manager = PluginManager::new();
         let plugin = Arc::new(LoggingPlugin::new());
-        
+
         manager.register(plugin);
         assert_eq!(manager.plugins().len(), 1);
     }
@@ -277,7 +281,7 @@ mod tests {
     fn test_logging_plugin() {
         let mut plugin = LoggingPlugin::new();
         let config = crate::config::Config::default();
-        
+
         assert!(plugin.initialize(&config).is_ok());
         assert_eq!(plugin.name(), "logging");
         assert_eq!(plugin.version(), "1.0.0");

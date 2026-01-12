@@ -91,9 +91,7 @@ impl TemplateLoader {
             }
         }
 
-        Err(Error::TemplateNotFound(
-            path.display().to_string(),
-        ))
+        Err(Error::TemplateNotFound(path.display().to_string()))
     }
 
     /// Check if a file has a valid template extension
@@ -112,7 +110,7 @@ impl TemplateLoader {
                 "rb" |            // Ruby
                 "pl" |            // Perl
                 "php" |           // PHP
-                "sh" | "bash"     // Shell
+                "sh" | "bash" // Shell
             )
         } else {
             false
@@ -123,7 +121,8 @@ impl TemplateLoader {
     pub fn load_templates_from_dir<'a>(
         &'a self,
         dir: &'a Path,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<Box<dyn Template>>>> + 'a>> {
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<Box<dyn Template>>>> + 'a>>
+    {
         Box::pin(async move {
             let mut templates = Vec::new();
 
@@ -131,14 +130,12 @@ impl TemplateLoader {
                 return Err(Error::FileNotFound(dir.to_path_buf()));
             }
 
-            let entries = std::fs::read_dir(dir).map_err(|e| {
-                Error::config(format!("Failed to read template directory: {}", e))
-            })?;
+            let entries = std::fs::read_dir(dir)
+                .map_err(|e| Error::config(format!("Failed to read template directory: {}", e)))?;
 
             for entry in entries {
-                let entry = entry.map_err(|e| {
-                    Error::config(format!("Failed to read directory entry: {}", e))
-                })?;
+                let entry = entry
+                    .map_err(|e| Error::config(format!("Failed to read directory entry: {}", e)))?;
                 let path = entry.path();
 
                 if path.is_file() {
@@ -157,7 +154,15 @@ impl TemplateLoader {
                 } else if path.is_dir() {
                     // Skip build artifact directories, disabled templates, and skeleton templates
                     if let Some(dir_name) = path.file_name().and_then(|n| n.to_str()) {
-                        if matches!(dir_name, "target" | "node_modules" | ".git" | "__pycache__" | "_disabled" | "skeleton") {
+                        if matches!(
+                            dir_name,
+                            "target"
+                                | "node_modules"
+                                | ".git"
+                                | "__pycache__"
+                                | "_disabled"
+                                | "skeleton"
+                        ) {
                             tracing::trace!("Skipping excluded directory: {}", path.display());
                             continue;
                         }
@@ -225,32 +230,32 @@ impl TemplateFilter {
                 if metadata.id.eq_ignore_ascii_case(filter_id) {
                     return true;
                 }
-                
+
                 // Check if the file path ends with the filter (for path-based matching)
                 let file_path_str = metadata.file_path.to_string_lossy();
                 if file_path_str.ends_with(filter_id) {
                     return true;
                 }
-                
+
                 // Check if filter is a full or partial path that matches
                 // Normalize both paths for comparison
                 let normalized_filter = filter_id.replace('\\', "/");
                 let normalized_path = file_path_str.replace('\\', "/");
-                
+
                 if normalized_path.ends_with(&normalized_filter) {
                     return true;
                 }
-                
+
                 // Check if the file name (without extension) matches the filter
                 if let Some(file_name) = metadata.file_path.file_stem() {
                     if file_name.to_string_lossy().eq_ignore_ascii_case(filter_id) {
                         return true;
                     }
                 }
-                
+
                 false
             });
-            
+
             if !matches_id {
                 return false;
             }
@@ -261,7 +266,7 @@ impl TemplateFilter {
             if metadata.id.contains(exclude_pattern) || exclude_pattern.contains(&metadata.id) {
                 return false;
             }
-            
+
             // Check file path for exclusion
             let file_path_str = metadata.file_path.to_string_lossy();
             if file_path_str.contains(exclude_pattern) {
@@ -271,10 +276,7 @@ impl TemplateFilter {
 
         // Check tags
         if !self.tags.is_empty() {
-            let has_matching_tag = self
-                .tags
-                .iter()
-                .any(|tag| metadata.tags.contains(tag));
+            let has_matching_tag = self.tags.iter().any(|tag| metadata.tags.contains(tag));
             if !has_matching_tag {
                 return false;
             }
@@ -294,10 +296,7 @@ impl TemplateFilter {
     }
 
     /// Filter a list of templates
-    pub fn filter<'a>(
-        &self,
-        templates: &'a [Box<dyn Template>],
-    ) -> Vec<&'a Box<dyn Template>> {
+    pub fn filter<'a>(&self, templates: &'a [Box<dyn Template>]) -> Vec<&'a Box<dyn Template>> {
         templates
             .iter()
             .filter(|t| self.matches(t.as_ref()))

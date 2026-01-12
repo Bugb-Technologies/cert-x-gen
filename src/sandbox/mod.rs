@@ -4,38 +4,38 @@
 //! all language runtimes and their dependencies from the host system.
 
 use crate::error::{Error, Result};
-use std::path::{Path, PathBuf};
-use std::fs;
-use std::process::Command;
 use serde::{Deserialize, Serialize};
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 
-pub mod python;
+pub mod config;
+pub mod docker;
+pub mod go;
+pub mod import_export;
+pub mod java;
 pub mod javascript;
-pub mod ruby;
+pub mod packages;
 pub mod perl;
 pub mod php;
-pub mod rust;
-pub mod go;
-pub mod java;
-pub mod packages;
-pub mod import_export;
+pub mod python;
+pub mod ruby;
 pub mod runtime_installer;
-pub mod docker;
-pub mod config;
+pub mod rust;
 
 /// Get the active Docker sandbox for transparent execution
 pub fn get_active_docker_sandbox() -> Option<docker::DockerSandbox> {
     use config::SandboxConfigFile;
-    
+
     // Check if we're already inside a sandbox
     if docker::inside_sandbox() {
         return None;
     }
-    
+
     // Load config and get default sandbox
     let cfg = SandboxConfigFile::load().ok()?;
     let (name, _config) = cfg.get_default_sandbox()?;
-    
+
     // Load the sandbox
     docker::DockerSandbox::load(name).ok()
 }
@@ -95,7 +95,7 @@ impl SandboxConfig {
     pub fn load(path: &Path) -> Result<Self> {
         let content = fs::read_to_string(path)
             .map_err(|e| Error::config(format!("Failed to read sandbox config: {}", e)))?;
-        
+
         serde_yaml::from_str(&content)
             .map_err(|e| Error::config(format!("Failed to parse sandbox config: {}", e)))
     }
@@ -104,7 +104,7 @@ impl SandboxConfig {
     pub fn save(&self, path: &Path) -> Result<()> {
         let content = serde_yaml::to_string(self)
             .map_err(|e| Error::config(format!("Failed to serialize sandbox config: {}", e)))?;
-        
+
         fs::write(path, content)
             .map_err(|e| Error::config(format!("Failed to write sandbox config: {}", e)))
     }
@@ -222,8 +222,13 @@ impl Sandbox {
 
         for dir in dirs {
             let path = self.root_dir().join(dir);
-            fs::create_dir_all(&path)
-                .map_err(|e| Error::config(format!("Failed to create directory {}: {}", path.display(), e)))?;
+            fs::create_dir_all(&path).map_err(|e| {
+                Error::config(format!(
+                    "Failed to create directory {}: {}",
+                    path.display(),
+                    e
+                ))
+            })?;
         }
 
         Ok(())
@@ -249,43 +254,85 @@ impl Sandbox {
         // Python
         if self.config.enable_python {
             let python_path = self.root_dir().join("python/venv");
-            env_vars.push(("VIRTUAL_ENV".to_string(), python_path.to_string_lossy().to_string()));
-            env_vars.push(("PYTHONUSERBASE".to_string(), self.root_dir().join("python/packages").to_string_lossy().to_string()));
+            env_vars.push((
+                "VIRTUAL_ENV".to_string(),
+                python_path.to_string_lossy().to_string(),
+            ));
+            env_vars.push((
+                "PYTHONUSERBASE".to_string(),
+                self.root_dir()
+                    .join("python/packages")
+                    .to_string_lossy()
+                    .to_string(),
+            ));
         }
 
         // JavaScript/Node
         if self.config.enable_javascript {
-            env_vars.push(("NODE_PATH".to_string(), self.root_dir().join("javascript/node_modules").to_string_lossy().to_string()));
+            env_vars.push((
+                "NODE_PATH".to_string(),
+                self.root_dir()
+                    .join("javascript/node_modules")
+                    .to_string_lossy()
+                    .to_string(),
+            ));
         }
 
         // Ruby
         if self.config.enable_ruby {
-            env_vars.push(("GEM_HOME".to_string(), self.root_dir().join("ruby/gems").to_string_lossy().to_string()));
+            env_vars.push((
+                "GEM_HOME".to_string(),
+                self.root_dir()
+                    .join("ruby/gems")
+                    .to_string_lossy()
+                    .to_string(),
+            ));
         }
 
         // Perl
         if self.config.enable_perl {
-            env_vars.push(("PERL_LOCAL_LIB_ROOT".to_string(), self.root_dir().join("perl/local").to_string_lossy().to_string()));
+            env_vars.push((
+                "PERL_LOCAL_LIB_ROOT".to_string(),
+                self.root_dir()
+                    .join("perl/local")
+                    .to_string_lossy()
+                    .to_string(),
+            ));
         }
 
         // PHP
         if self.config.enable_php {
-            env_vars.push(("PHP_USER_INI".to_string(), self.root_dir().join("php").to_string_lossy().to_string()));
+            env_vars.push((
+                "PHP_USER_INI".to_string(),
+                self.root_dir().join("php").to_string_lossy().to_string(),
+            ));
         }
 
         // Rust
         if self.config.enable_rust {
-            env_vars.push(("CARGO_TARGET_DIR".to_string(), self.root_dir().join("rust/target").to_string_lossy().to_string()));
+            env_vars.push((
+                "CARGO_TARGET_DIR".to_string(),
+                self.root_dir()
+                    .join("rust/target")
+                    .to_string_lossy()
+                    .to_string(),
+            ));
         }
 
         // Go
         if self.config.enable_go {
-            env_vars.push(("GOPATH".to_string(), self.root_dir().join("go").to_string_lossy().to_string()));
+            env_vars.push((
+                "GOPATH".to_string(),
+                self.root_dir().join("go").to_string_lossy().to_string(),
+            ));
         }
 
         // Java
         if self.config.enable_java {
-            env_vars.push(("JAVA_HOME".to_string(), self.root_dir().join("java").to_string_lossy().to_string()));
+            env_vars.push((
+                "JAVA_HOME".to_string(),
+                self.root_dir().join("java").to_string_lossy().to_string(),
+            ));
         }
 
         env_vars
@@ -314,7 +361,8 @@ impl Sandbox {
             initialized: self.is_initialized(),
             root_dir: self.root_dir().to_path_buf(),
             python_ready: self.config.enable_python && self.root_dir().join("python/venv").exists(),
-            javascript_ready: self.config.enable_javascript && self.root_dir().join("javascript/node_modules").exists(),
+            javascript_ready: self.config.enable_javascript
+                && self.root_dir().join("javascript/node_modules").exists(),
             ruby_ready: self.config.enable_ruby && self.root_dir().join("ruby/gems").exists(),
             perl_ready: self.config.enable_perl && self.root_dir().join("perl/local").exists(),
             php_ready: self.config.enable_php && self.root_dir().join("php/vendor").exists(),
@@ -335,42 +383,31 @@ impl Default for Sandbox {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SandboxStatus {
     /// Whether the sandbox has been initialized
-
     pub initialized: bool,
     /// Root directory of the sandbox
-
     pub root_dir: PathBuf,
     /// Whether Python runtime is ready
-
     pub python_ready: bool,
     /// Whether JavaScript/Node.js runtime is ready
-
     pub javascript_ready: bool,
     /// Whether Ruby runtime is ready
-
     pub ruby_ready: bool,
     /// Whether Perl runtime is ready
-
     pub perl_ready: bool,
     /// Whether PHP runtime is ready
-
     pub php_ready: bool,
     /// Whether Rust runtime is ready
-
     pub rust_ready: bool,
     /// Whether Go runtime is ready
-
     pub go_ready: bool,
     /// Whether Java runtime is ready
-
     pub java_ready: bool,
 }
 
 impl SandboxStatus {
     /// Check if all enabled languages are ready
     pub fn all_ready(&self) -> bool {
-        self.initialized
-            && (self.python_ready || !self.python_ready) // All or none
+        self.initialized && (self.python_ready || !self.python_ready) // All or none
     }
 
     /// Get ready languages

@@ -27,36 +27,36 @@ impl CertXGen {
 
         let config = Arc::new(config);
         let executor = Arc::new(Executor::new(config.clone()).await?);
-        
+
         // Initialize template manager
         let template_manager = Arc::new(TemplateManager::new());
         template_manager.initialize().await?;
-        
+
         // Create template loader with registered engines
         let mut template_loader = TemplateLoader::new();
-        
+
         // Register YAML engine with network client
         let yaml_engine = crate::engine::YamlTemplateEngine::new()
             .with_network_client(executor.network_client().clone());
         template_loader.register_engine(Box::new(yaml_engine));
-        
+
         // Register other engines
         template_loader.register_engine(Box::new(crate::engine::PythonEngine::new()));
         template_loader.register_engine(Box::new(crate::engine::RustEngine::new()));
         template_loader.register_engine(Box::new(crate::engine::ShellEngine::new()));
         template_loader.register_engine(Box::new(crate::engine::JavaScriptEngine::new()));
-        
+
         // Register compiled language engines
         template_loader.register_engine(Box::new(crate::engine::CEngine::new()));
         template_loader.register_engine(Box::new(crate::engine::CppEngine::new()));
         template_loader.register_engine(Box::new(crate::engine::JavaEngine::new()));
         template_loader.register_engine(Box::new(crate::engine::GoEngine::new()));
-        
+
         // Register interpreted language engines
         template_loader.register_engine(Box::new(crate::engine::RubyEngine::new()));
         template_loader.register_engine(Box::new(crate::engine::PerlEngine::new()));
         template_loader.register_engine(Box::new(crate::engine::PhpEngine::new()));
-        
+
         let template_loader = Arc::new(template_loader);
         let scheduler = Arc::new(RwLock::new(Scheduler::new(config.clone())));
 
@@ -87,12 +87,16 @@ impl CertXGen {
                 tracing::debug!("Template directory does not exist: {}", dir.display());
                 continue;
             }
-            
+
             tracing::info!("Loading templates from: {}", dir.display());
 
             match self.template_loader.load_templates_from_dir(dir).await {
                 Ok(mut templates) => {
-                    tracing::info!("Loaded {} templates from {}", templates.len(), dir.display());
+                    tracing::info!(
+                        "Loaded {} templates from {}",
+                        templates.len(),
+                        dir.display()
+                    );
                     all_templates.append(&mut templates);
                 }
                 Err(e) => {
@@ -103,7 +107,9 @@ impl CertXGen {
 
         // If no templates found, show helpful message
         if all_templates.is_empty() {
-            tracing::warn!("No templates found. Run 'cert-x-gen template update' to download templates.");
+            tracing::warn!(
+                "No templates found. Run 'cert-x-gen template update' to download templates."
+            );
         }
 
         // Deduplicate templates by ID, keeping first occurrence (priority: Local > User > System)
@@ -122,7 +128,7 @@ impl CertXGen {
                 }
             })
             .collect();
-        
+
         if original_count != deduplicated_templates.len() {
             tracing::info!(
                 "Deduplicated templates: {} -> {} (removed {} duplicates)",
@@ -147,8 +153,12 @@ impl CertXGen {
 
     /// Execute a scan job
     pub async fn execute_scan(&self, job: ScanJob) -> Result<ScanResults> {
-        tracing::info!("Starting scan {} with {} targets and {} templates",
-            job.id, job.targets.len(), job.templates.len());
+        tracing::info!(
+            "Starting scan {} with {} targets and {} templates",
+            job.id,
+            job.targets.len(),
+            job.templates.len()
+        );
 
         let mut results = ScanResults::new(job.id);
 
@@ -168,7 +178,7 @@ impl CertXGen {
         // Update statistics
         results.statistics.targets_scanned = job.targets.len();
         results.statistics.templates_executed = job.templates.len();
-        
+
         // Calculate success rate
         let total_checks = job.targets.len() * job.templates.len();
         if total_checks > 0 {
@@ -177,8 +187,11 @@ impl CertXGen {
 
         results.complete();
 
-        tracing::info!("Scan {} completed. Found {} findings",
-            job.id, results.findings.len());
+        tracing::info!(
+            "Scan {} completed. Found {} findings",
+            job.id,
+            results.findings.len()
+        );
 
         Ok(results)
     }

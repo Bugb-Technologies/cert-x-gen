@@ -13,24 +13,10 @@ use super::TemplateDiagnostic;
 use anyhow::Result;
 
 /// Valid matcher types
-const VALID_MATCHER_TYPES: &[&str] = &[
-    "word",
-    "regex", 
-    "binary",
-    "status",
-    "size",
-    "dsl",
-    "xpath",
-];
+const VALID_MATCHER_TYPES: &[&str] = &["word", "regex", "binary", "status", "size", "dsl", "xpath"];
 
 /// Valid extractor types
-const VALID_EXTRACTOR_TYPES: &[&str] = &[
-    "regex",
-    "kval",
-    "xpath",
-    "json",
-    "dsl",
-];
+const VALID_EXTRACTOR_TYPES: &[&str] = &["regex", "kval", "xpath", "json", "dsl"];
 
 /// Valid HTTP methods
 const VALID_HTTP_METHODS: &[&str] = &[
@@ -105,8 +91,15 @@ pub fn validate(code: &str) -> Result<Vec<TemplateDiagnostic>> {
 /// Validate required fields
 fn validate_required_fields(yaml_map: &serde_yaml::Mapping, code: &str) -> Vec<TemplateDiagnostic> {
     let mut diagnostics = Vec::new();
-    
-    let required_fields = vec!["id", "name", "author", "severity", "description", "language"];
+
+    let required_fields = vec![
+        "id",
+        "name",
+        "author",
+        "severity",
+        "description",
+        "language",
+    ];
     for field in required_fields {
         if !yaml_map.contains_key(field) {
             let line = find_yaml_field_line(code, "id").unwrap_or(1);
@@ -115,18 +108,18 @@ fn validate_required_fields(yaml_map: &serde_yaml::Mapping, code: &str) -> Vec<T
                     format!("yaml.missing_{}", field),
                     format!("YAML template missing required field: '{}'", field),
                 )
-                .with_location(line, None)
+                .with_location(line, None),
             );
         }
     }
-    
+
     diagnostics
 }
 
 /// Validate author structure
 fn validate_author(yaml_map: &serde_yaml::Mapping) -> Vec<TemplateDiagnostic> {
     let mut diagnostics = Vec::new();
-    
+
     if let Some(author) = yaml_map.get("author") {
         if let Some(author_map) = author.as_mapping() {
             if !author_map.contains_key("name") {
@@ -142,52 +135,63 @@ fn validate_author(yaml_map: &serde_yaml::Mapping) -> Vec<TemplateDiagnostic> {
             ));
         }
     }
-    
+
     diagnostics
 }
 
 /// Validate severity value
 fn validate_severity(yaml_map: &serde_yaml::Mapping) -> Vec<TemplateDiagnostic> {
     let mut diagnostics = Vec::new();
-    
+
     if let Some(severity) = yaml_map.get("severity").and_then(|v| v.as_str()) {
         let valid = vec!["critical", "high", "medium", "low", "info", "informational"];
         if !valid.contains(&severity.to_lowercase().as_str()) {
             diagnostics.push(TemplateDiagnostic::error(
                 "yaml.invalid_severity",
-                format!("Invalid severity '{}'. Must be one of: critical, high, medium, low, info", severity),
+                format!(
+                    "Invalid severity '{}'. Must be one of: critical, high, medium, low, info",
+                    severity
+                ),
             ));
         }
     }
-    
+
     diagnostics
 }
 
 /// Validate language field
 fn validate_language(yaml_map: &serde_yaml::Mapping) -> Vec<TemplateDiagnostic> {
     let mut diagnostics = Vec::new();
-    
+
     if let Some(language) = yaml_map.get("language").and_then(|v| v.as_str()) {
         if language.to_lowercase() != "yaml" {
             diagnostics.push(TemplateDiagnostic::error(
                 "yaml.invalid_language",
-                format!("YAML template 'language' field must be 'yaml', found '{}'", language),
+                format!(
+                    "YAML template 'language' field must be 'yaml', found '{}'",
+                    language
+                ),
             ));
         }
     }
-    
+
     diagnostics
 }
 
 /// Validate execution blocks exist
-fn validate_execution_blocks(yaml_map: &serde_yaml::Mapping, code: &str) -> Vec<TemplateDiagnostic> {
+fn validate_execution_blocks(
+    yaml_map: &serde_yaml::Mapping,
+    code: &str,
+) -> Vec<TemplateDiagnostic> {
     let mut diagnostics = Vec::new();
-    
+
     let has_http = yaml_map.contains_key("http") || yaml_map.contains_key("requests");
-    let has_network = yaml_map.contains_key("network") || yaml_map.contains_key("tcp") || yaml_map.contains_key("udp");
+    let has_network = yaml_map.contains_key("network")
+        || yaml_map.contains_key("tcp")
+        || yaml_map.contains_key("udp");
     let has_flows = yaml_map.contains_key("flows") || yaml_map.contains_key("workflow");
     let has_dns = yaml_map.contains_key("dns");
-    
+
     if !has_http && !has_network && !has_flows && !has_dns {
         let line = find_yaml_field_line(code, "id").unwrap_or(1);
         diagnostics.push(
@@ -198,14 +202,14 @@ fn validate_execution_blocks(yaml_map: &serde_yaml::Mapping, code: &str) -> Vec<
             .with_location(line, None)
         );
     }
-    
+
     diagnostics
 }
 
 /// Validate HTTP section
 fn validate_http_section(http: &serde_yaml::Value, code: &str) -> Vec<TemplateDiagnostic> {
     let mut diagnostics = Vec::new();
-    
+
     let http_items = if let Some(seq) = http.as_sequence() {
         seq.clone()
     } else if http.is_mapping() {
@@ -228,22 +232,22 @@ fn validate_http_section(http: &serde_yaml::Value, code: &str) -> Vec<TemplateDi
                             "yaml.invalid_http_method",
                             format!(
                                 "http[{}]: Unknown HTTP method '{}'. Valid: {}",
-                                idx, method, VALID_HTTP_METHODS.join(", ")
+                                idx,
+                                method,
+                                VALID_HTTP_METHODS.join(", ")
                             ),
                         )
-                        .with_location(line.unwrap_or(1), None)
+                        .with_location(line.unwrap_or(1), None),
                     );
                 }
             }
 
             // Validate path exists
             if !item_map.contains_key("path") && !item_map.contains_key("raw") {
-                diagnostics.push(
-                    TemplateDiagnostic::warning(
-                        "yaml.http_missing_path",
-                        format!("http[{}]: Should have 'path' or 'raw' field", idx),
-                    )
-                );
+                diagnostics.push(TemplateDiagnostic::warning(
+                    "yaml.http_missing_path",
+                    format!("http[{}]: Should have 'path' or 'raw' field", idx),
+                ));
             }
 
             // Validate matchers in HTTP item
@@ -254,32 +258,34 @@ fn validate_http_section(http: &serde_yaml::Value, code: &str) -> Vec<TemplateDi
             // Validate matchers-condition
             if let Some(cond) = item_map.get("matchers-condition").and_then(|v| v.as_str()) {
                 if !VALID_MATCHER_CONDITIONS.contains(&cond.to_lowercase().as_str()) {
-                    diagnostics.push(
-                        TemplateDiagnostic::warning(
-                            "yaml.invalid_matchers_condition",
-                            format!(
-                                "http[{}]: Invalid matchers-condition '{}'. Valid: and, or",
-                                idx, cond
-                            ),
-                        )
-                    );
+                    diagnostics.push(TemplateDiagnostic::warning(
+                        "yaml.invalid_matchers_condition",
+                        format!(
+                            "http[{}]: Invalid matchers-condition '{}'. Valid: and, or",
+                            idx, cond
+                        ),
+                    ));
                 }
             }
 
             // Validate extractors in HTTP item
             if let Some(extractors) = item_map.get("extractors") {
-                diagnostics.extend(validate_extractors(extractors, code, &format!("http[{}]", idx)));
+                diagnostics.extend(validate_extractors(
+                    extractors,
+                    code,
+                    &format!("http[{}]", idx),
+                ));
             }
         }
     }
-    
+
     diagnostics
 }
 
 /// Validate network section
 fn validate_network_section(network: &serde_yaml::Value, code: &str) -> Vec<TemplateDiagnostic> {
     let mut diagnostics = Vec::new();
-    
+
     let network_items = if let Some(seq) = network.as_sequence() {
         seq.clone()
     } else if network.is_mapping() {
@@ -306,26 +312,25 @@ fn validate_network_section(network: &serde_yaml::Value, code: &str) -> Vec<Temp
                                     idx, port_num
                                 ),
                             )
-                            .with_location(line.unwrap_or(1), None)
+                            .with_location(line.unwrap_or(1), None),
                         );
                     }
                 } else if port.as_str().map(|s| s.starts_with("{{")).unwrap_or(false) {
                     // Port is a variable reference, that's okay
                 } else {
-                    diagnostics.push(
-                        TemplateDiagnostic::warning(
-                            "yaml.port_not_number",
-                            format!("network[{}]: 'port' should be a number or variable reference", idx),
-                        )
-                    );
+                    diagnostics.push(TemplateDiagnostic::warning(
+                        "yaml.port_not_number",
+                        format!(
+                            "network[{}]: 'port' should be a number or variable reference",
+                            idx
+                        ),
+                    ));
                 }
             } else {
-                diagnostics.push(
-                    TemplateDiagnostic::warning(
-                        "yaml.network_missing_port",
-                        format!("network[{}]: Should have a 'port' field", idx),
-                    )
-                );
+                diagnostics.push(TemplateDiagnostic::warning(
+                    "yaml.network_missing_port",
+                    format!("network[{}]: Should have a 'port' field", idx),
+                ));
             }
 
             // Validate payloads structure
@@ -341,7 +346,7 @@ fn validate_network_section(network: &serde_yaml::Value, code: &str) -> Vec<Temp
                                 idx
                             ),
                         )
-                        .with_location(line.unwrap_or(1), None)
+                        .with_location(line.unwrap_or(1), None),
                     );
                 }
             }
@@ -369,23 +374,35 @@ fn validate_network_section(network: &serde_yaml::Value, code: &str) -> Vec<Temp
 
             // Validate matchers in network item
             if let Some(matchers) = item_map.get("matchers") {
-                diagnostics.extend(validate_matchers(matchers, code, &format!("network[{}]", idx)));
+                diagnostics.extend(validate_matchers(
+                    matchers,
+                    code,
+                    &format!("network[{}]", idx),
+                ));
             }
 
             // Validate extractors in network item
             if let Some(extractors) = item_map.get("extractors") {
-                diagnostics.extend(validate_extractors(extractors, code, &format!("network[{}]", idx)));
+                diagnostics.extend(validate_extractors(
+                    extractors,
+                    code,
+                    &format!("network[{}]", idx),
+                ));
             }
         }
     }
-    
+
     diagnostics
 }
 
 /// Validate matchers array
-fn validate_matchers(matchers: &serde_yaml::Value, code: &str, context: &str) -> Vec<TemplateDiagnostic> {
+fn validate_matchers(
+    matchers: &serde_yaml::Value,
+    code: &str,
+    context: &str,
+) -> Vec<TemplateDiagnostic> {
     let mut diagnostics = Vec::new();
-    
+
     let matchers_seq = match matchers.as_sequence() {
         Some(seq) => seq,
         None => {
@@ -407,10 +424,13 @@ fn validate_matchers(matchers: &serde_yaml::Value, code: &str, context: &str) ->
                             "yaml.invalid_matcher_type",
                             format!(
                                 "{}.matchers[{}]: Invalid type '{}'. Valid: {}",
-                                context, idx, matcher_type, VALID_MATCHER_TYPES.join(", ")
+                                context,
+                                idx,
+                                matcher_type,
+                                VALID_MATCHER_TYPES.join(", ")
                             ),
                         )
-                        .with_location(line.unwrap_or(1), None)
+                        .with_location(line.unwrap_or(1), None),
                     );
                 }
 
@@ -418,55 +438,49 @@ fn validate_matchers(matchers: &serde_yaml::Value, code: &str, context: &str) ->
                 match matcher_type.to_lowercase().as_str() {
                     "word" => {
                         if !matcher_map.contains_key("words") {
-                            diagnostics.push(
-                                TemplateDiagnostic::error(
-                                    "yaml.matcher_word_missing_words",
-                                    format!(
-                                        "{}.matchers[{}]: 'word' matcher requires 'words' field",
-                                        context, idx
-                                    ),
-                                )
-                            );
+                            diagnostics.push(TemplateDiagnostic::error(
+                                "yaml.matcher_word_missing_words",
+                                format!(
+                                    "{}.matchers[{}]: 'word' matcher requires 'words' field",
+                                    context, idx
+                                ),
+                            ));
                         } else if let Some(words) = matcher_map.get("words") {
                             if !words.is_sequence() {
-                                diagnostics.push(
-                                    TemplateDiagnostic::error(
-                                        "yaml.matcher_words_not_sequence",
-                                        format!(
-                                            "{}.matchers[{}]: 'words' must be a list",
-                                            context, idx
-                                        ),
-                                    )
-                                );
+                                diagnostics.push(TemplateDiagnostic::error(
+                                    "yaml.matcher_words_not_sequence",
+                                    format!(
+                                        "{}.matchers[{}]: 'words' must be a list",
+                                        context, idx
+                                    ),
+                                ));
                             }
                         }
                     }
                     "regex" => {
                         if !matcher_map.contains_key("regex") && !matcher_map.contains_key("part") {
-                            diagnostics.push(
-                                TemplateDiagnostic::warning(
-                                    "yaml.matcher_regex_missing_pattern",
-                                    format!(
-                                        "{}.matchers[{}]: 'regex' matcher should have 'regex' field",
-                                        context, idx
-                                    ),
-                                )
-                            );
+                            diagnostics.push(TemplateDiagnostic::warning(
+                                "yaml.matcher_regex_missing_pattern",
+                                format!(
+                                    "{}.matchers[{}]: 'regex' matcher should have 'regex' field",
+                                    context, idx
+                                ),
+                            ));
                         }
                         // Validate regex patterns compile
-                        if let Some(regex_patterns) = matcher_map.get("regex").and_then(|v| v.as_sequence()) {
+                        if let Some(regex_patterns) =
+                            matcher_map.get("regex").and_then(|v| v.as_sequence())
+                        {
                             for (pat_idx, pattern) in regex_patterns.iter().enumerate() {
                                 if let Some(pat_str) = pattern.as_str() {
                                     if let Err(e) = regex::Regex::new(pat_str) {
-                                        diagnostics.push(
-                                            TemplateDiagnostic::error(
-                                                "yaml.invalid_regex_pattern",
-                                                format!(
-                                                    "{}.matchers[{}].regex[{}]: Invalid regex '{}': {}",
-                                                    context, idx, pat_idx, pat_str, e
-                                                ),
-                                            )
-                                        );
+                                        diagnostics.push(TemplateDiagnostic::error(
+                                            "yaml.invalid_regex_pattern",
+                                            format!(
+                                                "{}.matchers[{}].regex[{}]: Invalid regex '{}': {}",
+                                                context, idx, pat_idx, pat_str, e
+                                            ),
+                                        ));
                                     }
                                 }
                             }
@@ -487,15 +501,13 @@ fn validate_matchers(matchers: &serde_yaml::Value, code: &str, context: &str) ->
                     }
                     "binary" => {
                         if !matcher_map.contains_key("binary") {
-                            diagnostics.push(
-                                TemplateDiagnostic::error(
-                                    "yaml.matcher_binary_missing_data",
-                                    format!(
-                                        "{}.matchers[{}]: 'binary' matcher requires 'binary' field",
-                                        context, idx
-                                    ),
-                                )
-                            );
+                            diagnostics.push(TemplateDiagnostic::error(
+                                "yaml.matcher_binary_missing_data",
+                                format!(
+                                    "{}.matchers[{}]: 'binary' matcher requires 'binary' field",
+                                    context, idx
+                                ),
+                            ));
                         }
                     }
                     "dsl" => {
@@ -522,65 +534,73 @@ fn validate_matchers(matchers: &serde_yaml::Value, code: &str, context: &str) ->
                 let has_dsl = matcher_map.contains_key("dsl");
 
                 if !has_words && !has_regex && !has_status && !has_binary && !has_dsl {
-                    diagnostics.push(
-                        TemplateDiagnostic::warning(
-                            "yaml.matcher_missing_type",
-                            format!(
-                                "{}.matchers[{}]: Matcher should have explicit 'type' field. Valid: {}",
-                                context, idx, VALID_MATCHER_TYPES.join(", ")
-                            ),
-                        )
-                    );
+                    diagnostics.push(TemplateDiagnostic::warning(
+                        "yaml.matcher_missing_type",
+                        format!(
+                            "{}.matchers[{}]: Matcher should have explicit 'type' field. Valid: {}",
+                            context,
+                            idx,
+                            VALID_MATCHER_TYPES.join(", ")
+                        ),
+                    ));
                 }
             }
 
             // Validate condition field
             if let Some(condition) = matcher_map.get("condition").and_then(|v| v.as_str()) {
                 if !VALID_MATCHER_CONDITIONS.contains(&condition.to_lowercase().as_str()) {
-                    diagnostics.push(
-                        TemplateDiagnostic::warning(
-                            "yaml.invalid_matcher_condition",
-                            format!(
-                                "{}.matchers[{}]: Invalid condition '{}'. Valid: and, or",
-                                context, idx, condition
-                            ),
-                        )
-                    );
+                    diagnostics.push(TemplateDiagnostic::warning(
+                        "yaml.invalid_matcher_condition",
+                        format!(
+                            "{}.matchers[{}]: Invalid condition '{}'. Valid: and, or",
+                            context, idx, condition
+                        ),
+                    ));
                 }
             }
 
             // Validate part field if present
             if let Some(part) = matcher_map.get("part").and_then(|v| v.as_str()) {
-                let valid_parts = ["body", "header", "all", "raw", "interactsh_protocol", "interactsh_request"];
+                let valid_parts = [
+                    "body",
+                    "header",
+                    "all",
+                    "raw",
+                    "interactsh_protocol",
+                    "interactsh_request",
+                ];
                 if !valid_parts.contains(&part.to_lowercase().as_str()) {
-                    diagnostics.push(
-                        TemplateDiagnostic::info(
-                            "yaml.unusual_matcher_part",
-                            format!(
-                                "{}.matchers[{}]: Unusual part '{}'. Common: body, header, all",
-                                context, idx, part
-                            ),
-                        )
-                    );
+                    diagnostics.push(TemplateDiagnostic::info(
+                        "yaml.unusual_matcher_part",
+                        format!(
+                            "{}.matchers[{}]: Unusual part '{}'. Common: body, header, all",
+                            context, idx, part
+                        ),
+                    ));
                 }
             }
         } else {
-            diagnostics.push(
-                TemplateDiagnostic::error(
-                    "yaml.matcher_not_mapping",
-                    format!("{}.matchers[{}]: Each matcher must be a mapping", context, idx),
-                )
-            );
+            diagnostics.push(TemplateDiagnostic::error(
+                "yaml.matcher_not_mapping",
+                format!(
+                    "{}.matchers[{}]: Each matcher must be a mapping",
+                    context, idx
+                ),
+            ));
         }
     }
-    
+
     diagnostics
 }
 
 /// Validate extractors array
-fn validate_extractors(extractors: &serde_yaml::Value, code: &str, context: &str) -> Vec<TemplateDiagnostic> {
+fn validate_extractors(
+    extractors: &serde_yaml::Value,
+    code: &str,
+    context: &str,
+) -> Vec<TemplateDiagnostic> {
     let mut diagnostics = Vec::new();
-    
+
     let extractors_seq = match extractors.as_sequence() {
         Some(seq) => seq,
         None => {
@@ -602,10 +622,13 @@ fn validate_extractors(extractors: &serde_yaml::Value, code: &str, context: &str
                             "yaml.invalid_extractor_type",
                             format!(
                                 "{}.extractors[{}]: Invalid type '{}'. Valid: {}",
-                                context, idx, extractor_type, VALID_EXTRACTOR_TYPES.join(", ")
+                                context,
+                                idx,
+                                extractor_type,
+                                VALID_EXTRACTOR_TYPES.join(", ")
                             ),
                         )
-                        .with_location(line.unwrap_or(1), None)
+                        .with_location(line.unwrap_or(1), None),
                     );
                 }
 
@@ -613,16 +636,16 @@ fn validate_extractors(extractors: &serde_yaml::Value, code: &str, context: &str
                 match extractor_type.to_lowercase().as_str() {
                     "regex" => {
                         if !extractor_map.contains_key("regex") {
-                            diagnostics.push(
-                                TemplateDiagnostic::error(
-                                    "yaml.extractor_regex_missing_pattern",
-                                    format!(
-                                        "{}.extractors[{}]: 'regex' extractor requires 'regex' field",
-                                        context, idx
-                                    ),
-                                )
-                            );
-                        } else if let Some(regex_patterns) = extractor_map.get("regex").and_then(|v| v.as_sequence()) {
+                            diagnostics.push(TemplateDiagnostic::error(
+                                "yaml.extractor_regex_missing_pattern",
+                                format!(
+                                    "{}.extractors[{}]: 'regex' extractor requires 'regex' field",
+                                    context, idx
+                                ),
+                            ));
+                        } else if let Some(regex_patterns) =
+                            extractor_map.get("regex").and_then(|v| v.as_sequence())
+                        {
                             // Validate regex patterns compile
                             for (pat_idx, pattern) in regex_patterns.iter().enumerate() {
                                 if let Some(pat_str) = pattern.as_str() {
@@ -682,28 +705,24 @@ fn validate_extractors(extractors: &serde_yaml::Value, code: &str, context: &str
                     }
                     "xpath" => {
                         if !extractor_map.contains_key("xpath") {
-                            diagnostics.push(
-                                TemplateDiagnostic::error(
-                                    "yaml.extractor_xpath_missing_path",
-                                    format!(
-                                        "{}.extractors[{}]: 'xpath' extractor requires 'xpath' field",
-                                        context, idx
-                                    ),
-                                )
-                            );
+                            diagnostics.push(TemplateDiagnostic::error(
+                                "yaml.extractor_xpath_missing_path",
+                                format!(
+                                    "{}.extractors[{}]: 'xpath' extractor requires 'xpath' field",
+                                    context, idx
+                                ),
+                            ));
                         }
                     }
                     "dsl" => {
                         if !extractor_map.contains_key("dsl") {
-                            diagnostics.push(
-                                TemplateDiagnostic::error(
-                                    "yaml.extractor_dsl_missing_expression",
-                                    format!(
-                                        "{}.extractors[{}]: 'dsl' extractor requires 'dsl' field",
-                                        context, idx
-                                    ),
-                                )
-                            );
+                            diagnostics.push(TemplateDiagnostic::error(
+                                "yaml.extractor_dsl_missing_expression",
+                                format!(
+                                    "{}.extractors[{}]: 'dsl' extractor requires 'dsl' field",
+                                    context, idx
+                                ),
+                            ));
                         }
                     }
                     _ => {}
@@ -717,15 +736,15 @@ fn validate_extractors(extractors: &serde_yaml::Value, code: &str, context: &str
                 let has_dsl = extractor_map.contains_key("dsl");
 
                 if !has_regex && !has_kval && !has_json && !has_xpath && !has_dsl {
-                    diagnostics.push(
-                        TemplateDiagnostic::warning(
-                            "yaml.extractor_missing_type",
-                            format!(
-                                "{}.extractors[{}]: Extractor should have 'type' field. Valid: {}",
-                                context, idx, VALID_EXTRACTOR_TYPES.join(", ")
-                            ),
-                        )
-                    );
+                    diagnostics.push(TemplateDiagnostic::warning(
+                        "yaml.extractor_missing_type",
+                        format!(
+                            "{}.extractors[{}]: Extractor should have 'type' field. Valid: {}",
+                            context,
+                            idx,
+                            VALID_EXTRACTOR_TYPES.join(", ")
+                        ),
+                    ));
                 }
             }
 
@@ -742,22 +761,26 @@ fn validate_extractors(extractors: &serde_yaml::Value, code: &str, context: &str
                 );
             }
         } else {
-            diagnostics.push(
-                TemplateDiagnostic::error(
-                    "yaml.extractor_not_mapping",
-                    format!("{}.extractors[{}]: Each extractor must be a mapping", context, idx),
-                )
-            );
+            diagnostics.push(TemplateDiagnostic::error(
+                "yaml.extractor_not_mapping",
+                format!(
+                    "{}.extractors[{}]: Each extractor must be a mapping",
+                    context, idx
+                ),
+            ));
         }
     }
-    
+
     diagnostics
 }
 
 /// Look for matchers in the entire document
-fn validate_matchers_in_document(yaml_map: &serde_yaml::Mapping, code: &str) -> Vec<TemplateDiagnostic> {
+fn validate_matchers_in_document(
+    yaml_map: &serde_yaml::Mapping,
+    code: &str,
+) -> Vec<TemplateDiagnostic> {
     let mut diagnostics = Vec::new();
-    
+
     // Check top-level matchers
     if let Some(matchers) = yaml_map.get("matchers") {
         diagnostics.extend(validate_matchers(matchers, code, "root"));
@@ -766,38 +789,39 @@ fn validate_matchers_in_document(yaml_map: &serde_yaml::Mapping, code: &str) -> 
     // Check matchers-condition at root
     if let Some(cond) = yaml_map.get("matchers-condition").and_then(|v| v.as_str()) {
         if !VALID_MATCHER_CONDITIONS.contains(&cond.to_lowercase().as_str()) {
-            diagnostics.push(
-                TemplateDiagnostic::warning(
-                    "yaml.invalid_matchers_condition",
-                    format!("Invalid matchers-condition '{}'. Valid: and, or", cond),
-                )
-            );
+            diagnostics.push(TemplateDiagnostic::warning(
+                "yaml.invalid_matchers_condition",
+                format!("Invalid matchers-condition '{}'. Valid: and, or", cond),
+            ));
         }
     }
-    
+
     diagnostics
 }
 
 /// Look for extractors in the entire document  
-fn validate_extractors_in_document(yaml_map: &serde_yaml::Mapping, code: &str) -> Vec<TemplateDiagnostic> {
+fn validate_extractors_in_document(
+    yaml_map: &serde_yaml::Mapping,
+    code: &str,
+) -> Vec<TemplateDiagnostic> {
     let mut diagnostics = Vec::new();
-    
+
     // Check top-level extractors
     if let Some(extractors) = yaml_map.get("extractors") {
         diagnostics.extend(validate_extractors(extractors, code, "root"));
     }
-    
+
     diagnostics
 }
 
 /// Validate variable references {{variable}}
 fn validate_variable_references(code: &str) -> Vec<TemplateDiagnostic> {
     let mut diagnostics = Vec::new();
-    
+
     // Find all {{variable}} references
     let var_re = regex::Regex::new(r"\{\{([^}]+)\}\}").unwrap();
     let mut found_vars: Vec<String> = Vec::new();
-    
+
     for caps in var_re.captures_iter(code) {
         if let Some(var_match) = caps.get(1) {
             let var_name = var_match.as_str().trim();
@@ -807,9 +831,21 @@ fn validate_variable_references(code: &str) -> Vec<TemplateDiagnostic> {
 
     // Common built-in variables
     let builtin_vars = vec![
-        "BaseURL", "Hostname", "Host", "Port", "Path", "Scheme",
-        "RootURL", "interactsh-url", "rand_int", "rand_char", "rand_base64",
-        "rand_text_alpha", "rand_text_alphanumeric", "timestamp", "unix_timestamp",
+        "BaseURL",
+        "Hostname",
+        "Host",
+        "Port",
+        "Path",
+        "Scheme",
+        "RootURL",
+        "interactsh-url",
+        "rand_int",
+        "rand_char",
+        "rand_base64",
+        "rand_text_alpha",
+        "rand_text_alphanumeric",
+        "timestamp",
+        "unix_timestamp",
     ];
 
     // Check for potentially undefined variables
@@ -817,10 +853,14 @@ fn validate_variable_references(code: &str) -> Vec<TemplateDiagnostic> {
         // Skip built-in variables
         let var_lower = var.to_lowercase();
         let is_builtin = builtin_vars.iter().any(|b| b.to_lowercase() == var_lower);
-        
+
         // Skip DSL expressions (contain operators or function calls)
-        let is_dsl = var.contains('(') || var.contains('+') || var.contains('-') 
-            || var.contains('*') || var.contains('/') || var.contains('=');
+        let is_dsl = var.contains('(')
+            || var.contains('+')
+            || var.contains('-')
+            || var.contains('*')
+            || var.contains('/')
+            || var.contains('=');
 
         if !is_builtin && !is_dsl {
             // Check if variable is defined as extractor name
@@ -830,7 +870,8 @@ fn validate_variable_references(code: &str) -> Vec<TemplateDiagnostic> {
 
             if !is_extractor && !var.starts_with("rand_") && !var.starts_with("interactsh") {
                 // Find line number
-                let line = code.lines()
+                let line = code
+                    .lines()
                     .enumerate()
                     .find(|(_, line)| line.contains(&format!("{{{{{}}}}}", var)))
                     .map(|(idx, _)| idx + 1);
@@ -844,7 +885,7 @@ fn validate_variable_references(code: &str) -> Vec<TemplateDiagnostic> {
                             var
                         ),
                     )
-                    .with_location(line.unwrap_or(1), None)
+                    .with_location(line.unwrap_or(1), None),
                 );
             }
         }
@@ -853,7 +894,9 @@ fn validate_variable_references(code: &str) -> Vec<TemplateDiagnostic> {
     // Check for malformed variable syntax
     for (line_num, line) in code.lines().enumerate() {
         // Check for single braces that might be typos
-        if (line.contains("{") && !line.contains("{{")) || (line.contains("}") && !line.contains("}}")) {
+        if (line.contains("{") && !line.contains("{{"))
+            || (line.contains("}") && !line.contains("}}"))
+        {
             // Skip YAML mappings and obvious non-variable cases
             if !line.trim().ends_with(":") && !line.contains(": {") && !line.contains("}: ") {
                 // Skip if it looks like intentional single brace
@@ -879,7 +922,7 @@ fn validate_variable_references(code: &str) -> Vec<TemplateDiagnostic> {
             );
         }
     }
-    
+
     diagnostics
 }
 
@@ -889,7 +932,7 @@ fn find_yaml_field_line(code: &str, field: &str) -> Option<usize> {
         .enumerate()
         .find(|(_, line)| {
             let trimmed = line.trim_start();
-            trimmed.starts_with(&format!("{}:", field)) 
+            trimmed.starts_with(&format!("{}:", field))
                 || trimmed.starts_with(&format!("{} :", field))
                 || trimmed == &format!("- {}:", field)
         })
@@ -921,8 +964,15 @@ http:
           - "success"
 "#;
         let diags = validate(yaml).unwrap();
-        let errors: Vec<_> = diags.iter().filter(|d| d.severity == super::super::DiagnosticSeverity::Error).collect();
-        assert!(errors.is_empty(), "Valid template should have no errors: {:?}", errors);
+        let errors: Vec<_> = diags
+            .iter()
+            .filter(|d| d.severity == super::super::DiagnosticSeverity::Error)
+            .collect();
+        assert!(
+            errors.is_empty(),
+            "Valid template should have no errors: {:?}",
+            errors
+        );
     }
 
     #[test]

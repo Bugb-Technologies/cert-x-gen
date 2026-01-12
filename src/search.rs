@@ -13,54 +13,38 @@ use std::time::SystemTime;
 #[derive(Debug, Clone)]
 pub struct SearchArgs {
     /// Search query string
-
     pub query: Option<String>,
     /// Filter by template language
-
     pub language: Option<TemplateLanguage>,
     /// Filter by severity level
-
     pub severity: Option<Severity>,
     /// Filter by tags (comma-separated)
-
     pub tags: Option<String>,
     /// Filter by author name
-
     pub author: Option<String>,
     /// Filter by CWE identifier
 
     /// CWE identifier if applicable
-
     pub cwe: Option<String>,
     /// Search in template content
-
     pub content: bool,
     /// Case-sensitive search
-
     pub case_sensitive: bool,
     /// Use regex for search
-
     pub regex: bool,
     /// Maximum number of results
-
     pub limit: usize,
     /// Output format
-
     pub format: SearchFormat,
     /// Show detailed results
-
     pub detailed: bool,
     /// Sort order
-
     pub sort: SearchSort,
     /// Reverse sort order
-
     pub reverse: bool,
     /// Output only template IDs
-
     pub ids_only: bool,
     /// Show search statistics
-
     pub stats: bool,
 }
 
@@ -68,22 +52,16 @@ pub struct SearchArgs {
 #[derive(Debug, Clone, Copy)]
 pub enum SearchFormat {
     /// Table format
-
     Table,
     /// JSON format
-
     Json,
     /// YAML format
-
     Yaml,
     /// CSV format
-
     Csv,
     /// Simple list format
-
     List,
     /// Detailed format with all metadata
-
     Detailed,
 }
 
@@ -91,25 +69,18 @@ pub enum SearchFormat {
 #[derive(Debug, Clone, Copy)]
 pub enum SearchSort {
     /// Sort by relevance score
-
     Relevance,
     /// Sort by template name
-
     Name,
     /// Sort by programming language
-
     Language,
     /// Sort by severity level
-
     Severity,
     /// Sort by author name
-
     Author,
     /// Sort by last modified date
-
     Date,
     /// Sort by popularity/usage
-
     Popularity,
 }
 
@@ -117,42 +88,30 @@ pub enum SearchSort {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchResult {
     /// Template ID
-
     pub id: String,
     /// Template name
-
     pub name: String,
     /// Template description
-
     pub description: String,
     /// Template language
-
     pub language: TemplateLanguage,
     /// Severity level
-
     pub severity: Severity,
     /// Author name
-
     pub author: String,
     /// Template tags
-
     pub tags: Vec<String>,
     /// Filter by CWE identifier
 
     /// CWE identifier if applicable
-
     pub cwe: Option<String>,
     /// File system path to template
-
     pub file_path: String,
     /// Search relevance score (0.0-1.0)
-
     pub relevance_score: f64,
     /// Fields that matched the search
-
     pub match_fields: Vec<String>,
     /// Preview of matching content
-
     pub content_preview: Option<String>,
 }
 
@@ -160,19 +119,14 @@ pub struct SearchResult {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchStats {
     /// Total number of templates in index
-
     pub total_templates: usize,
     /// Number of templates matching search
-
     pub matching_templates: usize,
     /// Template count by language
-
     pub languages: HashMap<TemplateLanguage, usize>,
     /// Template count by severity
-
     pub severities: HashMap<Severity, usize>,
     /// Search execution time in milliseconds
-
     pub search_time_ms: u64,
 }
 
@@ -195,7 +149,7 @@ impl TemplateSearchEngine {
 
         for (i, template) in templates.iter().enumerate() {
             let metadata = template.metadata();
-            
+
             // Create search result
             let search_result = SearchResult {
                 id: metadata.id.clone(),
@@ -214,7 +168,7 @@ impl TemplateSearchEngine {
 
             // Build search index
             Self::index_template(&search_result, i, &mut index);
-            
+
             // Build content index if available
             if let Ok(content) = fs::read_to_string(&metadata.file_path) {
                 Self::index_content(&content, i, &mut content_index);
@@ -246,18 +200,20 @@ impl TemplateSearchEngine {
         );
 
         for word in Self::extract_words(&text) {
-            search_index.entry(word).or_insert_with(Vec::new).push(index);
+            search_index
+                .entry(word)
+                .or_insert_with(Vec::new)
+                .push(index);
         }
     }
 
     /// Index template content for search
-    fn index_content(
-        content: &str,
-        index: usize,
-        content_index: &mut HashMap<String, Vec<usize>>,
-    ) {
+    fn index_content(content: &str, index: usize, content_index: &mut HashMap<String, Vec<usize>>) {
         for word in Self::extract_words(content) {
-            content_index.entry(word).or_insert_with(Vec::new).push(index);
+            content_index
+                .entry(word)
+                .or_insert_with(Vec::new)
+                .push(index);
         }
     }
 
@@ -272,7 +228,7 @@ impl TemplateSearchEngine {
     /// Search templates with the given criteria
     pub fn search(&self, args: &SearchArgs) -> (Vec<SearchResult>, SearchStats) {
         let start_time = SystemTime::now();
-        
+
         let mut results = self.templates.clone();
         let total_templates = results.len();
 
@@ -300,7 +256,11 @@ impl TemplateSearchEngine {
     }
 
     /// Apply filters to search results
-    fn apply_filters(&self, mut results: Vec<SearchResult>, args: &SearchArgs) -> Vec<SearchResult> {
+    fn apply_filters(
+        &self,
+        mut results: Vec<SearchResult>,
+        args: &SearchArgs,
+    ) -> Vec<SearchResult> {
         // Filter by language
         if let Some(language) = &args.language {
             let target_language: TemplateLanguage = (*language).into();
@@ -316,23 +276,22 @@ impl TemplateSearchEngine {
         // Filter by tags
         if let Some(tags) = &args.tags {
             let target_tags: Vec<String> = tags.split(',').map(|s| s.trim().to_string()).collect();
-            results.retain(|template| {
-                target_tags.iter().any(|tag| template.tags.contains(tag))
-            });
+            results.retain(|template| target_tags.iter().any(|tag| template.tags.contains(tag)));
         }
 
         // Filter by author
         if let Some(author) = &args.author {
             results.retain(|template| {
-                template.author.to_lowercase().contains(&author.to_lowercase())
+                template
+                    .author
+                    .to_lowercase()
+                    .contains(&author.to_lowercase())
             });
         }
 
         // Filter by CWE
         if let Some(cwe) = &args.cwe {
-            results.retain(|template| {
-                template.cwe.as_ref().map_or(false, |t| t.contains(cwe))
-            });
+            results.retain(|template| template.cwe.as_ref().map_or(false, |t| t.contains(cwe)));
         }
 
         results
@@ -408,19 +367,21 @@ impl TemplateSearchEngine {
                         if regex.is_match(&content_lower) {
                             score += 2.0;
                             match_fields.push("content".to_string());
-                            
+
                             // Add content preview
                             if result.content_preview.is_none() {
-                                result.content_preview = Some(self.extract_preview(&content, &query_lower));
+                                result.content_preview =
+                                    Some(self.extract_preview(&content, &query_lower));
                             }
                         }
                     } else if content_lower.contains(&query_lower) {
                         score += 1.0;
                         match_fields.push("content".to_string());
-                        
+
                         // Add content preview
                         if result.content_preview.is_none() {
-                            result.content_preview = Some(self.extract_preview(&content, &query_lower));
+                            result.content_preview =
+                                Some(self.extract_preview(&content, &query_lower));
                         }
                     }
                 }
@@ -439,12 +400,12 @@ impl TemplateSearchEngine {
     /// Extract a preview of content around the search term
     fn extract_preview(&self, content: &str, query: &str) -> String {
         const PREVIEW_LENGTH: usize = 200;
-        
+
         if let Some(pos) = content.to_lowercase().find(&query.to_lowercase()) {
             let start = pos.saturating_sub(PREVIEW_LENGTH / 2);
             let end = (pos + query.len() + PREVIEW_LENGTH / 2).min(content.len());
             let preview = &content[start..end];
-            
+
             if start > 0 {
                 format!("...{}...", preview)
             } else {
@@ -465,13 +426,26 @@ impl TemplateSearchEngine {
                 results.sort_by(|a, b| a.name.cmp(&b.name));
             }
             SearchSort::Language => {
-                results.sort_by(|a, b| format!("{:?}", a.language).cmp(&format!("{:?}", b.language)));
+                results
+                    .sort_by(|a, b| format!("{:?}", a.language).cmp(&format!("{:?}", b.language)));
             }
             SearchSort::Severity => {
                 results.sort_by(|a, b| {
-                    let severity_order = [Severity::Critical, Severity::High, Severity::Medium, Severity::Low, Severity::Info];
-                    let a_order = severity_order.iter().position(|&s| s == a.severity).unwrap_or(5);
-                    let b_order = severity_order.iter().position(|&s| s == b.severity).unwrap_or(5);
+                    let severity_order = [
+                        Severity::Critical,
+                        Severity::High,
+                        Severity::Medium,
+                        Severity::Low,
+                        Severity::Info,
+                    ];
+                    let a_order = severity_order
+                        .iter()
+                        .position(|&s| s == a.severity)
+                        .unwrap_or(5);
+                    let b_order = severity_order
+                        .iter()
+                        .position(|&s| s == b.severity)
+                        .unwrap_or(5);
                     a_order.cmp(&b_order)
                 });
             }
@@ -481,8 +455,12 @@ impl TemplateSearchEngine {
             SearchSort::Date => {
                 // For now, sort by file modification time
                 results.sort_by(|a, b| {
-                    let a_time = fs::metadata(&a.file_path).and_then(|m| m.modified()).unwrap_or(SystemTime::UNIX_EPOCH);
-                    let b_time = fs::metadata(&b.file_path).and_then(|m| m.modified()).unwrap_or(SystemTime::UNIX_EPOCH);
+                    let a_time = fs::metadata(&a.file_path)
+                        .and_then(|m| m.modified())
+                        .unwrap_or(SystemTime::UNIX_EPOCH);
+                    let b_time = fs::metadata(&b.file_path)
+                        .and_then(|m| m.modified())
+                        .unwrap_or(SystemTime::UNIX_EPOCH);
                     b_time.cmp(&a_time) // Newest first
                 });
             }
@@ -634,14 +612,16 @@ impl SearchResultFormatter {
         let data = serde_yaml::to_string(&serde_json::json!({
             "statistics": stats,
             "results": results
-        })).unwrap_or_else(|_| "".to_string());
+        }))
+        .unwrap_or_else(|_| "".to_string());
         data
     }
 
     /// Format results as CSV
     fn format_csv(results: &[SearchResult]) -> String {
         let mut output = String::new();
-        output.push_str("ID,Name,Description,Language,Severity,Author,Tags,CWE,Score,Match Fields\n");
+        output
+            .push_str("ID,Name,Description,Language,Severity,Author,Tags,CWE,Score,Match Fields\n");
 
         for result in results {
             output.push_str(&format!(
@@ -674,10 +654,7 @@ impl SearchResultFormatter {
             for result in results {
                 output.push_str(&format!(
                     "{} - {} ({:?}, {:?})\n",
-                    result.id,
-                    result.name,
-                    result.language,
-                    result.severity
+                    result.id, result.name, result.language, result.severity
                 ));
             }
         }
@@ -695,9 +672,7 @@ impl SearchResultFormatter {
             - Total templates: {}\n\
             - Matching templates: {}\n\
             - Search time: {}ms\n\n",
-            stats.total_templates,
-            stats.matching_templates,
-            stats.search_time_ms
+            stats.total_templates, stats.matching_templates, stats.search_time_ms
         ));
 
         // Add language breakdown
@@ -799,7 +774,7 @@ mod tests {
         let content = "This is a long content with the word injection in the middle of the text and more content after it";
         let query = "injection";
         let preview = engine.extract_preview(content, query);
-        
+
         assert!(preview.contains("injection"));
         assert!(preview.len() <= 200 + 6); // 200 chars + "..."
     }

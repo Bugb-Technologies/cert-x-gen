@@ -8,7 +8,7 @@
 //! - Timeout handling
 //! - Security issues (command injection, unsafe functions)
 
-use super::{PatternRegistry, PatternCategory, TemplateDiagnostic};
+use super::{PatternCategory, PatternRegistry, TemplateDiagnostic};
 use crate::types::TemplateLanguage;
 use anyhow::Result;
 
@@ -27,7 +27,11 @@ impl EnhancedValidator {
     }
 
     /// Run all enhanced validations
-    pub fn validate(&self, code: &str, language: TemplateLanguage) -> Result<Vec<TemplateDiagnostic>> {
+    pub fn validate(
+        &self,
+        code: &str,
+        language: TemplateLanguage,
+    ) -> Result<Vec<TemplateDiagnostic>> {
         let mut diagnostics = Vec::new();
 
         // Skip YAML as it has different validation needs
@@ -60,11 +64,20 @@ impl EnhancedValidator {
     }
 
     /// Check for network/socket code presence
-    fn check_network_code(&self, code: &str, language: TemplateLanguage) -> Vec<TemplateDiagnostic> {
+    fn check_network_code(
+        &self,
+        code: &str,
+        language: TemplateLanguage,
+    ) -> Vec<TemplateDiagnostic> {
         let mut diagnostics = Vec::new();
 
-        if !self.registry.has_any_match(code, language, PatternCategory::NetworkImport) {
-            let patterns = self.registry.get_patterns(language, PatternCategory::NetworkImport);
+        if !self
+            .registry
+            .has_any_match(code, language, PatternCategory::NetworkImport)
+        {
+            let patterns = self
+                .registry
+                .get_patterns(language, PatternCategory::NetworkImport);
             let suggestion = patterns
                 .first()
                 .and_then(|p| p.suggestion.clone())
@@ -88,17 +101,29 @@ impl EnhancedValidator {
     }
 
     /// Check for JSON handling capabilities
-    fn check_json_handling(&self, code: &str, language: TemplateLanguage) -> Vec<TemplateDiagnostic> {
+    fn check_json_handling(
+        &self,
+        code: &str,
+        language: TemplateLanguage,
+    ) -> Vec<TemplateDiagnostic> {
         let mut diagnostics = Vec::new();
 
         // Skip compiled languages that use native structs
         if matches!(
             language,
-            TemplateLanguage::Rust | TemplateLanguage::C | TemplateLanguage::Cpp | TemplateLanguage::Go
+            TemplateLanguage::Rust
+                | TemplateLanguage::C
+                | TemplateLanguage::Cpp
+                | TemplateLanguage::Go
         ) {
             // For compiled languages, just check for JSON library presence
-            if !self.registry.has_any_match(code, language, PatternCategory::JsonImport) {
-                let patterns = self.registry.get_patterns(language, PatternCategory::JsonImport);
+            if !self
+                .registry
+                .has_any_match(code, language, PatternCategory::JsonImport)
+            {
+                let patterns = self
+                    .registry
+                    .get_patterns(language, PatternCategory::JsonImport);
                 let suggestion = patterns
                     .first()
                     .and_then(|p| p.suggestion.clone())
@@ -120,8 +145,13 @@ impl EnhancedValidator {
         }
 
         // For scripting languages, check import
-        if !self.registry.has_any_match(code, language, PatternCategory::JsonImport) {
-            let patterns = self.registry.get_patterns(language, PatternCategory::JsonImport);
+        if !self
+            .registry
+            .has_any_match(code, language, PatternCategory::JsonImport)
+        {
+            let patterns = self
+                .registry
+                .get_patterns(language, PatternCategory::JsonImport);
             let suggestion = patterns
                 .first()
                 .and_then(|p| p.suggestion.clone())
@@ -141,7 +171,10 @@ impl EnhancedValidator {
         }
 
         // Check for JSON output
-        if !self.registry.has_any_match(code, language, PatternCategory::JsonOutput) {
+        if !self
+            .registry
+            .has_any_match(code, language, PatternCategory::JsonOutput)
+        {
             diagnostics.push(
                 TemplateDiagnostic::info(
                     "enhanced.no_json_output",
@@ -155,11 +188,20 @@ impl EnhancedValidator {
     }
 
     /// Check for error handling
-    fn check_error_handling(&self, code: &str, language: TemplateLanguage) -> Vec<TemplateDiagnostic> {
+    fn check_error_handling(
+        &self,
+        code: &str,
+        language: TemplateLanguage,
+    ) -> Vec<TemplateDiagnostic> {
         let mut diagnostics = Vec::new();
 
-        if !self.registry.has_any_match(code, language, PatternCategory::ErrorHandling) {
-            let patterns = self.registry.get_patterns(language, PatternCategory::ErrorHandling);
+        if !self
+            .registry
+            .has_any_match(code, language, PatternCategory::ErrorHandling)
+        {
+            let patterns = self
+                .registry
+                .get_patterns(language, PatternCategory::ErrorHandling);
             let suggestion = patterns
                 .first()
                 .and_then(|p| p.suggestion.clone())
@@ -182,15 +224,25 @@ impl EnhancedValidator {
     }
 
     /// Check for timeout handling
-    fn check_timeout_handling(&self, code: &str, language: TemplateLanguage) -> Vec<TemplateDiagnostic> {
+    fn check_timeout_handling(
+        &self,
+        code: &str,
+        language: TemplateLanguage,
+    ) -> Vec<TemplateDiagnostic> {
         let mut diagnostics = Vec::new();
 
         // Only warn if there's network code but no timeout
-        let has_network = self.registry.has_any_match(code, language, PatternCategory::NetworkImport);
-        let has_timeout = self.registry.has_any_match(code, language, PatternCategory::TimeoutHandling);
+        let has_network =
+            self.registry
+                .has_any_match(code, language, PatternCategory::NetworkImport);
+        let has_timeout =
+            self.registry
+                .has_any_match(code, language, PatternCategory::TimeoutHandling);
 
         if has_network && !has_timeout {
-            let patterns = self.registry.get_patterns(language, PatternCategory::TimeoutHandling);
+            let patterns = self
+                .registry
+                .get_patterns(language, PatternCategory::TimeoutHandling);
             let suggestion = patterns
                 .first()
                 .and_then(|p| p.suggestion.clone())
@@ -227,8 +279,14 @@ impl EnhancedValidator {
                 | TemplateLanguage::Java
         );
 
-        if requires_entry_point && !self.registry.has_any_match(code, language, PatternCategory::EntryPoint) {
-            let patterns = self.registry.get_patterns(language, PatternCategory::EntryPoint);
+        if requires_entry_point
+            && !self
+                .registry
+                .has_any_match(code, language, PatternCategory::EntryPoint)
+        {
+            let patterns = self
+                .registry
+                .get_patterns(language, PatternCategory::EntryPoint);
             let suggestion = patterns
                 .first()
                 .and_then(|p| p.suggestion.clone())
@@ -261,7 +319,9 @@ impl EnhancedValidator {
 
         // Check for package declaration in Go
         if language == TemplateLanguage::Go
-            && !self.registry.has_any_match(code, language, PatternCategory::PackageDeclaration)
+            && !self
+                .registry
+                .has_any_match(code, language, PatternCategory::PackageDeclaration)
         {
             diagnostics.push(
                 TemplateDiagnostic::error(
@@ -274,7 +334,9 @@ impl EnhancedValidator {
 
         // Check for shebang in shell scripts
         if language == TemplateLanguage::Shell
-            && !self.registry.has_any_match(code, language, PatternCategory::Shebang)
+            && !self
+                .registry
+                .has_any_match(code, language, PatternCategory::Shebang)
         {
             diagnostics.push(
                 TemplateDiagnostic::warning(
@@ -287,7 +349,9 @@ impl EnhancedValidator {
 
         // Check for <?php tag
         if language == TemplateLanguage::Php
-            && !self.registry.has_any_match(code, language, PatternCategory::EntryPoint)
+            && !self
+                .registry
+                .has_any_match(code, language, PatternCategory::EntryPoint)
         {
             diagnostics.push(
                 TemplateDiagnostic::error(
@@ -302,11 +366,17 @@ impl EnhancedValidator {
     }
 
     /// Check for unsafe functions (security checks)
-    fn check_unsafe_functions(&self, code: &str, language: TemplateLanguage) -> Vec<TemplateDiagnostic> {
+    fn check_unsafe_functions(
+        &self,
+        code: &str,
+        language: TemplateLanguage,
+    ) -> Vec<TemplateDiagnostic> {
         let mut diagnostics = Vec::new();
 
-        let matches = self.registry.get_matches(code, language, PatternCategory::UnsafeFunctions);
-        
+        let matches = self
+            .registry
+            .get_matches(code, language, PatternCategory::UnsafeFunctions);
+
         for pattern in matches {
             let lines = pattern.find_lines(code);
             for line_num in lines {
@@ -323,7 +393,10 @@ impl EnhancedValidator {
                         format!(
                             "Potentially unsafe function detected: {}. {}",
                             pattern.description,
-                            pattern.suggestion.as_deref().unwrap_or("Review for security implications.")
+                            pattern
+                                .suggestion
+                                .as_deref()
+                                .unwrap_or("Review for security implications.")
                         ),
                     )
                     .with_location(line_num, None),
@@ -335,7 +408,11 @@ impl EnhancedValidator {
     }
 
     /// Check for command execution patterns (security)
-    fn check_command_execution(&self, code: &str, language: TemplateLanguage) -> Vec<TemplateDiagnostic> {
+    fn check_command_execution(
+        &self,
+        code: &str,
+        language: TemplateLanguage,
+    ) -> Vec<TemplateDiagnostic> {
         let mut diagnostics = Vec::new();
 
         // Skip shell - command execution is expected
@@ -343,8 +420,10 @@ impl EnhancedValidator {
             return diagnostics;
         }
 
-        let matches = self.registry.get_matches(code, language, PatternCategory::CommandExecution);
-        
+        let matches = self
+            .registry
+            .get_matches(code, language, PatternCategory::CommandExecution);
+
         for pattern in matches {
             let lines = pattern.find_lines(code);
             for line_num in lines {
@@ -375,14 +454,19 @@ impl EnhancedValidator {
     /// Helper to check if a line is a comment
     fn is_comment_line(&self, line: &str, language: TemplateLanguage) -> bool {
         let trimmed = line.trim();
-        
+
         match language {
-            TemplateLanguage::Python | TemplateLanguage::Ruby | TemplateLanguage::Perl 
-            | TemplateLanguage::Shell | TemplateLanguage::Yaml => {
-                trimmed.starts_with('#')
-            }
-            TemplateLanguage::JavaScript | TemplateLanguage::Rust | TemplateLanguage::Go
-            | TemplateLanguage::C | TemplateLanguage::Cpp | TemplateLanguage::Java 
+            TemplateLanguage::Python
+            | TemplateLanguage::Ruby
+            | TemplateLanguage::Perl
+            | TemplateLanguage::Shell
+            | TemplateLanguage::Yaml => trimmed.starts_with('#'),
+            TemplateLanguage::JavaScript
+            | TemplateLanguage::Rust
+            | TemplateLanguage::Go
+            | TemplateLanguage::C
+            | TemplateLanguage::Cpp
+            | TemplateLanguage::Java
             | TemplateLanguage::Php => {
                 trimmed.starts_with("//") || trimmed.starts_with("/*") || trimmed.starts_with('*')
             }
@@ -403,7 +487,7 @@ mod tests {
     #[test]
     fn test_python_network_check() {
         let validator = EnhancedValidator::new();
-        
+
         // Code without network imports
         let code_no_net = "import json\nprint('hello')";
         let diags = validator.check_network_code(code_no_net, TemplateLanguage::Python);
@@ -419,7 +503,7 @@ mod tests {
     #[test]
     fn test_error_handling_check() {
         let validator = EnhancedValidator::new();
-        
+
         // Python without error handling
         let code_no_err = "import socket\ns = socket.socket()";
         let diags = validator.check_error_handling(code_no_err, TemplateLanguage::Python);
@@ -434,7 +518,7 @@ mod tests {
     #[test]
     fn test_go_entry_point_check() {
         let validator = EnhancedValidator::new();
-        
+
         // Go without main
         let code_no_main = "package main\nimport \"fmt\"";
         let diags = validator.check_entry_point(code_no_main, TemplateLanguage::Go);
@@ -444,14 +528,17 @@ mod tests {
         let code_with_main = "package main\nfunc main() {}";
         let diags = validator.check_entry_point(code_with_main, TemplateLanguage::Go);
         // Should have no error about entry point (might have one about package)
-        let entry_errors: Vec<_> = diags.iter().filter(|d| d.code.contains("entry_point")).collect();
+        let entry_errors: Vec<_> = diags
+            .iter()
+            .filter(|d| d.code.contains("entry_point"))
+            .collect();
         assert!(entry_errors.is_empty());
     }
 
     #[test]
     fn test_unsafe_function_detection() {
         let validator = EnhancedValidator::new();
-        
+
         // Python with eval
         let code = "result = eval(user_input)";
         let diags = validator.check_unsafe_functions(code, TemplateLanguage::Python);

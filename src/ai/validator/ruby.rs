@@ -30,7 +30,8 @@ fn check_ruby_patterns(code: &str) -> Vec<TemplateDiagnostic> {
 
     // Check for puts without JSON (common Ruby output)
     for (line_num, line) in code.lines().enumerate() {
-        if line.trim().starts_with("puts ") && !line.contains(".to_json") && !line.contains("JSON") {
+        if line.trim().starts_with("puts ") && !line.contains(".to_json") && !line.contains("JSON")
+        {
             diagnostics.push(
                 TemplateDiagnostic::info(
                     "ruby.puts_without_json",

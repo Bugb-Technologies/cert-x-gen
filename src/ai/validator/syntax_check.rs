@@ -61,7 +61,7 @@ impl SyntaxChecker {
     /// Check Python syntax using py_compile
     fn check_python(&self, code: &str) -> Result<Vec<TemplateDiagnostic>> {
         let python_cmd = self.find_python()?;
-        
+
         let script = format!(
             r#"
 import sys
@@ -234,11 +234,14 @@ finally:
         }
 
         // Check for balanced braces
-        let brace_count: i32 = code.chars().map(|c| match c {
-            '{' => 1,
-            '}' => -1,
-            _ => 0,
-        }).sum();
+        let brace_count: i32 = code
+            .chars()
+            .map(|c| match c {
+                '{' => 1,
+                '}' => -1,
+                _ => 0,
+            })
+            .sum();
 
         if brace_count != 0 {
             diagnostics.push(TemplateDiagnostic::error(
@@ -277,7 +280,11 @@ finally:
     }
 
     /// Handle missing tool
-    fn handle_missing_tool(&self, tool: &str, language: TemplateLanguage) -> Result<Vec<TemplateDiagnostic>> {
+    fn handle_missing_tool(
+        &self,
+        tool: &str,
+        language: TemplateLanguage,
+    ) -> Result<Vec<TemplateDiagnostic>> {
         if self.skip_unavailable {
             Ok(vec![])
         } else {
@@ -370,8 +377,8 @@ finally:
                 diagnostics.push(diag);
             } else if let Some(diag) = self.parse_python_style_error(line) {
                 diagnostics.push(diag);
-            } else if line.to_lowercase().contains("error") 
-                || line.to_lowercase().contains("syntax") 
+            } else if line.to_lowercase().contains("error")
+                || line.to_lowercase().contains("syntax")
             {
                 // Generic error
                 diagnostics.push(TemplateDiagnostic::error(
@@ -400,9 +407,8 @@ finally:
     fn parse_gcc_style_error(&self, line: &str) -> Option<TemplateDiagnostic> {
         // Pattern: <file>:<line>:<col>: <type>: <message>
         // Or: <file>:<line>: <type>: <message>
-        let re = regex::Regex::new(
-            r"^[^:]+:(\d+):(?:\d+:)?\s*(error|warning|note|info):\s*(.+)$"
-        ).ok()?;
+        let re = regex::Regex::new(r"^[^:]+:(\d+):(?:\d+:)?\s*(error|warning|note|info):\s*(.+)$")
+            .ok()?;
 
         let caps = re.captures(line)?;
         let line_num: usize = caps.get(1)?.as_str().parse().ok()?;
@@ -422,12 +428,11 @@ finally:
     fn parse_python_style_error(&self, line: &str) -> Option<TemplateDiagnostic> {
         // Pattern: File "...", line N
         let re = regex::Regex::new(r#"File "[^"]+", line (\d+)"#).ok()?;
-        
+
         if let Some(caps) = re.captures(line) {
             let line_num: usize = caps.get(1)?.as_str().parse().ok()?;
             return Some(
-                TemplateDiagnostic::error("syntax.python", line)
-                    .with_location(line_num, None)
+                TemplateDiagnostic::error("syntax.python", line).with_location(line_num, None),
             );
         }
 
@@ -462,7 +467,7 @@ mod tests {
     #[test]
     fn test_parse_gcc_style_error() {
         let checker = SyntaxChecker::new();
-        
+
         let line = "-:5:10: error: expected ';' before 'return'";
         let diag = checker.parse_gcc_style_error(line);
         assert!(diag.is_some());
@@ -474,7 +479,7 @@ mod tests {
     #[test]
     fn test_rust_brace_check() {
         let checker = SyntaxChecker::new();
-        
+
         // Balanced code
         let balanced = "fn main() { let x = { 1 }; }";
         let diags = checker.check_rust(balanced).unwrap();

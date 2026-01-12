@@ -14,31 +14,31 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-mod common;
-mod detect;
-mod patterns;
-mod enhanced;
-mod syntax_check;
-mod finding_schema;
-mod python;
-mod javascript;
-mod rust_lang;
-mod shell;
 mod c_lang;
+mod common;
 mod cpp;
-mod java;
+mod detect;
+mod enhanced;
+mod finding_schema;
 mod go_lang;
-mod ruby;
+mod java;
+mod javascript;
+mod patterns;
 mod perl;
 mod php;
+mod python;
+mod ruby;
+mod rust_lang;
+mod shell;
+mod syntax_check;
 mod yaml;
 
 pub use common::CommonValidator;
-pub use patterns::{PatternRegistry, PatternCategory, ValidationPattern};
-pub use enhanced::EnhancedValidator;
-pub use syntax_check::SyntaxChecker;
-pub use finding_schema::FindingSchemaValidator;
 pub use detect::{detect_language_from_content, detect_language_from_filename};
+pub use enhanced::EnhancedValidator;
+pub use finding_schema::FindingSchemaValidator;
+pub use patterns::{PatternCategory, PatternRegistry, ValidationPattern};
+pub use syntax_check::SyntaxChecker;
 
 /// Severity of a validation diagnostic
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -225,10 +225,12 @@ impl TemplateValidator {
     /// Legacy validate method (for backwards compatibility)
     pub fn validate(&self, code: &str, language: TemplateLanguage) -> Result<()> {
         let diagnostics = self.validate_with_diagnostics(code, language, None)?;
-        
+
         // Check for errors
-        let has_errors = diagnostics.iter().any(|d| d.severity == DiagnosticSeverity::Error);
-        
+        let has_errors = diagnostics
+            .iter()
+            .any(|d| d.severity == DiagnosticSeverity::Error);
+
         if has_errors {
             let error_msg = diagnostics
                 .iter()
@@ -241,7 +243,9 @@ impl TemplateValidator {
 
         // In strict mode, warnings are also errors
         if self.strict {
-            let has_warnings = diagnostics.iter().any(|d| d.severity == DiagnosticSeverity::Warning);
+            let has_warnings = diagnostics
+                .iter()
+                .any(|d| d.severity == DiagnosticSeverity::Warning);
             if has_warnings {
                 let warning_msg = diagnostics
                     .iter()
@@ -321,10 +325,7 @@ mod tests {
         let validator = TemplateValidator::new();
         let result = validator.validate("", TemplateLanguage::Python);
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("empty"));
+        assert!(result.unwrap_err().to_string().contains("empty"));
     }
 
     #[test]
@@ -332,15 +333,12 @@ mod tests {
         let validator = TemplateValidator::new();
         let python_code = "import json\nprint('hello')";
         let path = Path::new("test.py");
-        
+
         // No mismatch when correct
-        let mismatch = validator.detect_language_mismatch(
-            python_code,
-            TemplateLanguage::Python,
-            Some(path),
-        );
+        let mismatch =
+            validator.detect_language_mismatch(python_code, TemplateLanguage::Python, Some(path));
         assert!(mismatch.is_none());
-        
+
         // Detects mismatch
         let path_wrong = Path::new("test.js");
         let mismatch = validator.detect_language_mismatch(

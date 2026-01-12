@@ -10,10 +10,10 @@ pub async fn init_environment(_sandbox: &Sandbox) -> Result<()> {
 
     // Check if Rust (cargo/rustc) is available, attempt installation if missing
     use crate::sandbox::runtime_installer::ensure_runtime_available;
-    
+
     // Rust comes with cargo, so check for cargo
     let rust_available = ensure_runtime_available("rust", &["cargo", "rustc"]).await?;
-    
+
     if !rust_available {
         tracing::warn!("Rust/Cargo not available and automatic installation failed");
         tracing::warn!("Skipping Rust sandbox initialization");
@@ -32,7 +32,7 @@ pub async fn compile_and_execute(
     args: &[&str],
 ) -> Result<std::process::Output> {
     let target_dir = sandbox.root_dir().join("rust/target");
-    
+
     // Compile
     tracing::debug!("Compiling Rust template: {}", source_path.display());
     let output = Command::new("rustc")
@@ -52,14 +52,14 @@ pub async fn compile_and_execute(
     // Execute
     let binary_name = source_path.file_stem().unwrap();
     let binary_path = target_dir.join(binary_name);
-    
+
     let mut cmd = Command::new(binary_path);
     cmd.args(args);
-    
+
     for (key, value) in sandbox.get_env_vars() {
         cmd.env(key, value);
     }
-    
+
     cmd.output()
         .map_err(|e| Error::command(format!("Failed to execute Rust binary: {}", e)))
 }

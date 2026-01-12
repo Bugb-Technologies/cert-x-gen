@@ -31,7 +31,7 @@ fn check_cpp_patterns(code: &str) -> Vec<TemplateDiagnostic> {
     // Check for raw new/delete (prefer smart pointers)
     let new_count = code.matches(" new ").count();
     let delete_count = code.matches("delete ").count() + code.matches("delete[").count();
-    
+
     if new_count > 0 && !code.contains("unique_ptr") && !code.contains("shared_ptr") {
         diagnostics.push(
             TemplateDiagnostic::warning(
@@ -70,12 +70,10 @@ fn check_cpp_patterns(code: &str) -> Vec<TemplateDiagnostic> {
 
     // Check for NULL instead of nullptr
     if code.contains("NULL") && !code.contains("nullptr") {
-        diagnostics.push(
-            TemplateDiagnostic::info(
-                "cpp.use_nullptr",
-                "Use 'nullptr' instead of 'NULL' for type safety in modern C++.",
-            )
-        );
+        diagnostics.push(TemplateDiagnostic::info(
+            "cpp.use_nullptr",
+            "Use 'nullptr' instead of 'NULL' for type safety in modern C++.",
+        ));
     }
 
     // Check for using namespace std in headers (bad practice)
@@ -93,12 +91,10 @@ fn check_cpp_patterns(code: &str) -> Vec<TemplateDiagnostic> {
         // Check if there are any noexcept specifications
         let has_exception_spec = code.contains("noexcept") || code.contains("throw()");
         if !has_exception_spec && code.contains("~") {
-            diagnostics.push(
-                TemplateDiagnostic::info(
-                    "cpp.destructor_throw",
-                    "Exceptions used but no noexcept. Ensure destructors are noexcept.",
-                )
-            );
+            diagnostics.push(TemplateDiagnostic::info(
+                "cpp.destructor_throw",
+                "Exceptions used but no noexcept. Ensure destructors are noexcept.",
+            ));
         }
     }
 
@@ -106,12 +102,10 @@ fn check_cpp_patterns(code: &str) -> Vec<TemplateDiagnostic> {
     if code.contains("auto ") {
         let auto_count = code.matches("auto ").count();
         if auto_count > 10 {
-            diagnostics.push(
-                TemplateDiagnostic::info(
-                    "cpp.excessive_auto",
-                    "Heavy use of 'auto'. Consider explicit types for better code readability.",
-                )
-            );
+            diagnostics.push(TemplateDiagnostic::info(
+                "cpp.excessive_auto",
+                "Heavy use of 'auto'. Consider explicit types for better code readability.",
+            ));
         }
     }
 

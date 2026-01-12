@@ -30,7 +30,7 @@ const EXTENSIONS: &[(&str, TemplateLanguage)] = &[
 /// Detect language from filename extension
 pub fn detect_language_from_filename(path: &Path) -> Option<TemplateLanguage> {
     let extension = path.extension()?.to_str()?.to_lowercase();
-    
+
     EXTENSIONS
         .iter()
         .find(|(ext, _)| *ext == extension)
@@ -63,8 +63,10 @@ pub fn detect_language_from_content(code: &str) -> Option<TemplateLanguage> {
     }
 
     // Python indicators
-    if (code_lower.contains("import ") || code_lower.contains("from ") || code_lower.contains("def "))
-        && (first_10_lines.contains("import json") 
+    if (code_lower.contains("import ")
+        || code_lower.contains("from ")
+        || code_lower.contains("def "))
+        && (first_10_lines.contains("import json")
             || first_10_lines.contains("import sys")
             || first_10_lines.contains("import os")
             || code_lower.contains("if __name__"))
@@ -83,7 +85,7 @@ pub fn detect_language_from_content(code: &str) -> Option<TemplateLanguage> {
     }
 
     // Rust indicators
-    if first_10_lines.contains("fn main()") 
+    if first_10_lines.contains("fn main()")
         || (code_lower.contains("fn ") && code_lower.contains("use "))
         || code_lower.contains("impl ")
         || code_lower.contains("struct ")
@@ -156,7 +158,9 @@ pub fn detect_language_from_content(code: &str) -> Option<TemplateLanguage> {
     // YAML indicators
     if (first_10_lines.contains("id:") || first_10_lines.contains("name:"))
         && (first_10_lines.contains("severity:") || first_10_lines.contains("description:"))
-        && (code_lower.contains("http:") || code_lower.contains("network:") || code_lower.contains("flows:"))
+        && (code_lower.contains("http:")
+            || code_lower.contains("network:")
+            || code_lower.contains("flows:"))
     {
         return Some(TemplateLanguage::Yaml);
     }
@@ -168,7 +172,9 @@ pub fn detect_language_from_content(code: &str) -> Option<TemplateLanguage> {
 #[allow(dead_code)]
 pub fn is_supported_extension(path: &Path) -> bool {
     if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-        EXTENSIONS.iter().any(|(supported, _)| *supported == ext.to_lowercase())
+        EXTENSIONS
+            .iter()
+            .any(|(supported, _)| *supported == ext.to_lowercase())
     } else {
         false
     }
@@ -210,7 +216,8 @@ mod tests {
 
     #[test]
     fn test_detect_from_content_python() {
-        let python_code = "#!/usr/bin/env python3\nimport json\nimport sys\n\ndef main():\n    pass";
+        let python_code =
+            "#!/usr/bin/env python3\nimport json\nimport sys\n\ndef main():\n    pass";
         assert_eq!(
             detect_language_from_content(python_code),
             Some(TemplateLanguage::Python)

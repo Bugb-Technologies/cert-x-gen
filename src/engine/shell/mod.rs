@@ -23,7 +23,7 @@ impl ShellEngine {
             shell_path: "/bin/bash".to_string(),
         }
     }
-    
+
     /// Execute shell template
     async fn execute_shell_template(
         &self,
@@ -32,10 +32,10 @@ impl ShellEngine {
         context: &Context,
     ) -> Result<Vec<Finding>> {
         tracing::debug!("Shell engine executing template: {:?}", template_path);
-        
+
         // Build environment variables
         let env_vars = build_env_vars(target, context)?;
-        
+
         // Execute shell script with arguments
         let port = target.port.unwrap_or(80);
         let args = vec![
@@ -44,9 +44,9 @@ impl ShellEngine {
             port.to_string(),
             "--json".to_string(),
         ];
-        
+
         let stdout = execute_command(&self.shell_path, &args, &env_vars).await?;
-        
+
         // Try to extract JSON from output (shell scripts may have mixed output)
         let json_str = if let Some(json_start) = stdout.find("[CERT-X-GEN-JSON]") {
             let json_data = &stdout[json_start + 17..];
@@ -58,13 +58,14 @@ impl ShellEngine {
         } else {
             stdout.as_ref()
         };
-        
+
         // Parse findings from JSON output
-        let template_id = template_path.file_stem()
+        let template_id = template_path
+            .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("unknown")
             .to_string();
-        
+
         parse_findings(json_str, target, &template_id)
     }
 }
@@ -94,19 +95,21 @@ struct ShellTemplate {
 #[async_trait]
 impl Template for ShellTemplate {
     async fn execute(&self, target: &Target, context: &Context) -> Result<Vec<Finding>> {
-        self.engine.execute_shell_template(&self.path, target, context).await
+        self.engine
+            .execute_shell_template(&self.path, target, context)
+            .await
     }
-    
+
     fn validate(&self) -> Result<()> {
         if !self.path.exists() {
             return Err(Error::Io(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
-                format!("Template not found: {:?}", self.path)
+                format!("Template not found: {:?}", self.path),
             )));
         }
         Ok(())
     }
-    
+
     fn metadata(&self) -> &crate::types::TemplateMetadata {
         &self.metadata
     }
@@ -116,7 +119,7 @@ impl Template for ShellTemplate {
 impl TemplateEngine for ShellEngine {
     async fn load_template(&self, path: &Path) -> Result<Box<dyn Template>> {
         let metadata = create_metadata(path, TemplateLanguage::Shell);
-        
+
         Ok(Box::new(ShellTemplate {
             path: path.to_path_buf(),
             engine: self.clone(),

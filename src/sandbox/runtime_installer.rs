@@ -22,27 +22,27 @@ fn detect_package_manager() -> PackageManager {
     if Command::new("brew").arg("--version").output().is_ok() {
         return PackageManager::Brew;
     }
-    
+
     // Check for apt (Debian/Ubuntu)
     if Command::new("apt-get").arg("--version").output().is_ok() {
         return PackageManager::Apt;
     }
-    
+
     // Check for yum (RHEL/CentOS 7)
     if Command::new("yum").arg("--version").output().is_ok() {
         return PackageManager::Yum;
     }
-    
+
     // Check for dnf (Fedora/RHEL 8+)
     if Command::new("dnf").arg("--version").output().is_ok() {
         return PackageManager::Dnf;
     }
-    
+
     // Check for pacman (Arch)
     if Command::new("pacman").arg("--version").output().is_ok() {
         return PackageManager::Pacman;
     }
-    
+
     // Check for Chocolatey (Windows)
     #[cfg(target_os = "windows")]
     {
@@ -50,7 +50,7 @@ fn detect_package_manager() -> PackageManager {
             return PackageManager::Choco;
         }
     }
-    
+
     PackageManager::None
 }
 
@@ -59,7 +59,7 @@ pub async fn install_runtime(runtime_name: &str) -> Result<bool> {
     // Special case: Rust - prefer rustup installer (more reliable than package managers)
     if runtime_name == "rust" {
         tracing::info!("Installing Rust using rustup.rs installer (recommended method)...");
-        
+
         // Check if curl is available
         if Command::new("curl").arg("--version").output().is_ok() {
             // Download and execute rustup installer
@@ -67,7 +67,7 @@ pub async fn install_runtime(runtime_name: &str) -> Result<bool> {
                 .arg("-c")
                 .arg("curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y")
                 .output();
-            
+
             match install_result {
                 Ok(out) if out.status.success() => {
                     tracing::info!("Rust installed successfully via rustup");
@@ -75,19 +75,26 @@ pub async fn install_runtime(runtime_name: &str) -> Result<bool> {
                     let cargo_path = std::env::var("HOME")
                         .map(|home| format!("{}/.cargo/bin/cargo", home))
                         .unwrap_or_else(|_| "cargo".to_string());
-                    
-                    if std::path::Path::new(&cargo_path).exists() || Command::new("cargo").arg("--version").output().is_ok() {
+
+                    if std::path::Path::new(&cargo_path).exists()
+                        || Command::new("cargo").arg("--version").output().is_ok()
+                    {
                         tracing::info!("Rust installation verified");
                         return Ok(true);
                     } else {
                         tracing::info!("Rust installed but cargo not in PATH yet");
-                        tracing::info!("You may need to restart your terminal or run: source $HOME/.cargo/env");
+                        tracing::info!(
+                            "You may need to restart your terminal or run: source $HOME/.cargo/env"
+                        );
                         return Ok(true); // Installation succeeded, just PATH needs updating
                     }
                 }
                 Ok(out) => {
                     let error = String::from_utf8_lossy(&out.stderr);
-                    tracing::warn!("rustup installer failed: {}", error.lines().next().unwrap_or("Unknown error"));
+                    tracing::warn!(
+                        "rustup installer failed: {}",
+                        error.lines().next().unwrap_or("Unknown error")
+                    );
                     tracing::info!("Falling back to package manager...");
                 }
                 Err(e) => {
@@ -100,9 +107,9 @@ pub async fn install_runtime(runtime_name: &str) -> Result<bool> {
             tracing::info!("Falling back to package manager...");
         }
     }
-    
+
     let pm = detect_package_manager();
-    
+
     match pm {
         PackageManager::Brew => install_with_brew(runtime_name).await,
         PackageManager::Apt => install_with_apt(runtime_name).await,
@@ -111,7 +118,10 @@ pub async fn install_runtime(runtime_name: &str) -> Result<bool> {
         PackageManager::Pacman => install_with_pacman(runtime_name).await,
         PackageManager::Choco => install_with_choco(runtime_name).await,
         PackageManager::None => {
-            tracing::warn!("No package manager found. Cannot auto-install {}.", runtime_name);
+            tracing::warn!(
+                "No package manager found. Cannot auto-install {}.",
+                runtime_name
+            );
             tracing::info!("Please install {} manually:", runtime_name);
             print_manual_instructions(runtime_name);
             Ok(false)
@@ -132,14 +142,14 @@ async fn install_with_brew(runtime_name: &str) -> Result<bool> {
         "java" => "openjdk",
         _ => runtime_name,
     };
-    
+
     tracing::info!("Installing {} using Homebrew...", runtime_name);
     tracing::info!("This may require administrator privileges.");
-    
+
     let output = Command::new("brew")
         .args(&["install", package_name])
         .output();
-    
+
     match output {
         Ok(out) if out.status.success() => {
             tracing::info!("Successfully installed {} via Homebrew", runtime_name);
@@ -148,7 +158,11 @@ async fn install_with_brew(runtime_name: &str) -> Result<bool> {
         Ok(out) => {
             let error = String::from_utf8_lossy(&out.stderr);
             if error.contains("Error:") || error.contains("Permission denied") {
-                tracing::warn!("Failed to install {} via Homebrew: {}", runtime_name, error.lines().next().unwrap_or("Unknown error"));
+                tracing::warn!(
+                    "Failed to install {} via Homebrew: {}",
+                    runtime_name,
+                    error.lines().next().unwrap_or("Unknown error")
+                );
                 tracing::info!("You may need to run: brew install {}", package_name);
             } else {
                 tracing::warn!("Installation may have succeeded, but verification failed");
@@ -175,29 +189,27 @@ async fn install_with_apt(runtime_name: &str) -> Result<bool> {
         "java" => "default-jdk",
         _ => runtime_name,
     };
-    
+
     tracing::info!("Installing {} using apt-get...", runtime_name);
     tracing::info!("This may require administrator privileges (sudo).");
-    
+
     // Try apt-get update first
-    let update_output = Command::new("sudo")
-        .args(&["apt-get", "update"])
-        .output();
-    
+    let update_output = Command::new("sudo").args(&["apt-get", "update"]).output();
+
     // Try without sudo if sudo fails (we might be root)
     let _update_ok = if update_output.is_err() {
         Command::new("apt-get").args(&["update"]).output().is_ok()
     } else {
         update_output.as_ref().unwrap().status.success()
     };
-    
+
     // Install package(s) - split package names into separate args
     let packages: Vec<&str> = package_name.split_whitespace().collect();
     let output = Command::new("sudo")
         .args(&["apt-get", "install", "-y"])
         .args(&packages)
         .output();
-    
+
     // Try without sudo if sudo fails
     let output = if output.is_err() {
         Command::new("apt-get")
@@ -207,15 +219,21 @@ async fn install_with_apt(runtime_name: &str) -> Result<bool> {
     } else {
         output
     };
-    
+
     match output {
         Ok(out) if out.status.success() => {
             tracing::info!("Successfully installed {} via apt-get", runtime_name);
             Ok(true)
         }
         Ok(_) | Err(_) => {
-            tracing::warn!("Failed to install {} via apt-get. You may need to run:", runtime_name);
-            tracing::info!("  sudo apt-get update && sudo apt-get install -y {}", package_name);
+            tracing::warn!(
+                "Failed to install {} via apt-get. You may need to run:",
+                runtime_name
+            );
+            tracing::info!(
+                "  sudo apt-get update && sudo apt-get install -y {}",
+                package_name
+            );
             Ok(false)
         }
     }
@@ -234,14 +252,14 @@ async fn install_with_yum(runtime_name: &str) -> Result<bool> {
         "java" => "java-devel",
         _ => runtime_name,
     };
-    
+
     tracing::info!("Installing {} using yum...", runtime_name);
-    
+
     let output = Command::new("sudo")
         .args(&["yum", "install", "-y"])
         .args(package_name.split_whitespace())
         .output();
-    
+
     let output = if output.is_err() {
         Command::new("yum")
             .args(&["install", "-y"])
@@ -250,14 +268,17 @@ async fn install_with_yum(runtime_name: &str) -> Result<bool> {
     } else {
         output
     };
-    
+
     match output {
         Ok(out) if out.status.success() => {
             tracing::info!("Successfully installed {} via yum", runtime_name);
             Ok(true)
         }
         Ok(_) | Err(_) => {
-            tracing::warn!("Failed to install {} via yum. You may need to run:", runtime_name);
+            tracing::warn!(
+                "Failed to install {} via yum. You may need to run:",
+                runtime_name
+            );
             tracing::info!("  sudo yum install -y {}", package_name);
             Ok(false)
         }
@@ -277,14 +298,14 @@ async fn install_with_dnf(runtime_name: &str) -> Result<bool> {
         "java" => "java-devel",
         _ => runtime_name,
     };
-    
+
     tracing::info!("Installing {} using dnf...", runtime_name);
-    
+
     let output = Command::new("sudo")
         .args(&["dnf", "install", "-y"])
         .args(package_name.split_whitespace())
         .output();
-    
+
     let output = if output.is_err() {
         Command::new("dnf")
             .args(&["install", "-y"])
@@ -293,14 +314,17 @@ async fn install_with_dnf(runtime_name: &str) -> Result<bool> {
     } else {
         output
     };
-    
+
     match output {
         Ok(out) if out.status.success() => {
             tracing::info!("Successfully installed {} via dnf", runtime_name);
             Ok(true)
         }
         Ok(_) | Err(_) => {
-            tracing::warn!("Failed to install {} via dnf. You may need to run:", runtime_name);
+            tracing::warn!(
+                "Failed to install {} via dnf. You may need to run:",
+                runtime_name
+            );
             tracing::info!("  sudo dnf install -y {}", package_name);
             Ok(false)
         }
@@ -320,14 +344,14 @@ async fn install_with_pacman(runtime_name: &str) -> Result<bool> {
         "java" => "jdk-openjdk",
         _ => runtime_name,
     };
-    
+
     tracing::info!("Installing {} using pacman...", runtime_name);
-    
+
     let output = Command::new("sudo")
         .args(&["pacman", "-S", "--noconfirm"])
         .arg(package_name)
         .output();
-    
+
     let output = if output.is_err() {
         Command::new("pacman")
             .args(&["-S", "--noconfirm"])
@@ -336,14 +360,17 @@ async fn install_with_pacman(runtime_name: &str) -> Result<bool> {
     } else {
         output
     };
-    
+
     match output {
         Ok(out) if out.status.success() => {
             tracing::info!("Successfully installed {} via pacman", runtime_name);
             Ok(true)
         }
         Ok(_) | Err(_) => {
-            tracing::warn!("Failed to install {} via pacman. You may need to run:", runtime_name);
+            tracing::warn!(
+                "Failed to install {} via pacman. You may need to run:",
+                runtime_name
+            );
             tracing::info!("  sudo pacman -S {}", package_name);
             Ok(false)
         }
@@ -363,21 +390,24 @@ async fn install_with_choco(runtime_name: &str) -> Result<bool> {
         "java" => "openjdk",
         _ => runtime_name,
     };
-    
+
     tracing::info!("Installing {} using Chocolatey...", runtime_name);
     tracing::info!("This may require administrator privileges.");
-    
+
     let output = Command::new("choco")
         .args(&["install", package_name, "-y"])
         .output();
-    
+
     match output {
         Ok(out) if out.status.success() => {
             tracing::info!("Successfully installed {} via Chocolatey", runtime_name);
             Ok(true)
         }
         Ok(_) | Err(_) => {
-            tracing::warn!("Failed to install {} via Chocolatey. You may need to run:", runtime_name);
+            tracing::warn!(
+                "Failed to install {} via Chocolatey. You may need to run:",
+                runtime_name
+            );
             tracing::info!("  choco install {} -y", package_name);
             Ok(false)
         }
@@ -411,7 +441,9 @@ fn print_manual_instructions(runtime_name: &str) {
         "node" | "nodejs" => {
             tracing::info!("  macOS: brew install node");
             tracing::info!("  Ubuntu/Debian: sudo apt-get install nodejs npm");
-            tracing::info!("  RHEL/Fedora: sudo yum install nodejs npm or sudo dnf install nodejs npm");
+            tracing::info!(
+                "  RHEL/Fedora: sudo yum install nodejs npm or sudo dnf install nodejs npm"
+            );
             tracing::info!("  Arch: sudo pacman -S nodejs npm");
             tracing::info!("  Or use nvm: nvm install --lts");
         }
@@ -423,16 +455,22 @@ fn print_manual_instructions(runtime_name: &str) {
             tracing::info!("  Or download from: https://go.dev/dl/");
         }
         "rust" => {
-            tracing::info!("  All platforms: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh");
+            tracing::info!(
+                "  All platforms: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
+            );
             tracing::info!("  macOS: brew install rust");
             tracing::info!("  Ubuntu/Debian: sudo apt-get install rustc cargo");
-            tracing::info!("  RHEL/Fedora: sudo yum install rust cargo or sudo dnf install rust cargo");
+            tracing::info!(
+                "  RHEL/Fedora: sudo yum install rust cargo or sudo dnf install rust cargo"
+            );
             tracing::info!("  Arch: sudo pacman -S rust");
         }
         "java" => {
             tracing::info!("  macOS: brew install openjdk");
             tracing::info!("  Ubuntu/Debian: sudo apt-get install default-jdk");
-            tracing::info!("  RHEL/Fedora: sudo yum install java-devel or sudo dnf install java-devel");
+            tracing::info!(
+                "  RHEL/Fedora: sudo yum install java-devel or sudo dnf install java-devel"
+            );
             tracing::info!("  Arch: sudo pacman -S jdk-openjdk");
             tracing::info!("  Or download from: https://adoptium.net/");
         }
@@ -452,34 +490,47 @@ pub async fn ensure_runtime_available(runtime_name: &str, check_commands: &[&str
     // Check if runtime is already available
     for cmd in check_commands {
         // For java, check both javac and java with appropriate version flags
-        let version_flag = if *cmd == "javac" { "-version" } else if *cmd == "java" { "-version" } else { "--version" };
-        
+        let version_flag = if *cmd == "javac" {
+            "-version"
+        } else if *cmd == "java" {
+            "-version"
+        } else {
+            "--version"
+        };
+
         if Command::new(cmd).arg(version_flag).output().is_ok() {
             tracing::debug!("{} found at: {}", runtime_name, cmd);
             return Ok(true);
         }
     }
-    
+
     // Runtime not found, attempt installation
-    tracing::info!("{} not found. Attempting to install automatically...", runtime_name);
+    tracing::info!(
+        "{} not found. Attempting to install automatically...",
+        runtime_name
+    );
     tracing::info!("This may require administrator privileges and take a few minutes.");
-    
+
     match install_runtime(runtime_name).await {
         Ok(true) => {
             // Give a moment for PATH to update (especially for rustup)
             // Use std::thread::sleep since we're already async
             std::thread::sleep(std::time::Duration::from_secs(1));
-            
+
             // Verify installation worked
             for cmd in check_commands {
-                let version_flag = if *cmd == "javac" || *cmd == "java" { "-version" } else { "--version" };
-                
+                let version_flag = if *cmd == "javac" || *cmd == "java" {
+                    "-version"
+                } else {
+                    "--version"
+                };
+
                 if Command::new(cmd).arg(version_flag).output().is_ok() {
                     tracing::info!("{} successfully installed and verified", runtime_name);
                     return Ok(true);
                 }
             }
-            
+
             // For Rust, also check if cargo is in ~/.cargo/bin
             if runtime_name == "rust" {
                 if let Ok(home) = std::env::var("HOME") {
@@ -491,8 +542,11 @@ pub async fn ensure_runtime_available(runtime_name: &str, check_commands: &[&str
                     }
                 }
             }
-            
-            tracing::warn!("{} installation completed but runtime not found in PATH", runtime_name);
+
+            tracing::warn!(
+                "{} installation completed but runtime not found in PATH",
+                runtime_name
+            );
             tracing::info!("You may need to restart your terminal or add it to PATH");
             Ok(false)
         }
@@ -508,4 +562,3 @@ pub async fn ensure_runtime_available(runtime_name: &str, check_commands: &[&str
         }
     }
 }
-

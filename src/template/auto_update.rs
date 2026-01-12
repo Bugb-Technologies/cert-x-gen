@@ -1,10 +1,10 @@
 // Auto-Update System for Templates
 // Implements Nuclei-like auto-update functionality
 
+use crate::error::Result;
+use crate::template::paths::PathResolver;
 use crate::template::repository::RepositoryManager;
 use crate::template::version::TemplateVersion;
-use crate::template::paths::PathResolver;
-use crate::error::Result;
 use colored::*;
 use std::path::Path;
 
@@ -54,10 +54,13 @@ impl AutoUpdater {
 
     /// Perform first-run auto-install
     pub fn auto_install(&mut self) -> Result<()> {
-        println!("{}", "[INFO] Templates not found. Installing from GitHub...".blue());
-        
+        println!(
+            "{}",
+            "[INFO] Templates not found. Installing from GitHub...".blue()
+        );
+
         self.perform_update()?;
-        
+
         println!("{}", "[SUCCESS] Templates installed successfully!".green());
         Ok(())
     }
@@ -88,8 +91,7 @@ impl AutoUpdater {
             );
             println!(
                 "{}",
-                "[INFO] Run 'cert-x-gen template update' to get the latest templates"
-                    .yellow()
+                "[INFO] Run 'cert-x-gen template update' to get the latest templates".yellow()
             );
             return Ok(true); // Updates available
         }
@@ -103,13 +105,13 @@ impl AutoUpdater {
 
         // Initialize repository manager
         let mut repo_manager = RepositoryManager::new()?;
-        
+
         // Update all repositories
         repo_manager.update_all()?;
 
         // Get latest version after update
         let latest_version = self.get_latest_version()?;
-        
+
         // Update version config
         self.version_config.update_version(latest_version.clone());
         self.save_version_config()?;
@@ -137,7 +139,7 @@ impl AutoUpdater {
     /// Get Git version (commit hash or tag) from a directory
     fn get_git_version(&self, dir: &Path) -> Option<String> {
         let repo_path = dir.join("official"); // Official repository
-        
+
         if !repo_path.exists() {
             return None;
         }
@@ -205,18 +207,18 @@ mod tests {
     #[test]
     fn test_disable_enable_auto_check() -> Result<()> {
         let mut updater = AutoUpdater::new()?;
-        
+
         // Should start enabled by default
         assert!(updater.version_config.auto_check_enabled);
-        
+
         // Disable
         updater.disable_auto_check()?;
         assert!(!updater.version_config.auto_check_enabled);
-        
+
         // Enable
         updater.enable_auto_check()?;
         assert!(updater.version_config.auto_check_enabled);
-        
+
         Ok(())
     }
 }

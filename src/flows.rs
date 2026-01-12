@@ -10,8 +10,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 /// Flow execution context
-#[derive(Clone)]
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct FlowContext {
     /// Target being scanned
     pub target: Target,
@@ -47,20 +46,20 @@ impl FlowContext {
     /// Replace variables in a string
     pub fn replace_variables(&self, input: &str) -> String {
         let mut result = input.to_string();
-        
+
         // Replace {{variable}} patterns
         for (key, value) in &self.variables {
             let pattern = format!("{{{{{}}}}}", key);
             result = result.replace(&pattern, value);
         }
-        
+
         // Replace target placeholders
         result = result.replace("{{Hostname}}", &self.target.address);
         if let Some(port) = self.target.port {
             result = result.replace("{{Port}}", &port.to_string());
         }
         result = result.replace("{{BaseURL}}", &self.target.url());
-        
+
         result
     }
 }
@@ -167,7 +166,12 @@ impl FlowExecutor {
                 Ok(step_findings) => findings.extend(step_findings),
                 Err(e) => {
                     if flow.optional {
-                        tracing::warn!("Optional flow {} step {} failed: {}", flow.name, index + 1, e);
+                        tracing::warn!(
+                            "Optional flow {} step {} failed: {}",
+                            flow.name,
+                            index + 1,
+                            e
+                        );
                     } else {
                         return Err(e);
                     }
@@ -192,14 +196,18 @@ impl FlowExecutor {
                 body,
                 store,
             } => {
-                let url = format!("{}{}", context.target.url(), context.replace_variables(path));
+                let url = format!(
+                    "{}{}",
+                    context.target.url(),
+                    context.replace_variables(path)
+                );
                 tracing::debug!("HTTP {} {}", method, url);
 
                 // Build request
-                let mut request = self.network_client.client().request(
-                    method.parse().unwrap_or(reqwest::Method::GET),
-                    &url,
-                );
+                let mut request = self
+                    .network_client
+                    .client()
+                    .request(method.parse().unwrap_or(reqwest::Method::GET), &url);
 
                 // Add headers
                 for (key, value) in headers {
@@ -225,7 +233,9 @@ impl FlowExecutor {
                 }
 
                 // Send request
-                let response = request.send().await
+                let response = request
+                    .send()
+                    .await
                     .map_err(|e| Error::Network(format!("HTTP request failed: {}", e)))?;
 
                 // Process Set-Cookie headers
@@ -237,7 +247,9 @@ impl FlowExecutor {
 
                 // Store response if requested
                 if let Some(var_name) = store {
-                    let response_text = response.text().await
+                    let response_text = response
+                        .text()
+                        .await
                         .map_err(|e| Error::Network(format!("Failed to read response: {}", e)))?;
                     context.set_variable(var_name.clone(), response_text);
                 }
@@ -251,7 +263,11 @@ impl FlowExecutor {
                 Ok(Vec::new())
             }
 
-            FlowStep::Extract { from, pattern, store } => {
+            FlowStep::Extract {
+                from,
+                pattern,
+                store,
+            } => {
                 if let Some(source) = context.get_variable(from) {
                     let re = regex::Regex::new(pattern)
                         .map_err(|e| Error::Parse(format!("Invalid regex: {}", e)))?;
@@ -268,7 +284,10 @@ impl FlowExecutor {
             FlowStep::Check { condition, message } => {
                 let result = self.evaluate_condition(condition, context).await?;
                 if result {
-                    tracing::info!("Check passed: {}", message.as_deref().unwrap_or("condition met"));
+                    tracing::info!(
+                        "Check passed: {}",
+                        message.as_deref().unwrap_or("condition met")
+                    );
                 }
                 Ok(Vec::new())
             }
@@ -333,7 +352,11 @@ impl FlowExecutor {
             // Check dependencies
             for dep in &flow.depends_on {
                 if !executed.contains(dep) {
-                    tracing::warn!("Flow {} depends on {}, which hasn't executed", flow.name, dep);
+                    tracing::warn!(
+                        "Flow {} depends on {}, which hasn't executed",
+                        flow.name,
+                        dep
+                    );
                 }
             }
 

@@ -26,9 +26,8 @@ impl Executor {
     /// Create a new executor
     pub async fn new(config: Arc<Config>) -> Result<Self> {
         let session_manager = Arc::new(SessionManager::new());
-        let network_client = Arc::new(
-            NetworkClient::with_session(config.clone(), session_manager.clone()).await?
-        );
+        let network_client =
+            Arc::new(NetworkClient::with_session(config.clone(), session_manager.clone()).await?);
         let flow_executor = Arc::new(FlowExecutor::new(network_client.clone()));
         let semaphore = Arc::new(Semaphore::new(config.execution.parallel_targets));
 
@@ -125,19 +124,19 @@ impl Executor {
                 if let Some(progress) = get_progress() {
                     progress.set_template(template.id(), &target.address);
                 }
-                
+
                 match self
                     .execute_single_template(template.as_ref(), target, &job.context)
                     .await
                 {
                     Ok(template_findings) => {
                         let findings_count = template_findings.len();
-                        
+
                         // Update progress
                         if let Some(progress) = get_progress() {
                             progress.template_done(&target.address, template.id(), findings_count);
                         }
-                        
+
                         if !template_findings.is_empty() {
                             tracing::info!(
                                 "Template {} found {} findings for {}",
@@ -153,7 +152,7 @@ impl Executor {
                         if let Some(progress) = get_progress() {
                             progress.template_done(&target.address, template.id(), 0);
                         }
-                        
+
                         tracing::warn!(
                             "Template {} failed for target {}: {}",
                             template.id(),

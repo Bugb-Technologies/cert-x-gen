@@ -18,8 +18,8 @@ pub use engine::*;
 // Export new template management types
 pub use auto_update::AutoUpdater;
 pub use git::GitClient;
-pub use manager::{TemplateManager, TemplateLocation, TemplateSource};
+pub use manager::{TemplateLocation, TemplateManager, TemplateSource};
 pub use paths::PathResolver;
 pub use repository::RepositoryManager;
-pub use repository_config::{RepositoryConfig, Repository};
+pub use repository_config::{Repository, RepositoryConfig};
 pub use version::TemplateVersion;

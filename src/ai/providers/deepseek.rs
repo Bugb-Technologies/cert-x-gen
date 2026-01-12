@@ -16,7 +16,9 @@
 //! 2. Set environment variable: export DEEPSEEK_API_KEY="your-key"
 //! 3. Use with cert-x-gen: --provider deepseek
 
-use super::{AuthStatus, ConnectionStatus, GenerationOptions, LLMProvider, ModelInfo, ProviderHealthStatus};
+use super::{
+    AuthStatus, ConnectionStatus, GenerationOptions, LLMProvider, ModelInfo, ProviderHealthStatus,
+};
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use reqwest::Client;
@@ -40,7 +42,7 @@ impl DeepSeekProvider {
             .timeout(Duration::from_secs(60))
             .build()
             .expect("Failed to build HTTP client");
-        
+
         Self {
             endpoint: "https://api.deepseek.com/v1".to_string(),
             api_key,
@@ -48,7 +50,7 @@ impl DeepSeekProvider {
             client,
         }
     }
-    
+
     /// Get the current model name
 
     pub fn model(&self) -> &str {
@@ -61,15 +63,15 @@ impl LLMProvider for DeepSeekProvider {
     fn name(&self) -> &str {
         "deepseek"
     }
-    
+
     fn is_available(&self) -> bool {
         !self.api_key.is_empty() && !self.api_key.starts_with("${")
     }
-    
+
     async fn generate(&self, prompt: &str, options: GenerationOptions) -> Result<String> {
         info!("Generating with DeepSeek model: {}", self.model);
         debug!("Prompt length: {} chars", prompt.len());
-        
+
         #[derive(Serialize)]
         struct ChatRequest {
             model: String,
@@ -79,28 +81,28 @@ impl LLMProvider for DeepSeekProvider {
             #[serde(skip_serializing_if = "Option::is_none")]
             temperature: Option<f32>,
         }
-        
+
         #[derive(Serialize)]
         struct Message {
             role: String,
             content: String,
         }
-        
+
         #[derive(Deserialize)]
         struct ChatResponse {
             choices: Vec<Choice>,
         }
-        
+
         #[derive(Deserialize)]
         struct Choice {
             message: ResponseMessage,
         }
-        
+
         #[derive(Deserialize)]
         struct ResponseMessage {
             content: String,
         }
-        
+
         let request = ChatRequest {
             model: self.model.clone(),
             messages: vec![Message {
@@ -110,10 +112,11 @@ impl LLMProvider for DeepSeekProvider {
             max_tokens: options.max_tokens,
             temperature: options.temperature,
         };
-        
+
         let timeout = options.timeout.unwrap_or(Duration::from_secs(60));
-        
-        let response = self.client
+
+        let response = self
+            .client
             .post(format!("{}/chat/completions", self.endpoint))
             .header("Authorization", format!("Bearer {}", self.api_key))
             .header("Content-Type", "application/json")
@@ -122,64 +125,70 @@ impl LLMProvider for DeepSeekProvider {
             .send()
             .await
             .context("Failed to connect to DeepSeek API")?;
-        
+
         let status = response.status();
         if !status.is_success() {
             let error_text = response.text().await.unwrap_or_default();
             anyhow::bail!(
                 "DeepSeek API error {}: {}. Check your API key.",
-                status, error_text
+                status,
+                error_text
             );
         }
-        
-        let response_data: ChatResponse = response.json().await
+
+        let response_data: ChatResponse = response
+            .json()
+            .await
             .context("Failed to parse DeepSeek response")?;
-        
+
         if response_data.choices.is_empty() {
             anyhow::bail!("DeepSeek returned empty response");
         }
-        
+
         let content = &response_data.choices[0].message.content;
         info!("Generation completed, {} chars", content.len());
-        
+
         Ok(content.clone())
     }
-    
+
     async fn list_models(&self) -> Result<Vec<ModelInfo>> {
         Ok(vec![
             ModelInfo::new(
                 "deepseek-coder".to_string(),
                 "DeepSeek Coder".to_string(),
                 "deepseek".to_string(),
-            ).with_context_window(16384).with_capability("code-generation"),
-            
+            )
+            .with_context_window(16384)
+            .with_capability("code-generation"),
             ModelInfo::new(
                 "deepseek-chat".to_string(),
                 "DeepSeek Chat".to_string(),
                 "deepseek".to_string(),
-            ).with_context_window(16384).with_capability("chat"),
+            )
+            .with_context_window(16384)
+            .with_capability("chat"),
         ])
     }
-    
+
     fn estimate_cost(&self, prompt: &str) -> Option<f64> {
         // DeepSeek: ~$0.14 per 1M input tokens, $0.28 per 1M output
         let input_tokens = (prompt.len() / 4) as f64;
         let output_tokens = 1000.0;
-        
+
         let input_cost = (input_tokens / 1_000_000.0) * 0.14;
         let output_cost = (output_tokens / 1_000_000.0) * 0.28;
-        
+
         Some(input_cost + output_cost)
     }
-    
+
     async fn health_check(&self) -> Result<ProviderHealthStatus> {
         use std::time::Instant;
-        
+
         let mut status = ProviderHealthStatus::new(self.name());
         status.add_metadata("endpoint", &self.endpoint);
         status.add_metadata("model", &self.model);
         status.add_metadata("type", "cloud");
-        
+
         // Check API key configuration
         if self.api_key.is_empty() || self.api_key.starts_with("${") {
             status.connection = ConnectionStatus::Failed;
@@ -189,12 +198,13 @@ impl LLMProvider for DeepSeekProvider {
             status.update_health();
             return Ok(status);
         }
-        
+
         status.authentication = AuthStatus::Untested;
-        
+
         // DeepSeek is OpenAI-compatible, test by listing models
         let start = Instant::now();
-        match self.client
+        match self
+            .client
             .get(format!("{}/models", self.endpoint))
             .header("Authorization", format!("Bearer {}", self.api_key))
             .timeout(Duration::from_secs(10))
@@ -207,7 +217,7 @@ impl LLMProvider for DeepSeekProvider {
                 status.authentication = AuthStatus::Authenticated;
                 status.response_time_ms = Some(elapsed.as_millis() as u64);
                 status.add_message("Successfully connected to DeepSeek API");
-                
+
                 // Try to list models
                 match self.list_models().await {
                     Ok(models) => {
@@ -246,7 +256,7 @@ impl LLMProvider for DeepSeekProvider {
                 status.add_message("Hint: Check your internet connection");
             }
         }
-        
+
         status.update_health();
         Ok(status)
     }

@@ -69,7 +69,10 @@ fn check_go_patterns(code: &str) -> Vec<TemplateDiagnostic> {
 
     // Check for fmt.Print instead of fmt.Println for JSON
     for (line_num, line) in code.lines().enumerate() {
-        if line.contains("fmt.Print(") && !line.contains("fmt.Printf") && !line.contains("fmt.Println") {
+        if line.contains("fmt.Print(")
+            && !line.contains("fmt.Printf")
+            && !line.contains("fmt.Println")
+        {
             diagnostics.push(
                 TemplateDiagnostic::info(
                     "go.fmt_print",
@@ -112,9 +115,11 @@ fn check_go_patterns(code: &str) -> Vec<TemplateDiagnostic> {
             if in_loop && line.contains("}") {
                 in_loop = false;
             }
-            if in_loop && (line.contains("= ") || line.contains("+= ")) 
-                && line.contains("+ ") 
-                && !line.contains("//") {
+            if in_loop
+                && (line.contains("= ") || line.contains("+= "))
+                && line.contains("+ ")
+                && !line.contains("//")
+            {
                 diagnostics.push(
                     TemplateDiagnostic::info(
                         "go.string_concat_loop",
@@ -137,34 +142,30 @@ fn check_goroutine_patterns(code: &str) -> Vec<TemplateDiagnostic> {
 
     // Check for goroutines without proper synchronization
     if code.contains("go ") && code.contains("go func") {
-        let has_sync = code.contains("sync.") 
+        let has_sync = code.contains("sync.")
             || code.contains("WaitGroup")
             || code.contains("chan ")
             || code.contains("<-")
-            || code.contains("context."); 
+            || code.contains("context.");
 
         if !has_sync {
-            diagnostics.push(
-                TemplateDiagnostic::warning(
-                    "go.goroutine_no_sync",
-                    "Goroutine detected without apparent synchronization. \
+            diagnostics.push(TemplateDiagnostic::warning(
+                "go.goroutine_no_sync",
+                "Goroutine detected without apparent synchronization. \
                      Ensure goroutines complete before program exit. \
                      Use sync.WaitGroup, channels, or context.",
-                )
-            );
+            ));
         }
     }
 
     // Check for unbuffered channels in loops (potential deadlock)
     if code.contains("make(chan") && !code.contains("make(chan ") {
         // Simple heuristic - more complex analysis would need AST
-        diagnostics.push(
-            TemplateDiagnostic::info(
-                "go.unbuffered_channel",
-                "Channel creation detected. Ensure buffered channels are used appropriately \
+        diagnostics.push(TemplateDiagnostic::info(
+            "go.unbuffered_channel",
+            "Channel creation detected. Ensure buffered channels are used appropriately \
                  to prevent deadlocks.",
-            )
-        );
+        ));
     }
 
     diagnostics

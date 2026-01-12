@@ -40,8 +40,8 @@ pub mod utils;
 
 // Re-exports for convenience
 pub use crate::ai::{
-    AIConfig, AIManager, GenerationOptions, LLMProvider, ModelInfo, OllamaProvider,
-    ResponseParser, TemplateValidator,
+    AIConfig, AIManager, GenerationOptions, LLMProvider, ModelInfo, OllamaProvider, ResponseParser,
+    TemplateValidator,
 };
 pub use crate::config::Config;
 pub use crate::core::{CertXGen, ScanJob};

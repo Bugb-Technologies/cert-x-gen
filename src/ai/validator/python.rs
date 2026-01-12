@@ -33,7 +33,7 @@ fn check_print_statements(code: &str) -> Vec<TemplateDiagnostic> {
 
     for (line_num, line) in code.lines().enumerate() {
         let trimmed = line.trim();
-        
+
         // Skip comments
         if trimmed.starts_with('#') {
             continue;
@@ -47,7 +47,7 @@ fn check_print_statements(code: &str) -> Vec<TemplateDiagnostic> {
                 || trimmed.contains("json.loads")
                 || trimmed.contains("print(json")
                 || trimmed.contains("print({")  // Might be dict literal
-                || trimmed.contains("print(f'{");  // f-string JSON
+                || trimmed.contains("print(f'{"); // f-string JSON
 
             if !is_json_print && !found_print_warning {
                 // Check if it looks like debug output
@@ -110,7 +110,8 @@ fn check_python_patterns(code: &str) -> Vec<TemplateDiagnostic> {
     }
 
     // Check for mutable default arguments
-    let mutable_default = regex::Regex::new(r"def\s+\w+\s*\([^)]*=\s*(\[\]|\{\}|\{[^}]+\}|\[[^\]]+\])").unwrap();
+    let mutable_default =
+        regex::Regex::new(r"def\s+\w+\s*\([^)]*=\s*(\[\]|\{\}|\{[^}]+\}|\[[^\]]+\])").unwrap();
     for (line_num, line) in code.lines().enumerate() {
         if mutable_default.is_match(line) {
             diagnostics.push(
@@ -143,9 +144,12 @@ fn check_python_patterns(code: &str) -> Vec<TemplateDiagnostic> {
     // Check for f-string with potential injection
     for (line_num, line) in code.lines().enumerate() {
         // Look for f-strings used with os.system or similar
-        if line.contains("os.system(f\"") || line.contains("os.system(f'") 
-            || line.contains("subprocess.run(f\"") || line.contains("subprocess.run(f'")
-            || line.contains("subprocess.call(f\"") {
+        if line.contains("os.system(f\"")
+            || line.contains("os.system(f'")
+            || line.contains("subprocess.run(f\"")
+            || line.contains("subprocess.run(f'")
+            || line.contains("subprocess.call(f\"")
+        {
             diagnostics.push(
                 TemplateDiagnostic::warning(
                     "python.fstring_injection",

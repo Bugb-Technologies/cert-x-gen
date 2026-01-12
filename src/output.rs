@@ -18,8 +18,7 @@ pub trait OutputFormatter: Send + Sync {
     /// Write formatted results to file
     fn write_to_file(&self, results: &ScanResults, path: &Path) -> Result<()> {
         let output = self.format(results)?;
-        let mut file = File::create(path)
-            .map_err(|e| Error::Io(e))?;
+        let mut file = File::create(path).map_err(|e| Error::Io(e))?;
         file.write_all(output.as_bytes())
             .map_err(|e| Error::Io(e))?;
         Ok(())
@@ -46,11 +45,9 @@ impl OutputFormatter for JsonFormatter {
 
     fn format(&self, results: &ScanResults) -> Result<String> {
         if self.pretty {
-            serde_json::to_string_pretty(results)
-                .map_err(|e| Error::Serialization(e.to_string()))
+            serde_json::to_string_pretty(results).map_err(|e| Error::Serialization(e.to_string()))
         } else {
-            serde_json::to_string(results)
-                .map_err(|e| Error::Serialization(e.to_string()))
+            serde_json::to_string(results).map_err(|e| Error::Serialization(e.to_string()))
         }
     }
 }
@@ -79,10 +76,10 @@ impl OutputFormatter for CsvFormatter {
 
     fn format(&self, results: &ScanResults) -> Result<String> {
         let mut output = String::new();
-        
+
         // Header
         output.push_str("Finding ID,Target,Template ID,Severity,Confidence,Title,Description,CVE IDs,Timestamp\n");
-        
+
         // Findings
         for finding in &results.findings {
             let cve_ids = finding.cve_ids.join(";");
@@ -100,7 +97,7 @@ impl OutputFormatter for CsvFormatter {
             );
             output.push_str(&line);
         }
-        
+
         Ok(output)
     }
 }
@@ -139,10 +136,10 @@ impl OutputFormatter for MarkdownFormatter {
 
     fn format(&self, results: &ScanResults) -> Result<String> {
         let mut output = String::new();
-        
+
         // Title
         output.push_str("# CERT-X-GEN Security Scan Report\n\n");
-        
+
         // Summary
         output.push_str("## Summary\n\n");
         output.push_str(&format!("- **Scan ID**: {}\n", results.scan_id));
@@ -150,43 +147,62 @@ impl OutputFormatter for MarkdownFormatter {
         if let Some(completed) = results.completed_at {
             output.push_str(&format!("- **Completed**: {}\n", completed));
         }
-        output.push_str(&format!("- **Targets Scanned**: {}\n", results.statistics.targets_scanned));
-        output.push_str(&format!("- **Templates Executed**: {}\n", results.statistics.templates_executed));
-        output.push_str(&format!("- **Total Findings**: {}\n\n", results.findings.len()));
-        
+        output.push_str(&format!(
+            "- **Targets Scanned**: {}\n",
+            results.statistics.targets_scanned
+        ));
+        output.push_str(&format!(
+            "- **Templates Executed**: {}\n",
+            results.statistics.templates_executed
+        ));
+        output.push_str(&format!(
+            "- **Total Findings**: {}\n\n",
+            results.findings.len()
+        ));
+
         // Findings by severity
         output.push_str("### Findings by Severity\n\n");
-        for severity in [Severity::Critical, Severity::High, Severity::Medium, Severity::Low, Severity::Info] {
-            let count = results.statistics.findings_by_severity.get(&severity).unwrap_or(&0);
+        for severity in [
+            Severity::Critical,
+            Severity::High,
+            Severity::Medium,
+            Severity::Low,
+            Severity::Info,
+        ] {
+            let count = results
+                .statistics
+                .findings_by_severity
+                .get(&severity)
+                .unwrap_or(&0);
             output.push_str(&format!("- **{}**: {}\n", severity, count));
         }
         output.push_str("\n");
-        
+
         // Findings
         if !results.findings.is_empty() {
             output.push_str("## Findings\n\n");
-            
+
             for finding in &results.findings {
                 output.push_str(&format!("### {} - {}\n\n", finding.severity, finding.title));
                 output.push_str(&format!("- **Target**: {}\n", finding.target));
                 output.push_str(&format!("- **Template**: {}\n", finding.template_id));
                 output.push_str(&format!("- **Severity**: {}\n", finding.severity));
                 output.push_str(&format!("- **Confidence**: {}%\n", finding.confidence));
-                
+
                 if !finding.cve_ids.is_empty() {
                     output.push_str(&format!("- **CVE IDs**: {}\n", finding.cve_ids.join(", ")));
                 }
-                
+
                 output.push_str(&format!("\n**Description**: {}\n\n", finding.description));
-                
+
                 if let Some(ref remediation) = finding.remediation {
                     output.push_str(&format!("**Remediation**: {}\n\n", remediation));
                 }
-                
+
                 output.push_str("---\n\n");
             }
         }
-        
+
         Ok(output)
     }
 }
@@ -228,34 +244,37 @@ impl OutputFormatter for SarifFormatter {
                 "results": []
             }]
         });
-        
-        let sarif_results = results.findings.iter().map(|finding| {
-            serde_json::json!({
-                "ruleId": finding.template_id,
-                "level": Self::severity_to_sarif_level(&finding.severity),
-                "message": {
-                    "text": finding.description
-                },
-                "locations": [{
-                    "physicalLocation": {
-                        "artifactLocation": {
-                            "uri": finding.target
+
+        let sarif_results = results
+            .findings
+            .iter()
+            .map(|finding| {
+                serde_json::json!({
+                    "ruleId": finding.template_id,
+                    "level": Self::severity_to_sarif_level(&finding.severity),
+                    "message": {
+                        "text": finding.description
+                    },
+                    "locations": [{
+                        "physicalLocation": {
+                            "artifactLocation": {
+                                "uri": finding.target
+                            }
                         }
+                    }],
+                    "properties": {
+                        "severity": finding.severity.to_string(),
+                        "confidence": finding.confidence,
+                        "cveIds": finding.cve_ids,
+                        "cweIds": finding.cwe_ids
                     }
-                }],
-                "properties": {
-                    "severity": finding.severity.to_string(),
-                    "confidence": finding.confidence,
-                    "cveIds": finding.cve_ids,
-                    "cweIds": finding.cwe_ids
-                }
+                })
             })
-        }).collect::<Vec<_>>();
-        
+            .collect::<Vec<_>>();
+
         sarif["runs"][0]["results"] = serde_json::json!(sarif_results);
-        
-        serde_json::to_string_pretty(&sarif)
-            .map_err(|e| Error::Serialization(e.to_string()))
+
+        serde_json::to_string_pretty(&sarif).map_err(|e| Error::Serialization(e.to_string()))
     }
 }
 
@@ -318,7 +337,7 @@ impl OutputManager {
     /// Stream results to console
     pub fn stream_finding(&self, finding: &crate::types::Finding) {
         use console::style;
-        
+
         let severity_color = match finding.severity {
             Severity::Critical => style(finding.severity.to_string()).red().bold(),
             Severity::High => style(finding.severity.to_string()).red(),
@@ -326,7 +345,7 @@ impl OutputManager {
             Severity::Low => style(finding.severity.to_string()).blue(),
             Severity::Info => style(finding.severity.to_string()).cyan(),
         };
-        
+
         println!(
             "{} {} {} - {}",
             style("✓").green(),

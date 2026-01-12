@@ -27,7 +27,11 @@ impl Scheduler {
 
     /// Schedule a scan job
     pub fn schedule_job(&mut self, job: &ScanJob) -> Result<()> {
-        tracing::debug!("Scheduling job {} with {} templates", job.id, job.templates.len());
+        tracing::debug!(
+            "Scheduling job {} with {} templates",
+            job.id,
+            job.templates.len()
+        );
 
         for template in &job.templates {
             let prioritized = PrioritizedTemplate::new(template.as_ref());
