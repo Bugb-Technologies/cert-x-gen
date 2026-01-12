@@ -71,7 +71,7 @@ EXAMPLES:
 )]
 pub struct Cli {
     #[command(subcommand)]
-    pub command: Commands,
+    pub command: Option<Commands>,
 
     /// Enable verbose output (-v: info+warn, -vv: +trace, -vvv: +debug)
     #[arg(short, long, action = clap::ArgAction::Count, global = true)]
@@ -84,6 +84,15 @@ pub struct Cli {
     /// Configuration file path
     #[arg(short, long, global = true, value_name = "FILE")]
     pub config: Option<PathBuf>,
+
+    /// Update templates (shorthand for 'cxg template update')
+    #[arg(
+        long = "ut",
+        visible_alias = "update-templates",
+        global = true,
+        help = "Update templates from repository (shorthand for 'cxg template update')"
+    )]
+    pub update_templates: bool,
 
     /// Auto-update templates before running (like Nuclei's behavior)
     #[arg(

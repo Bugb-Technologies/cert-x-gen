@@ -96,10 +96,36 @@ fn init_logging(cli: &Cli) -> Result<()> {
 
 /// Run the CLI command
 async fn run(cli: Cli) -> Result<()> {
+    // Handle -ut shorthand (update templates and exit)
+    if cli.update_templates {
+        use cert_x_gen::template::AutoUpdater;
+        let mut updater = AutoUpdater::new()?;
+        updater.perform_update()?;
+        
+        // Show stats after update
+        let stats = updater.get_stats();
+        println!();
+        println!("Templates: {}", stats.summary());
+        return Ok(());
+    }
+
     // Handle auto-update flags before running any command
     handle_auto_update(&cli).await?;
 
-    match cli.command {
+    // If no command provided, show help
+    let command = match cli.command {
+        Some(cmd) => cmd,
+        None => {
+            // No command and no -ut flag - show help
+            use clap::CommandFactory;
+            let mut cmd = Cli::command();
+            cmd.print_help().ok();
+            println!();
+            return Ok(());
+        }
+    };
+
+    match command {
         Commands::Scan(args) => {
             run_scan(args, cli.config).await?;
         }
@@ -2843,9 +2869,9 @@ async fn check_and_enter_sandbox(cli: &Cli) -> Result<()> {
     }
 
     // Don't auto-enter for sandbox management commands (except init, which should run in sandbox)
-    if matches!(cli.command, Commands::Sandbox(_)) {
+    if matches!(cli.command, Some(Commands::Sandbox(_))) {
         // Allow 'sandbox init' to run in Docker if default sandbox is set
-        if !matches!(cli.command, Commands::Sandbox(ref cmd) if matches!(cmd.action, cli::SandboxAction::Init { .. }))
+        if !matches!(cli.command, Some(Commands::Sandbox(ref cmd)) if matches!(cmd.action, cli::SandboxAction::Init { .. }))
         {
             return Ok(());
         }

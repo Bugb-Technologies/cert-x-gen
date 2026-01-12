@@ -10,6 +10,7 @@ mod manager;
 mod paths;
 mod repository;
 mod repository_config;
+mod stats;
 mod version;
 
 // Re-export all template engine types (backward compatibility)
@@ -22,4 +23,5 @@ pub use manager::{TemplateLocation, TemplateManager, TemplateSource};
 pub use paths::PathResolver;
 pub use repository::RepositoryManager;
 pub use repository_config::{Repository, RepositoryConfig};
+pub use stats::TemplateStats;
 pub use version::TemplateVersion;

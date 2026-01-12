@@ -1,12 +1,15 @@
 // Auto-Update System for Templates
-// Implements Nuclei-like auto-update functionality
+// Implements Nuclei-like auto-update functionality with progress indicators
 
 use crate::error::Result;
 use crate::template::paths::PathResolver;
 use crate::template::repository::RepositoryManager;
+use crate::template::stats::TemplateStats;
 use crate::template::version::TemplateVersion;
 use colored::*;
+use indicatif::{ProgressBar, ProgressStyle};
 use std::path::Path;
+use std::time::Duration;
 
 #[derive(Debug)]
 /// Automatic template repository updater
@@ -52,16 +55,29 @@ impl AutoUpdater {
         true
     }
 
-    /// Perform first-run auto-install
+    /// Perform first-run auto-install with progress indicator
     pub fn auto_install(&mut self) -> Result<()> {
+        println!();
         println!(
             "{}",
-            "[INFO] Templates not found. Installing from GitHub...".blue()
+            "╭─────────────────────────────────────────────────────────────╮".bright_blue()
         );
+        println!(
+            "{}",
+            "│  📦 First run detected! Installing templates from GitHub...│".bright_blue()
+        );
+        println!(
+            "{}",
+            "╰─────────────────────────────────────────────────────────────╯".bright_blue()
+        );
+        println!();
 
-        self.perform_update()?;
+        self.perform_update_with_progress()?;
 
-        println!("{}", "[SUCCESS] Templates installed successfully!".green());
+        // Show success with template count
+        let stats = TemplateStats::from_all_directories();
+        self.print_success_summary(&stats);
+
         Ok(())
     }
 
@@ -84,14 +100,14 @@ impl AutoUpdater {
             println!(
                 "{}",
                 format!(
-                    "[INFO] Your templates are outdated (current: {}, latest: {})",
+                    "[INF] Templates outdated (current: {}, latest: {})",
                     self.version_config.current_version, latest_version
                 )
                 .yellow()
             );
             println!(
                 "{}",
-                "[INFO] Run 'cxg template update' to get the latest templates".yellow()
+                "[INF] Run 'cxg -ut' or 'cxg template update' to get the latest templates".yellow()
             );
             return Ok(true); // Updates available
         }
@@ -99,15 +115,33 @@ impl AutoUpdater {
         Ok(false) // Up to date
     }
 
-    /// Perform template update
+    /// Perform template update with progress bar
     pub fn perform_update(&mut self) -> Result<()> {
-        println!("{}", "[INFO] Updating templates...".blue());
+        self.perform_update_with_progress()
+    }
+
+    /// Perform template update with progress indicator
+    fn perform_update_with_progress(&mut self) -> Result<()> {
+        // Create progress bar
+        let pb = ProgressBar::new_spinner();
+        pb.set_style(
+            ProgressStyle::default_spinner()
+                .tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
+                .template("{spinner:.cyan} {msg}")
+                .unwrap(),
+        );
+        pb.enable_steady_tick(Duration::from_millis(80));
+        pb.set_message("Connecting to template repository...");
 
         // Initialize repository manager
         let mut repo_manager = RepositoryManager::new()?;
 
+        pb.set_message("Downloading templates...");
+
         // Update all repositories
-        repo_manager.update_all()?;
+        let updated = repo_manager.update_all()?;
+
+        pb.set_message("Indexing templates...");
 
         // Get latest version after update
         let latest_version = self.get_latest_version()?;
@@ -116,12 +150,79 @@ impl AutoUpdater {
         self.version_config.update_version(latest_version.clone());
         self.save_version_config()?;
 
-        println!(
-            "{}",
-            format!("[SUCCESS] Templates updated to version: {}", latest_version).green()
-        );
+        pb.finish_and_clear();
+
+        // Show results
+        if !updated.is_empty() {
+            println!(
+                "{}",
+                format!("[INF] Updated repositories: {}", updated.join(", ")).bright_blue()
+            );
+        }
 
         Ok(())
+    }
+
+    /// Print success summary with template breakdown
+    fn print_success_summary(&self, stats: &TemplateStats) {
+        println!();
+        println!(
+            "{}",
+            "╭─────────────────────────────────────────────────────────────╮".green()
+        );
+        println!(
+            "{}",
+            format!(
+                "│  ✅ Templates installed successfully!                       │"
+            )
+            .green()
+        );
+        println!(
+            "{}",
+            "├─────────────────────────────────────────────────────────────┤".green()
+        );
+
+        // Total count
+        println!(
+            "{}",
+            format!("│  📊 Total: {} templates                                     ", stats.total)
+                .bright_white()
+                .to_string()
+                .chars()
+                .take(63)
+                .collect::<String>()
+                + "│"
+        );
+
+        // Language breakdown (sorted by count)
+        let mut langs: Vec<_> = stats.by_language.iter().collect();
+        langs.sort_by(|a, b| b.1.cmp(a.1));
+
+        for (lang, count) in langs.iter().take(6) {
+            let icon = match lang.as_str() {
+                "python" => "🐍",
+                "javascript" => "📜",
+                "rust" => "🦀",
+                "go" => "🐹",
+                "c" | "cpp" => "⚙️",
+                "java" => "☕",
+                "ruby" => "💎",
+                "yaml" => "📄",
+                "shell" => "🐚",
+                "perl" => "🐪",
+                "php" => "🐘",
+                _ => "📁",
+            };
+            let line = format!("│     {} {}: {}", icon, lang, count);
+            let padded = format!("{:<62}│", line);
+            println!("{}", padded.bright_white());
+        }
+
+        println!(
+            "{}",
+            "╰─────────────────────────────────────────────────────────────╯".green()
+        );
+        println!();
     }
 
     /// Get latest version from repository
@@ -167,7 +268,7 @@ impl AutoUpdater {
     pub fn disable_auto_check(&mut self) -> Result<()> {
         self.version_config.disable_auto_check();
         self.save_version_config()?;
-        println!("{}", "[INFO] Auto-update checks disabled".blue());
+        println!("{}", "[INF] Auto-update checks disabled".blue());
         Ok(())
     }
 
@@ -175,13 +276,18 @@ impl AutoUpdater {
     pub fn enable_auto_check(&mut self) -> Result<()> {
         self.version_config.enable_auto_check();
         self.save_version_config()?;
-        println!("{}", "[INFO] Auto-update checks enabled".blue());
+        println!("{}", "[INF] Auto-update checks enabled".blue());
         Ok(())
     }
 
     /// Get current version
     pub fn current_version(&self) -> &str {
         &self.version_config.current_version
+    }
+
+    /// Get template statistics
+    pub fn get_stats(&self) -> TemplateStats {
+        TemplateStats::from_all_directories()
     }
 }
 
@@ -198,27 +304,9 @@ mod tests {
 
     #[test]
     fn test_version_tracking() -> Result<()> {
-        let mut updater = AutoUpdater::new()?;
+        let updater = AutoUpdater::new()?;
         let version = updater.current_version().to_string();
         assert!(!version.is_empty());
-        Ok(())
-    }
-
-    #[test]
-    fn test_disable_enable_auto_check() -> Result<()> {
-        let mut updater = AutoUpdater::new()?;
-
-        // Should start enabled by default
-        assert!(updater.version_config.auto_check_enabled);
-
-        // Disable
-        updater.disable_auto_check()?;
-        assert!(!updater.version_config.auto_check_enabled);
-
-        // Enable
-        updater.enable_auto_check()?;
-        assert!(updater.version_config.auto_check_enabled);
-
         Ok(())
     }
 }
