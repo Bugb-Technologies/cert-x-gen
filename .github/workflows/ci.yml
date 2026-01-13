@@ -61,8 +61,8 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-          # Use macos-13 (Intel) for x86_64 builds - avoids cross-compilation
-          - os: macos-13
+          # Use macos-15-intel for x86_64 builds (the only free Intel runner available)
+          - os: macos-15-intel
             target: x86_64-apple-darwin
           # Use macos-latest (ARM64) for aarch64 builds
           - os: macos-latest
