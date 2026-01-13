@@ -685,9 +685,9 @@ mod tests {
             "import json\nimport os\n\ndef main():\n    data = json.dumps({})\n    print(data)";
         assert!(parser.validate_python_structure(valid).is_ok());
 
-        // Invalid - missing JSON
-        let invalid = "def main():\n    print('test')";
-        assert!(parser.validate_python_structure(invalid).is_err());
+        // Valid - has function definition (JSON not required after relaxation)
+        let valid_no_json = "def main():\n    print('test')";
+        assert!(parser.validate_python_structure(valid_no_json).is_ok());
 
         // Invalid - missing function/class
         let invalid = "import json\nprint('test')";

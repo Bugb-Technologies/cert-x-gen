@@ -172,10 +172,7 @@ impl AutoUpdater {
         );
         println!(
             "{}",
-            format!(
-                "│  ✅ Templates installed successfully!                       │"
-            )
-            .green()
+            format!("│  ✅ Templates installed successfully!                       │").green()
         );
         println!(
             "{}",
@@ -185,12 +182,15 @@ impl AutoUpdater {
         // Total count
         println!(
             "{}",
-            format!("│  📊 Total: {} templates                                     ", stats.total)
-                .bright_white()
-                .to_string()
-                .chars()
-                .take(63)
-                .collect::<String>()
+            format!(
+                "│  📊 Total: {} templates                                     ",
+                stats.total
+            )
+            .bright_white()
+            .to_string()
+            .chars()
+            .take(63)
+            .collect::<String>()
                 + "│"
         );
 

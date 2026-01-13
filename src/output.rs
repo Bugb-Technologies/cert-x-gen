@@ -759,7 +759,8 @@ a:hover { text-decoration: underline; }
 "#);
 
         // Header / Hero
-        html.push_str(&format!(r#"
+        html.push_str(&format!(
+            r#"
         <div class="report-hero">
             <h1 class="report-title">🛡️ CERT-X-GEN Security Scan Report</h1>
             <p class="report-subtitle">Scan ID: {}</p>
@@ -769,7 +770,7 @@ a:hover { text-decoration: underline; }
                 <span class="meta-pill">🔧 v{}</span>
             </div>
         </div>
-"#, 
+"#,
             results.scan_id,
             results.started_at.format("%Y-%m-%d %H:%M:%S UTC"),
             results.statistics.duration.as_secs_f64(),
@@ -777,7 +778,8 @@ a:hover { text-decoration: underline; }
         ));
 
         // Stats Grid
-        html.push_str(&format!(r#"
+        html.push_str(&format!(
+            r#"
         <div class="grid stats">
             <div class="card">
                 <div class="stat-value">{}</div>
@@ -796,7 +798,7 @@ a:hover { text-decoration: underline; }
                 <div class="stat-label">Duration</div>
             </div>
         </div>
-"#, 
+"#,
             results.statistics.targets_scanned,
             results.statistics.templates_executed,
             results.findings.len(),
@@ -804,20 +806,61 @@ a:hover { text-decoration: underline; }
         ));
 
         // Severity Grid
-        let critical = results.statistics.findings_by_severity.get(&Severity::Critical).unwrap_or(&0);
-        let high = results.statistics.findings_by_severity.get(&Severity::High).unwrap_or(&0);
-        let medium = results.statistics.findings_by_severity.get(&Severity::Medium).unwrap_or(&0);
-        let low = results.statistics.findings_by_severity.get(&Severity::Low).unwrap_or(&0);
-        let info = results.statistics.findings_by_severity.get(&Severity::Info).unwrap_or(&0);
+        let critical = results
+            .statistics
+            .findings_by_severity
+            .get(&Severity::Critical)
+            .unwrap_or(&0);
+        let high = results
+            .statistics
+            .findings_by_severity
+            .get(&Severity::High)
+            .unwrap_or(&0);
+        let medium = results
+            .statistics
+            .findings_by_severity
+            .get(&Severity::Medium)
+            .unwrap_or(&0);
+        let low = results
+            .statistics
+            .findings_by_severity
+            .get(&Severity::Low)
+            .unwrap_or(&0);
+        let info = results
+            .statistics
+            .findings_by_severity
+            .get(&Severity::Info)
+            .unwrap_or(&0);
 
         // Add "has-findings" class for teal highlighting
-        let critical_class = if *critical > 0 { "sev critical has-findings" } else { "sev critical" };
-        let high_class = if *high > 0 { "sev high has-findings" } else { "sev high" };
-        let medium_class = if *medium > 0 { "sev medium has-findings" } else { "sev medium" };
-        let low_class = if *low > 0 { "sev low has-findings" } else { "sev low" };
-        let info_class = if *info > 0 { "sev info has-findings" } else { "sev info" };
+        let critical_class = if *critical > 0 {
+            "sev critical has-findings"
+        } else {
+            "sev critical"
+        };
+        let high_class = if *high > 0 {
+            "sev high has-findings"
+        } else {
+            "sev high"
+        };
+        let medium_class = if *medium > 0 {
+            "sev medium has-findings"
+        } else {
+            "sev medium"
+        };
+        let low_class = if *low > 0 {
+            "sev low has-findings"
+        } else {
+            "sev low"
+        };
+        let info_class = if *info > 0 {
+            "sev info has-findings"
+        } else {
+            "sev info"
+        };
 
-        html.push_str(&format!(r#"
+        html.push_str(&format!(
+            r#"
         <div class="grid severity">
             <div class="{}">
                 <div class="sev-count">{}</div>
@@ -840,27 +883,42 @@ a:hover { text-decoration: underline; }
                 <div class="sev-label">Info</div>
             </div>
         </div>
-"#, critical_class, critical, high_class, high, medium_class, medium, low_class, low, info_class, info));
+"#,
+            critical_class,
+            critical,
+            high_class,
+            high,
+            medium_class,
+            medium,
+            low_class,
+            low,
+            info_class,
+            info
+        ));
 
         // Findings Section
-        html.push_str(r#"
+        html.push_str(
+            r#"
         <div class="section">
             <h2 class="section-title">📋 Findings</h2>
             <div class="hr"></div>
-"#);
+"#,
+        );
 
         if results.findings.is_empty() {
-            html.push_str(r#"
+            html.push_str(
+                r#"
             <div class="no-findings">
                 <div class="icon">✅</div>
                 <h3>No vulnerabilities found</h3>
                 <p>The scan completed successfully with no security issues detected.</p>
             </div>
-"#);
+"#,
+            );
         } else {
             for finding in &results.findings {
                 let severity_class = finding.severity.to_string().to_lowercase();
-                
+
                 // Build evidence section
                 let evidence_html = if let Some(ref response) = finding.evidence.response {
                     let truncated = if response.len() > 1000 {
@@ -868,21 +926,26 @@ a:hover { text-decoration: underline; }
                     } else {
                         response.to_string()
                     };
-                    format!(r#"
+                    format!(
+                        r#"
                     <div class="evidence">
                         <div class="evidence-head">
                             <span>Evidence</span>
                             <span>Raw output</span>
                         </div>
                         <pre>{}</pre>
-                    </div>"#, Self::escape_html(&truncated))
+                    </div>"#,
+                        Self::escape_html(&truncated)
+                    )
                 } else {
                     String::new()
                 };
 
                 // Build tags section
                 let tags_html = if !finding.tags.is_empty() {
-                    let tags: String = finding.tags.iter()
+                    let tags: String = finding
+                        .tags
+                        .iter()
                         .map(|t| format!(r#"<span class="tag">{}</span>"#, Self::escape_html(t)))
                         .collect::<Vec<_>>()
                         .join("");
@@ -893,37 +956,53 @@ a:hover { text-decoration: underline; }
 
                 // Build references section
                 let refs_html = if !finding.references.is_empty() {
-                    let refs: String = finding.references.iter()
-                        .map(|r| format!(r#"<a href="{}" target="_blank">{}</a>"#, 
-                            Self::escape_html(r), Self::escape_html(r)))
+                    let refs: String = finding
+                        .references
+                        .iter()
+                        .map(|r| {
+                            format!(
+                                r#"<a href="{}" target="_blank">{}</a>"#,
+                                Self::escape_html(r),
+                                Self::escape_html(r)
+                            )
+                        })
                         .collect::<Vec<_>>()
                         .join("");
-                    format!(r#"
+                    format!(
+                        r#"
                     <div class="refs">
                         <div class="refs-title">References</div>
                         {}
-                    </div>"#, refs)
+                    </div>"#,
+                        refs
+                    )
                 } else {
                     String::new()
                 };
 
                 // Build CWE/CVE info
-                let vuln_ids: Vec<String> = finding.cwe_ids.iter()
+                let vuln_ids: Vec<String> = finding
+                    .cwe_ids
+                    .iter()
                     .filter(|s| !s.is_empty())
                     .map(|s| s.to_string())
                     .chain(finding.cve_ids.iter().map(|s| s.to_string()))
                     .collect();
                 let vuln_html = if !vuln_ids.is_empty() {
-                    format!(r#"
+                    format!(
+                        r#"
                         <div class="kv">
                             <div class="k">Vulnerability IDs</div>
                             <div class="v">{}</div>
-                        </div>"#, vuln_ids.join(", "))
+                        </div>"#,
+                        vuln_ids.join(", ")
+                    )
                 } else {
                     String::new()
                 };
 
-                html.push_str(&format!(r#"
+                html.push_str(&format!(
+                    r#"
             <article class="finding">
                 <div class="finding-head">
                     <h3 class="finding-title">{}</h3>
@@ -974,19 +1053,25 @@ a:hover { text-decoration: underline; }
             }
         }
 
-        html.push_str(r#"
+        html.push_str(
+            r#"
         </div>
-"#);
+"#,
+        );
 
         // Footer
-        html.push_str(&format!(r#"
+        html.push_str(&format!(
+            r#"
         <div class="footer">
             Generated by CERT-X-GEN v{} | {}
         </div>
     </div>
 </body>
 </html>
-"#, env!("CARGO_PKG_VERSION"), results.started_at.format("%Y-%m-%d %H:%M:%S UTC")));
+"#,
+            env!("CARGO_PKG_VERSION"),
+            results.started_at.format("%Y-%m-%d %H:%M:%S UTC")
+        ));
 
         Ok(html)
     }

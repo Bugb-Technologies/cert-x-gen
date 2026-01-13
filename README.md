@@ -43,18 +43,13 @@ cxg scan --scope db.example.com:5432 --templates postgresql-default-credentials.
 cxg scan --scope targets.txt --templates redis*.py,docker*.go,system*.sh
 ```
 
-### What CERT-X-GEN Is
+### Highlights
 
 - A **language-agnostic runtime** for vulnerability detection logic
 - A **unified execution layer** for security checks across 12 languages
 - A **bridge** between research scripts and production scanners
 - A scanner **designed for CI, automation, and agentic systems**
 
-### What CERT-X-GEN Is Not
-
-- Not a point-and-click vulnerability scanner
-- Not a replacement for every security tool
-- Not optimized for beginners or one-click scanning
 
 ---
 

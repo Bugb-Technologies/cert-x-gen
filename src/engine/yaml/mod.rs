@@ -476,15 +476,16 @@ impl YamlTemplateImpl {
 
             // Build headers: merge template headers + context headers + cookies
             let mut request_headers = spec.headers.clone();
-            
+
             // Add context headers
             for (key, value) in &context.headers {
                 request_headers.insert(key.clone(), value.clone());
             }
-            
+
             // Add cookies from context as Cookie header
             if !context.cookies.is_empty() {
-                let cookie_str = context.cookies
+                let cookie_str = context
+                    .cookies
                     .iter()
                     .map(|(k, v)| format!("{}={}", k, v))
                     .collect::<Vec<_>>()

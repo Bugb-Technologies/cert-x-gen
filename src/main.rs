@@ -101,7 +101,7 @@ async fn run(cli: Cli) -> Result<()> {
         use cert_x_gen::template::AutoUpdater;
         let mut updater = AutoUpdater::new()?;
         updater.perform_update()?;
-        
+
         // Show stats after update
         let stats = updater.get_stats();
         println!();
@@ -688,7 +688,10 @@ fn apply_scan_args_to_config(config: &mut Config, args: &cli::ScanArgs) {
     if let Some(headers) = &args.header {
         for header in headers {
             if let Some((key, value)) = header.split_once(':') {
-                config.network.headers.push((key.trim().to_string(), value.trim().to_string()));
+                config
+                    .network
+                    .headers
+                    .push((key.trim().to_string(), value.trim().to_string()));
             }
         }
     }
@@ -697,11 +700,17 @@ fn apply_scan_args_to_config(config: &mut Config, args: &cli::ScanArgs) {
     if let Some(cookies) = &args.cookie {
         for cookie in cookies {
             if let Some((key, value)) = cookie.split_once('=') {
-                config.network.cookies.push((key.trim().to_string(), value.trim().to_string()));
+                config
+                    .network
+                    .cookies
+                    .push((key.trim().to_string(), value.trim().to_string()));
             }
         }
         if !config.network.cookies.is_empty() {
-            tracing::info!("Using {} cookie(s) for authenticated scanning", config.network.cookies.len());
+            tracing::info!(
+                "Using {} cookie(s) for authenticated scanning",
+                config.network.cookies.len()
+            );
         }
     }
 }
@@ -1692,20 +1701,19 @@ async fn run_template_command(cmd: cli::TemplateCommand) -> Result<()> {
         TemplateAction::Update { force: _ } => {
             use cert_x_gen::template::AutoUpdater;
 
-            let mut updater = AutoUpdater::new().map_err(|e| {
-                Error::config(format!("Failed to initialize updater: {}", e))
-            })?;
+            let mut updater = AutoUpdater::new()
+                .map_err(|e| Error::config(format!("Failed to initialize updater: {}", e)))?;
 
             // Check if this is first run (no templates)
             if updater.needs_initial_install() {
-                updater.auto_install().map_err(|e| {
-                    Error::config(format!("Failed to install templates: {}", e))
-                })?;
+                updater
+                    .auto_install()
+                    .map_err(|e| Error::config(format!("Failed to install templates: {}", e)))?;
             } else {
                 // Regular update
-                updater.perform_update().map_err(|e| {
-                    Error::config(format!("Failed to update templates: {}", e))
-                })?;
+                updater
+                    .perform_update()
+                    .map_err(|e| Error::config(format!("Failed to update templates: {}", e)))?;
 
                 // Show stats
                 let stats = updater.get_stats();
@@ -1720,52 +1728,54 @@ async fn run_template_command(cmd: cli::TemplateCommand) -> Result<()> {
             let config = Config::default();
             let engine = CertXGen::new(config).await?;
             let templates = engine.load_templates().await?;
-            
+
             // Find template by ID (case-insensitive partial match)
             let matching: Vec<_> = templates
                 .iter()
-                .filter(|t| {
-                    t.id().to_lowercase().contains(&template_id.to_lowercase())
-                })
+                .filter(|t| t.id().to_lowercase().contains(&template_id.to_lowercase()))
                 .collect();
-            
+
             if matching.is_empty() {
                 println!("❌ No template found matching: {}", template_id);
                 println!("\nTry: cxg search --query \"{}\"", template_id);
                 return Ok(());
             }
-            
+
             if matching.len() > 1 {
-                println!("Found {} templates matching '{}':\n", matching.len(), template_id);
+                println!(
+                    "Found {} templates matching '{}':\n",
+                    matching.len(),
+                    template_id
+                );
                 for t in &matching {
                     println!("  • {} ({:?})", t.id(), t.metadata().language);
                 }
                 println!("\nPlease specify a more exact template ID.");
                 return Ok(());
             }
-            
+
             // Show detailed info for the single match
             let template = matching[0];
             let meta = template.metadata();
-            
+
             println!("\n╔════════════════════════════════════════════════════════════════╗");
             println!("║  Template Information                                          ║");
             println!("╚════════════════════════════════════════════════════════════════╝\n");
-            
+
             println!("  ID:          {}", template.id());
             println!("  Name:        {}", meta.name);
             println!("  Language:    {:?}", meta.language);
             println!("  Severity:    {:?}", meta.severity);
             println!("  Author:      {}", meta.author.name);
             println!("  Description: {}", meta.description);
-            
+
             if !meta.tags.is_empty() {
                 println!("  Tags:        {}", meta.tags.join(", "));
             }
-            
+
             if !meta.file_path.as_os_str().is_empty() {
                 println!("  File:        {}", meta.file_path.display());
-                
+
                 // Show file size
                 if let Ok(file_meta) = std::fs::metadata(&meta.file_path) {
                     let size = file_meta.len();
@@ -1776,7 +1786,7 @@ async fn run_template_command(cmd: cli::TemplateCommand) -> Result<()> {
                     }
                 }
             }
-            
+
             println!();
             Ok(())
         }
@@ -1787,7 +1797,7 @@ async fn run_template_command(cmd: cli::TemplateCommand) -> Result<()> {
             output,
         } => {
             use cli::LanguageArg;
-            
+
             // Map language to file extension and skeleton name
             let (ext, skeleton_name) = match language {
                 LanguageArg::Python => ("py", "python-template-skeleton.py"),
@@ -1803,7 +1813,7 @@ async fn run_template_command(cmd: cli::TemplateCommand) -> Result<()> {
                 LanguageArg::Shell => ("sh", "shell-template-skeleton.sh"),
                 LanguageArg::Yaml => ("yaml", "yaml-template-skeleton.yaml"),
             };
-            
+
             // Try to find skeleton in multiple locations
             let skeleton_paths = vec![
                 // Local dev path
@@ -1814,15 +1824,17 @@ async fn run_template_command(cmd: cli::TemplateCommand) -> Result<()> {
                     .join(".cert-x-gen/templates/official/templates/skeleton")
                     .join(skeleton_name),
             ];
-            
+
             let skeleton_content = skeleton_paths
                 .iter()
                 .find_map(|p| std::fs::read_to_string(p).ok())
-                .ok_or_else(|| Error::config(format!(
-                    "Skeleton template '{}' not found. Run 'cxg --ut' to download templates.",
-                    skeleton_name
-                )))?;
-            
+                .ok_or_else(|| {
+                    Error::config(format!(
+                        "Skeleton template '{}' not found. Run 'cxg --ut' to download templates.",
+                        skeleton_name
+                    ))
+                })?;
+
             // Replace placeholders
             let template_name = if name.is_empty() {
                 // Convert kebab-case to Title Case
@@ -1839,26 +1851,32 @@ async fn run_template_command(cmd: cli::TemplateCommand) -> Result<()> {
             } else {
                 name.clone()
             };
-            
+
             let content = skeleton_content
                 .replace("template-skeleton", &id)
                 .replace("Template Skeleton", &template_name);
-            
+
             // Determine output path
             let output_path = output.join(format!("{}.{}", id, ext));
-            
+
             // Write template
             std::fs::write(&output_path, &content)
                 .map_err(|e| Error::config(format!("Failed to write template: {}", e)))?;
-            
+
             println!("✅ Created template: {}", output_path.display());
             println!("   Language: {:?}", language);
             println!("   ID: {}", id);
             println!("\nNext steps:");
             println!("   1. Edit the template to add your detection logic");
-            println!("   2. Validate: cxg template validate {}", output_path.display());
-            println!("   3. Test: cxg scan --scope <target> --templates {}", output_path.display());
-            
+            println!(
+                "   2. Validate: cxg template validate {}",
+                output_path.display()
+            );
+            println!(
+                "   3. Test: cxg scan --scope <target> --templates {}",
+                output_path.display()
+            );
+
             Ok(())
         }
         TemplateAction::Test {

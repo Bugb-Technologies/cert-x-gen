@@ -27,9 +27,11 @@ jobs:
             target: aarch64-unknown-linux-gnu
             artifact: cxg-linux-arm64
             cross: true
-          - os: macos-latest
+          # Use macos-13 (Intel) for x86_64 builds - avoids cross-compilation
+          - os: macos-13
             target: x86_64-apple-darwin
             artifact: cxg-darwin-amd64
+          # Use macos-latest (ARM64) for aarch64 builds
           - os: macos-latest
             target: aarch64-apple-darwin
             artifact: cxg-darwin-arm64
