@@ -1,5 +1,6 @@
 //! Platform-specific path resolution for template directories
 
+use std::env;
 use std::path::PathBuf;
 
 #[derive(Debug)]
