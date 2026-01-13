@@ -325,7 +325,7 @@ impl ModelInfo {
 /// # Example Implementation
 ///
 /// ```no_run
-/// use cert_x_gen::ai::providers::{LLMProvider, GenerationOptions, ModelInfo};
+/// use cert_x_gen::ai::providers::{LLMProvider, GenerationOptions, ModelInfo, ProviderHealthStatus};
 /// use async_trait::async_trait;
 /// use anyhow::Result;
 ///
@@ -351,6 +351,10 @@ impl ModelInfo {
 ///     async fn list_models(&self) -> Result<Vec<ModelInfo>> {
 ///         // Implementation here
 ///         Ok(vec![])
+///     }
+///     
+///     async fn health_check(&self) -> Result<ProviderHealthStatus> {
+///         Ok(ProviderHealthStatus::healthy())
 ///     }
 /// }
 /// ```
