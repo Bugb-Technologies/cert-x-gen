@@ -1,327 +1,310 @@
+<h1 align="center">CERT-X-GEN</h1>
+<h4 align="center">A Polyglot Execution Engine for Vulnerability Detection</h4>
+
 <p align="center">
-  <h1 align="center">CERT-X-GEN</h1>
-  <p align="center">
-    <b>The Polyglot Security Scanner</b><br>
-    Write vulnerability detection templates in 12 programming languages
-  </p>
+Write security checks as real code — Python, Rust, Go, C, Shell, or YAML — and run them safely, reproducibly, and at scale.
 </p>
 
 <p align="center">
-  <a href="https://github.com/Bugb-Technologies/cert-x-gen/releases"><img src="https://img.shields.io/github/v/release/Bugb-Technologies/cert-x-gen?style=flat-square" alt="Release"></a>
-  <a href="https://github.com/Bugb-Technologies/cert-x-gen/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square" alt="License"></a>
-  <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/rust-1.70%2B-orange?style=flat-square" alt="Rust"></a>
-  <a href="https://github.com/Bugb-Technologies/cert-x-gen/actions"><img src="https://img.shields.io/github/actions/workflow/status/Bugb-Technologies/cert-x-gen/ci.yml?style=flat-square" alt="CI"></a>
+<a href="https://github.com/Bugb-Technologies/cert-x-gen/releases"><img src="https://img.shields.io/github/v/release/Bugb-Technologies/cert-x-gen?style=flat-square"></a>
+<a href="https://github.com/Bugb-Technologies/cert-x-gen/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square"></a>
+<a href="https://github.com/Bugb-Technologies/cert-x-gen/actions"><img src="https://img.shields.io/github/actions/workflow/status/Bugb-Technologies/cert-x-gen/ci.yml?style=flat-square"></a>
+<a href="https://github.com/Bugb-Technologies/cert-x-gen-templates"><img src="https://img.shields.io/badge/templates-58-orange?style=flat-square"></a>
 </p>
 
 <p align="center">
-  <a href="#-why-cert-x-gen">Why CERT-X-GEN?</a> •
-  <a href="#-quick-start">Quick Start</a> •
-  <a href="#-supported-languages">Languages</a> •
-  <a href="#-documentation">Docs</a> •
-  <a href="#-contributing">Contributing</a>
+<a href="#what-is-cert-x-gen">What is it</a> •
+<a href="#installation">Install</a> •
+<a href="#quick-start">Quick Start</a> •
+<a href="#templates">Templates</a> •
+<a href="#documentation">Docs</a> •
+<a href="https://github.com/Bugb-Technologies/cert-x-gen-templates">Template Repo</a>
 </p>
 
 ---
 
-## 🎯 Why CERT-X-GEN?
 
-Traditional vulnerability scanners limit you to YAML-only templates. **CERT-X-GEN breaks this barrier** by letting you write security templates in **12 programming languages** — Python, JavaScript, Rust, C, C++, Go, Java, Ruby, Perl, PHP, Shell, and YAML.
+## What is CERT-X-GEN
 
-**Write templates in the language you know. Solve problems that YAML can't.**
+Modern security scanning has outgrown static templates. Today's vulnerability detection often requires real programming logic, protocol-level control, data processing, and reuse of existing scripts — yet most scanners force everything into YAML-only abstractions.
+
+CERT-X-GEN is a different kind of scanner. It is a **polyglot security execution engine** that treats vulnerability detection as code, not configuration. You write detection logic in the language that fits the problem — CERT-X-GEN handles orchestration, sandboxing, and output.
+
+**What this means in practice:**
 
 ```bash
-# Run a Python template
-cxg scan --scope example.com --templates redis-check.py
+# Run a Python template for stateful protocol checks
+cxg scan --scope 192.168.1.100:25 --templates smtp-open-relay.py
 
-# Run a C template for high-performance scanning  
-cxg scan --scope 192.168.1.0/24 --templates network-probe.c
+# Run a Go template for high-performance database probing
+cxg scan --scope db.example.com:5432 --templates postgresql-default-credentials.go
 
-# Mix languages in the same scan
-cxg scan --scope target.com --template-language python,rust,yaml
+# Mix multiple languages in one scan
+cxg scan --scope targets.txt --templates redis*.py,docker*.go,system*.sh
 ```
 
-### When to Use CERT-X-GEN
+### What CERT-X-GEN Is
 
-| Use Case | Why CERT-X-GEN Wins |
-|----------|---------------------|
-| Complex detection logic | Use Python/Rust instead of wrestling with YAML DSL |
-| High-performance scanning | Write templates in C/Rust for maximum speed |
-| Existing codebases | Integrate your Python/Go security scripts directly |
-| Custom protocols | Full socket access in any compiled language |
-| Data processing | Use pandas, numpy, or any library you need |
+- A **language-agnostic runtime** for vulnerability detection logic
+- A **unified execution layer** for security checks across 12 languages
+- A **bridge** between research scripts and production scanners
+- A scanner **designed for CI, automation, and agentic systems**
+
+### What CERT-X-GEN Is Not
+
+- Not a point-and-click vulnerability scanner
+- Not a replacement for every security tool
+- Not optimized for beginners or one-click scanning
+
+---
 
 
-## ✨ Key Features
+## Why This Matters
 
-- **🌐 12 Languages** — Python, JavaScript, Rust, C, C++, Go, Java, Ruby, Perl, PHP, Shell, YAML
-- **⚡ High Performance** — Built in Rust with async execution and compilation caching
-- **🔒 Sandboxed Execution** — Safe template execution with resource limits
-- **🤖 AI-Powered** — Generate templates from natural language descriptions
-- **📦 Smart CLI** — Unified `--scope`, `--ports`, `--templates` options that auto-detect input types
-- **🔄 Git Integration** — Sync templates from Git repositories
-- **📊 Multiple Outputs** — JSON, CSV, SARIF, HTML, Markdown
+<table>
+<tr>
+<td width="50%">
 
-## 🚀 Quick Start
+**The Problem**
 
-### Installation
+YAML DSLs hit a wall when you need:
+- Multi-step protocol conversations
+- Binary protocol parsing
+- Conditional branching logic
+- Performance-critical operations
+- Native library access
+
+</td>
+<td width="50%">
+
+**The Solution**
+
+CERT-X-GEN runs templates written in:
+- **Python** — stateful protocols, data analysis
+- **Go** — concurrent operations, binary protocols
+- **Rust/C** — maximum performance
+- **Shell** — native tool integration
+- **YAML** — simple checks, compatibility
+
+</td>
+</tr>
+</table>
+
+### Real-World Examples
+
+| Scenario | Template | Why It Can't Be YAML |
+|----------|----------|---------------------|
+| SMTP relay testing | [`smtp-open-relay.py`](https://github.com/Bugb-Technologies/cert-x-gen-templates/blob/main/templates/python/smtp-open-relay.py) | Multi-step conversation: EHLO → MAIL FROM → RCPT TO with branching |
+| PostgreSQL auth check | [`postgresql-default-credentials.go`](https://github.com/Bugb-Technologies/cert-x-gen-templates/blob/main/templates/go/postgresql-default-credentials.go) | PostgreSQL wire protocol + MD5 challenge-response |
+| SNMP community strings | [`snmp-default-community.sh`](https://github.com/Bugb-Technologies/cert-x-gen-templates/blob/main/templates/shell/snmp-default-community.sh) | Native `snmpwalk` integration |
+| VNC no-auth detection | [`vnc-no-auth.c`](https://github.com/Bugb-Technologies/cert-x-gen-templates/blob/main/templates/c/vnc-no-auth.c) | RFB binary protocol handshake |
+
+---
+
+
+## Installation
+
+### From Source (Recommended)
 
 ```bash
-# Clone the repository
 git clone https://github.com/Bugb-Technologies/cert-x-gen.git
 cd cert-x-gen
-
-# Build and install
 make install
-
-# Or with cargo directly
-cargo install --path .
 ```
 
-### Your First Scan
+### Using Cargo
 
 ```bash
-# Basic scan
+cargo install --git https://github.com/Bugb-Technologies/cert-x-gen.git
+```
+
+### Verify Installation
+
+```bash
+cxg --version
+cxg template update  # Downloads official templates
+```
+
+---
+
+## Quick Start
+
+### Basic Scanning
+
+```bash
+# Scan a single target
 cxg scan --scope example.com
 
-# Scan with specific templates
-cxg scan --scope example.com --templates redis-unauthenticated
+# Scan with specific ports
+cxg scan --scope example.com --ports 22,80,443,3306,5432,6379
 
-# Scan with port specification
-cxg scan --scope example.com --ports 80,443,8080
-
-# Scan a CIDR range
+# Scan a network range
 cxg scan --scope 192.168.1.0/24 --top-ports 100
+
+# Scan targets from a file
+cxg scan --scope targets.txt --templates redis*.py
 ```
 
-### Template Search
+### Template Operations
 
 ```bash
-# Search for templates
-cxg search --query "redis"
-
-# Filter by language and severity
-cxg search --language python --severity critical
-
-# List all templates
+# List available templates
 cxg template list
+
+# Search templates
+cxg template search redis
+
+# Validate a template
+cxg template validate my-template.py
+
+# Get template info
+cxg template info smtp-open-relay.py
 ```
 
-## 📦 Templates
-
-Detection templates are maintained in a separate repository for easier community contributions and updates:
-
-**🔗 [cert-x-gen-templates](https://github.com/Bugb-Technologies/cert-x-gen-templates)**
-
-### Getting Templates
+### Output Formats
 
 ```bash
-# Templates auto-download on first scan
-cxg scan --scope example.com
-# [INFO] Templates not found. Installing from GitHub...
+# JSON output
+cxg scan --scope target.com --format json -o results.json
 
-# Manual update
-cxg template update
+# HTML report
+cxg scan --scope target.com --format html -o report.html
 
-# Check what's installed
-cxg template list
+# SARIF for CI/CD
+cxg scan --scope target.com --format sarif -o results.sarif
 ```
 
-### For Template Developers
-
-```bash
-# Clone the templates repository
-git clone https://github.com/Bugb-Technologies/cert-x-gen-templates.git
-
-# Use local templates during development
-cxg scan --scope example.com --template-dir ./cert-x-gen-templates/templates
-
-# Contribute new templates via PR to the templates repo
-```
+---
 
 
-## 🛠 Supported Languages
+## Templates
 
-### Interpreted Languages
-| Language | Extension | Runtime | Best For |
-|----------|-----------|---------|----------|
-| Python | `.py` | python3 | HTTP APIs, data processing, complex logic |
-| JavaScript | `.js` | node | Web scanning, JSON manipulation |
-| Ruby | `.rb` | ruby | Rapid prototyping, elegant syntax |
-| Perl | `.pl` | perl | Text processing, regex-heavy checks |
-| PHP | `.php` | php | Web application testing |
-| Shell | `.sh` | bash | System commands, quick scripts |
+Templates are maintained in a separate repository for community contributions:
 
-### Compiled Languages
-| Language | Extension | Compiler | Best For |
-|----------|-----------|----------|----------|
-| Rust | `.rs` | rustc | Maximum performance, memory safety |
-| C | `.c` | gcc/clang | Low-level protocols, speed-critical |
-| C++ | `.cpp` | g++/clang++ | Complex systems, OOP patterns |
-| Go | `.go` | go | Concurrency, network operations |
-| Java | `.java` | javac | Enterprise libraries, portability |
+**[github.com/Bugb-Technologies/cert-x-gen-templates](https://github.com/Bugb-Technologies/cert-x-gen-templates)**
 
-### Declarative
-| Language | Extension | Engine | Best For |
-|----------|-----------|--------|----------|
-| YAML | `.yaml` | Built-in | Simple checks, Nuclei compatibility |
+| Language | Count | Best For |
+|----------|-------|----------|
+| Python | 15 | Stateful protocols, HTTP APIs, data processing |
+| Go | 5 | Binary protocols, high concurrency |
+| C | 5 | Low-level protocols, maximum performance |
+| Rust | 4 | Memory-safe performance, async I/O |
+| Shell | 5 | Native tool integration, system checks |
+| YAML | 24 | Simple HTTP checks, Nuclei compatibility |
 
-## 📝 Writing Templates
+Templates auto-download on first scan. Update with `cxg template update`.
 
-All templates follow a simple pattern: read environment variables, perform checks, output JSON.
+### Writing Templates
 
-### Python Example
+All templates follow a simple contract:
+1. Read `CERT_X_GEN_TARGET_HOST` and `CERT_X_GEN_TARGET_PORT` from environment
+2. Perform detection logic
+3. Output JSON with findings array
+
+**Python example:**
 
 ```python
 #!/usr/bin/env python3
 # @id: redis-unauth
-# @name: Redis Unauthenticated Access
+# @name: Redis Unauthenticated Access  
 # @severity: high
 
-import socket
-import json
-import os
+import socket, json, os
 
-def main():
-    host = os.getenv('CERT_X_GEN_TARGET_HOST')
-    port = int(os.getenv('CERT_X_GEN_TARGET_PORT', '6379'))
-    
-    try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(5)
-        sock.connect((host, port))
-        sock.send(b'INFO\r\n')
-        response = sock.recv(4096).decode('utf-8', errors='ignore')
-        
-        if 'redis_version' in response:
-            print(json.dumps({
-                "findings": [{
-                    "id": "redis-unauth",
-                    "name": "Redis Unauthenticated Access",
-                    "severity": "high",
-                    "evidence": {"response": response[:500]}
-                }]
-            }))
-    except Exception:
-        pass
-    finally:
-        sock.close()
+host = os.environ['CERT_X_GEN_TARGET_HOST']
+port = int(os.environ.get('CERT_X_GEN_TARGET_PORT', '6379'))
 
-if __name__ == "__main__":
-    main()
+sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+sock.settimeout(5)
+sock.connect((host, port))
+sock.send(b'INFO\r\n')
+response = sock.recv(4096).decode()
+
+if 'redis_version' in response:
+    print(json.dumps({"findings": [{
+        "id": "redis-unauth",
+        "severity": "high",
+        "host": host,
+        "port": port
+    }]}))
 ```
 
+---
 
-### YAML Example (Nuclei-Compatible)
 
-```yaml
-id: http-server-header
-info:
-  name: HTTP Server Header Detection
-  author: cert-x-gen
-  severity: info
-  tags:
-    - http
-    - recon
+## Design Principles
 
-http:
-  - method: GET
-    path:
-      - "{{BaseURL}}/"
-    matchers:
-      - type: regex
-        part: header
-        regex:
-          - "Server: .+"
-    extractors:
-      - type: regex
-        part: header
-        regex:
-          - "Server: (.+)"
-```
+- **Code over configuration** — use real languages for real logic
+- **Deterministic execution** — same input, same output
+- **Sandboxed by default** — templates run with strict resource limits
+- **Composable scans** — mix languages, reuse logic across templates
+- **Automation-first** — built for CI, pipelines, and agentic systems
 
-## 🤖 AI Template Generation
+---
 
-Generate templates from natural language using local or cloud LLMs:
+## Features
 
-```bash
-# Configure AI (supports Ollama, OpenAI, Anthropic, DeepSeek)
-cxg ai setup
+**Execution Engine**
+- 12 supported languages (Python, Go, Rust, C, C++, Java, JavaScript, Ruby, Perl, PHP, Shell, YAML)
+- Sandboxed execution with configurable resource limits
+- Compilation caching for compiled languages
+- Parallel template execution with rate limiting
 
-# Generate a template
-cxg ai generate "detect exposed MongoDB without authentication" --language python
+**CLI**
+- Unified `--scope` for targets (single, file, CIDR, URL)
+- Smart `--templates` selection (glob patterns, tags, severity)
+- Multiple output formats (JSON, HTML, CSV, Markdown, SARIF)
+- Built-in template management and validation
 
-# Check provider status
-cxg ai status
-```
+**Integration**
+- Git-based template repositories with auto-update
+- CI/CD friendly (exit codes, SARIF output)
+- Configurable via CLI, config file, or environment variables
 
-## 📖 Documentation
+---
+
+
+## Documentation
 
 | Document | Description |
 |----------|-------------|
-| [Usage Guide](docs/USAGE_GUIDE.md) | Comprehensive usage examples |
+| [Usage Guide](docs/USAGE_GUIDE.md) | Comprehensive CLI usage and examples |
 | [Architecture](docs/ARCHITECTURE.md) | System design and internals |
-| [Engines](docs/ENGINES.md) | Language-specific documentation |
-| [Contributing](docs/CONTRIBUTING.md) | How to contribute |
-| [Sandbox](docs/SANDBOX_GUIDE.md) | Secure execution environment |
+| [Engine Guide](docs/ENGINES.md) | Language-specific execution details |
+| [Sandbox Guide](docs/SANDBOX_GUIDE.md) | Security model and resource limits |
+| [Contributing](CONTRIBUTING.md) | How to contribute code and templates |
 
+---
 
-## 🔧 Configuration
+## Contributing
 
-CERT-X-GEN can be configured via:
+We welcome contributions. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
-1. **CLI flags** — Highest priority
-2. **Config file** — `cert-x-gen.yaml`
-3. **Environment variables** — For secrets and CI/CD
-
-```bash
-# Generate a config file
-cxg config generate --output cert-x-gen.yaml
-
-# Use a config file
-cxg scan --config cert-x-gen.yaml --scope example.com
-```
-
-## 🤝 Contributing
-
-We welcome contributions! See [CONTRIBUTING.md](docs/CONTRIBUTING.md) for guidelines.
-
-### Quick Contribution Guide
+**Priority areas:**
+- New detection templates (any language)
+- Protocol handler improvements
+- Documentation and examples
 
 ```bash
-# Fork and clone
+# Development setup
 git clone https://github.com/Bugb-Technologies/cert-x-gen.git
-
-# Create a branch
-git checkout -b feature/my-feature
-
-# Make changes and test
+cd cert-x-gen
+cargo build
 cargo test
-cargo clippy
-
-# Submit a PR
 ```
 
-### Template Contributions
+---
 
-We especially welcome new security templates! Templates can be in any of the 12 supported languages.
+## License
 
-## 📜 License
+CERT-X-GEN is licensed under [Apache License 2.0](LICENSE).
 
-CERT-X-GEN is licensed under the [Apache License 2.0](LICENSE).
+## Security
 
-## 🔒 Security
-
-Found a security issue? Please report it responsibly. See [SECURITY.md](SECURITY.md).
-
-## 🙏 Acknowledgments
-
-- Built with [Rust](https://www.rust-lang.org/) 🦀
-- Inspired by the security research community
-- Template format compatible with [Nuclei](https://github.com/projectdiscovery/nuclei)
+Report vulnerabilities to **security@bugb.io**. See [SECURITY.md](SECURITY.md).
 
 ---
 
 <p align="center">
-  <b>Ready to scan smarter?</b><br>
-  <code>cargo install cxg</code>
+<b>Built with Rust</b> · <a href="https://github.com/Bugb-Technologies/cert-x-gen-templates">Templates</a> · <a href="https://github.com/Bugb-Technologies/cert-x-gen/discussions">Discussions</a>
 </p>

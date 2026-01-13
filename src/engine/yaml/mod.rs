@@ -306,7 +306,7 @@ impl Template for YamlTemplateImpl {
             if let Some(ref network_client) = self.network_client {
                 for request_spec in http_requests {
                     let request_findings = self
-                        .execute_http_request(request_spec, target, network_client)
+                        .execute_http_request(request_spec, target, network_client, context)
                         .await?;
                     findings.extend(request_findings);
                 }
@@ -343,6 +343,7 @@ impl YamlTemplateImpl {
         spec: &HttpRequestSpec,
         target: &Target,
         network_client: &NetworkClient,
+        context: &Context,
     ) -> Result<Vec<Finding>> {
         let mut findings = Vec::new();
 
@@ -382,7 +383,7 @@ impl YamlTemplateImpl {
         // Only try fallback scheme if connection/timeout error occurs
         for target_variant in target_variants {
             match self
-                .execute_http_request_single(&target_variant, spec, network_client)
+                .execute_http_request_single(&target_variant, spec, network_client, context)
                 .await
             {
                 Ok(mut variant_findings) => {
@@ -451,6 +452,7 @@ impl YamlTemplateImpl {
         target: &Target,
         spec: &HttpRequestSpec,
         network_client: &NetworkClient,
+        context: &Context,
     ) -> Result<Vec<Finding>> {
         let mut findings = Vec::new();
 
@@ -472,12 +474,31 @@ impl YamlTemplateImpl {
             let url = format!("{}{}", target.url(), path);
             tracing::debug!("{} {}", spec.method, url);
 
+            // Build headers: merge template headers + context headers + cookies
+            let mut request_headers = spec.headers.clone();
+            
+            // Add context headers
+            for (key, value) in &context.headers {
+                request_headers.insert(key.clone(), value.clone());
+            }
+            
+            // Add cookies from context as Cookie header
+            if !context.cookies.is_empty() {
+                let cookie_str = context.cookies
+                    .iter()
+                    .map(|(k, v)| format!("{}={}", k, v))
+                    .collect::<Vec<_>>()
+                    .join("; ");
+                request_headers.insert("Cookie".to_string(), cookie_str);
+                tracing::debug!("Added {} cookies to request", context.cookies.len());
+            }
+
             // Execute HTTP request
             let start = std::time::Instant::now();
             let response = match spec.method.to_uppercase().as_str() {
                 "GET" => {
                     network_client
-                        .get_with_headers(&url, spec.headers.clone())
+                        .get_with_headers(&url, request_headers.clone())
                         .await?
                 }
                 "POST" => {
@@ -485,7 +506,7 @@ impl YamlTemplateImpl {
                         .post_with_headers(
                             &url,
                             spec.body.clone().unwrap_or_default(),
-                            spec.headers.clone(),
+                            request_headers.clone(),
                         )
                         .await?
                 }

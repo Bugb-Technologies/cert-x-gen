@@ -194,6 +194,12 @@ pub struct NetworkConfig {
     pub dns_servers: Vec<String>,
     /// Rate limit (requests per second)
     pub rate_limit: Option<u32>,
+    /// Custom headers for HTTP requests
+    #[serde(default)]
+    pub headers: Vec<(String, String)>,
+    /// Cookies for authenticated scans
+    #[serde(default)]
+    pub cookies: Vec<(String, String)>,
 }
 
 impl Default for NetworkConfig {
@@ -208,6 +214,8 @@ impl Default for NetworkConfig {
             proxy: None,
             dns_servers: Vec::new(),
             rate_limit: Some(100),
+            headers: Vec::new(),
+            cookies: Vec::new(),
         }
     }
 }

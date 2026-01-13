@@ -683,6 +683,27 @@ fn apply_scan_args_to_config(config: &mut Config, args: &cli::ScanArgs) {
     if let Some(template_dir) = &args.template_dir {
         config.templates.directories = vec![template_dir.clone()];
     }
+
+    // Apply custom headers
+    if let Some(headers) = &args.header {
+        for header in headers {
+            if let Some((key, value)) = header.split_once(':') {
+                config.network.headers.push((key.trim().to_string(), value.trim().to_string()));
+            }
+        }
+    }
+
+    // Apply cookies for authenticated scans
+    if let Some(cookies) = &args.cookie {
+        for cookie in cookies {
+            if let Some((key, value)) = cookie.split_once('=') {
+                config.network.cookies.push((key.trim().to_string(), value.trim().to_string()));
+            }
+        }
+        if !config.network.cookies.is_empty() {
+            tracing::info!("Using {} cookie(s) for authenticated scanning", config.network.cookies.len());
+        }
+    }
 }
 
 /// Expand targets to create one target per port

@@ -123,6 +123,8 @@ pub enum ResponsePart {
     Header,
     /// Match against entire response
     All,
+    /// Match against raw data (for network protocols)
+    Data,
 }
 
 /// Time-based condition
@@ -223,6 +225,7 @@ impl Matcher {
                     ResponsePart::Body => response.body_string(),
                     ResponsePart::Header => response.headers_string(),
                     ResponsePart::All => response.all_string(),
+                    ResponsePart::Data => response.body_string(), // For network protocols, data = body
                 };
 
                 let matches: Vec<bool> = words.iter().map(|word| content.contains(word)).collect();

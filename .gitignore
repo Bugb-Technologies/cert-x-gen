@@ -143,3 +143,20 @@ __pycache__/
 
 # Exploit files (test artifacts)
 /exploit
+# Test outputs and scan results
+*.html
+!docs/**/*.html
+*.json
+!package.json
+!package-lock.json
+!*.example.json
+tests/targets/*.txt
+tests/templates/*.py
+tests/templates/*.yaml
+SHOWCASE_TEMPLATES.md
+SCAN_TEST_RESULTS.md
+scan_test_plan.md
+
+# Build artifacts
+/target/
+*.log

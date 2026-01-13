@@ -243,6 +243,8 @@ impl ScanJob {
         context.passive_mode = config.execution.passive_mode;
         context.safe_mode = config.execution.safe_mode;
         context.max_retries = config.execution.max_retries;
+        context.headers = config.network.headers.clone();
+        context.cookies = config.network.cookies.clone();
 
         Self {
             id: Uuid::new_v4(),

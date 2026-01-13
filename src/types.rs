@@ -270,6 +270,12 @@ pub struct Context {
     pub additional_ports: Vec<u16>,
     /// Override ports (replaces template defaults if set)
     pub override_ports: Option<Vec<u16>>,
+    /// Custom HTTP headers
+    #[serde(default)]
+    pub headers: Vec<(String, String)>,
+    /// Cookies for authenticated scans
+    #[serde(default)]
+    pub cookies: Vec<(String, String)>,
 }
 
 impl Default for Context {
@@ -286,6 +292,8 @@ impl Default for Context {
             rate_limit: None,
             additional_ports: Vec::new(),
             override_ports: None,
+            headers: Vec::new(),
+            cookies: Vec::new(),
         }
     }
 }

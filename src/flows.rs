@@ -72,11 +72,17 @@ pub struct Flow {
     /// Flow steps
     pub steps: Vec<FlowStep>,
     /// Dependencies (other flows that must execute first)
+    #[serde(default)]
     pub depends_on: Vec<String>,
     /// Condition to execute (optional)
+    #[serde(default)]
     pub condition: Option<String>,
     /// Optional flag
+    #[serde(default)]
     pub optional: bool,
+    /// Description of the flow
+    #[serde(default)]
+    pub description: Option<String>,
 }
 
 /// Flow step
