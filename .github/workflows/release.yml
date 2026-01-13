@@ -138,7 +138,9 @@ jobs:
 
       - name: Extract version
         id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+        run: |
+          echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+          echo "REPO_LC=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
 
       - name: Build and push
         uses: docker/build-push-action@v5
@@ -146,8 +148,8 @@ jobs:
           context: .
           push: true
           tags: |
-            ghcr.io/${{ github.repository }}:${{ steps.version.outputs.VERSION }}
-            ghcr.io/${{ github.repository }}:latest
+            ghcr.io/${{ steps.version.outputs.REPO_LC }}:${{ steps.version.outputs.VERSION }}
+            ghcr.io/${{ steps.version.outputs.REPO_LC }}:latest
           platforms: linux/amd64
 
   # Update Homebrew tap
