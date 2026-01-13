@@ -99,7 +99,29 @@ CERT-X-GEN runs templates written in:
 
 ## Installation
 
-### From Source (Recommended)
+### Homebrew (macOS/Linux)
+
+```bash
+brew tap bugb-technologies/cxg
+brew install cxg
+```
+
+### Quick Install Script
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Bugb-Technologies/cert-x-gen/main/install.sh | bash
+```
+
+### Docker
+
+```bash
+docker run --rm ghcr.io/bugb-technologies/cert-x-gen:latest --help
+
+# Scan with Docker
+docker run --rm ghcr.io/bugb-technologies/cert-x-gen:latest scan --scope example.com
+```
+
+### From Source
 
 ```bash
 git clone https://github.com/Bugb-Technologies/cert-x-gen.git
@@ -112,6 +134,15 @@ make install
 ```bash
 cargo install --git https://github.com/Bugb-Technologies/cert-x-gen.git
 ```
+
+### Download Binary
+
+Download pre-built binaries from [GitHub Releases](https://github.com/Bugb-Technologies/cert-x-gen/releases/latest):
+- `cxg-linux-amd64` — Linux x86_64
+- `cxg-linux-arm64` — Linux ARM64
+- `cxg-darwin-amd64` — macOS Intel
+- `cxg-darwin-arm64` — macOS Apple Silicon
+- `cxg-windows-amd64.exe` — Windows x86_64
 
 ### Verify Installation
 
