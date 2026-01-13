@@ -73,6 +73,9 @@ walkdir = "2.4"
 # Template management
 git2 = "0.18"
 
+# OpenSSL (vendored for cross-compilation)
+openssl = { version = "0.10", features = ["vendored"] }
+
 # UUID and time
 uuid = { version = "1.6", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
