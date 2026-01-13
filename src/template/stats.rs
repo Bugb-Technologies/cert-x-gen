@@ -62,11 +62,16 @@ impl TemplateStats {
         stats
     }
 
-    /// Count templates from all template directories
+    /// Count templates from installed template directories only
+    /// (user and system directories, not local dev directories)
     pub fn from_all_directories() -> Self {
         let mut combined = Self::default();
 
-        for dir in PathResolver::all_template_dirs() {
+        // Only count from user and system directories (not ./templates which is for dev)
+        let user_dir = PathResolver::user_template_dir();
+        let system_dir = PathResolver::system_template_dir();
+
+        for dir in [user_dir, system_dir] {
             let stats = Self::from_directory(&dir);
             combined.total += stats.total;
             

@@ -109,8 +109,16 @@ async fn run(cli: Cli) -> Result<()> {
         return Ok(());
     }
 
-    // Handle auto-update flags before running any command
-    handle_auto_update(&cli).await?;
+    // Check if command is 'template update' - skip auto-update since command handles it
+    let is_template_update = matches!(
+        &cli.command,
+        Some(Commands::Template(cmd)) if matches!(cmd.action, cli::TemplateAction::Update { .. })
+    );
+
+    // Handle auto-update flags before running any command (skip for template update)
+    if !is_template_update {
+        handle_auto_update(&cli).await?;
+    }
 
     // If no command provided, show help
     let command = match cli.command {
@@ -1661,39 +1669,28 @@ async fn run_template_command(cmd: cli::TemplateCommand) -> Result<()> {
             Ok(())
         }
         TemplateAction::Update { force: _ } => {
-            use cert_x_gen::template::RepositoryManager;
+            use cert_x_gen::template::AutoUpdater;
 
-            println!("🔄 Updating template repositories...\n");
-
-            // Create repository manager
-            let mut repo_manager = RepositoryManager::new().map_err(|e| {
-                Error::config(format!("Failed to initialize repository manager: {}", e))
+            let mut updater = AutoUpdater::new().map_err(|e| {
+                Error::config(format!("Failed to initialize updater: {}", e))
             })?;
 
-            // Initialize repositories (clone if needed)
-            println!("Initializing repositories...");
-            repo_manager
-                .initialize()
-                .map_err(|e| Error::config(format!("Failed to initialize repositories: {}", e)))?;
-
-            // Update all repositories
-            println!("Updating all enabled repositories...");
-            let updated = repo_manager
-                .update_all()
-                .map_err(|e| Error::config(format!("Failed to update repositories: {}", e)))?;
-
-            println!();
-            if updated.is_empty() {
-                println!("✓ All repositories are already up to date");
+            // Check if this is first run (no templates)
+            if updater.needs_initial_install() {
+                updater.auto_install().map_err(|e| {
+                    Error::config(format!("Failed to install templates: {}", e))
+                })?;
             } else {
-                println!("✓ Successfully updated {} repositories:", updated.len());
-                for name in updated {
-                    println!("  • {}", name);
-                }
-            }
+                // Regular update
+                updater.perform_update().map_err(|e| {
+                    Error::config(format!("Failed to update templates: {}", e))
+                })?;
 
-            println!("\nTemplates are now available for scanning!");
-            println!("Use 'cxg template list' to see available templates.");
+                // Show stats
+                let stats = updater.get_stats();
+                println!();
+                println!("✅ Templates ready: {}", stats.summary());
+            }
 
             Ok(())
         }

@@ -93,7 +93,7 @@ impl RepositoryConfig {
             default_branch: "main".to_string(),
             repositories: vec![Repository {
                 name: "official".to_string(),
-                url: "https://github.com/BugB-Tech/cert-x-gen-templates.git".to_string(),
+                url: "https://github.com/Bugb-Technologies/cert-x-gen-templates.git".to_string(),
                 branch: "main".to_string(),
                 local_path: PathResolver::user_template_dir().join("official"),
                 enabled: true,
