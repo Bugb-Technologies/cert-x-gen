@@ -210,7 +210,6 @@ impl Executor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{Protocol, Target};
 
     #[tokio::test]
     async fn test_executor_creation() {

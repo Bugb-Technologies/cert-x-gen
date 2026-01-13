@@ -738,8 +738,6 @@ impl SearchResultFormatter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{Severity, TemplateLanguage};
-    use std::path::PathBuf;
 
     #[test]
     fn test_search_engine_creation() {

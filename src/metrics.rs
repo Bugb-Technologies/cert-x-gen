@@ -249,7 +249,7 @@ mod tests {
 
     #[test]
     fn test_timing_guard() {
-        let collector = MetricsCollector::new().unwrap();
+        let _collector = MetricsCollector::new().unwrap();
 
         {
             let _guard = TimingGuard::new(|duration| {

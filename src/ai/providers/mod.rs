@@ -354,7 +354,9 @@ impl ModelInfo {
 ///     }
 ///     
 ///     async fn health_check(&self) -> Result<ProviderHealthStatus> {
-///         Ok(ProviderHealthStatus::healthy())
+///         let mut status = ProviderHealthStatus::new("my-provider");
+///         status.healthy = true;
+///         Ok(status)
 ///     }
 /// }
 /// ```
