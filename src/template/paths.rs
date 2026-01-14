@@ -1,6 +1,5 @@
 //! Platform-specific path resolution for template directories
 
-use std::env;
 use std::path::PathBuf;
 
 #[derive(Debug)]
@@ -18,7 +17,7 @@ impl PathResolver {
         #[cfg(windows)]
         {
             let program_data =
-                env::var("ProgramData").unwrap_or_else(|_| "C:\\ProgramData".to_string());
+                std::env::var("ProgramData").unwrap_or_else(|_| "C:\\ProgramData".to_string());
             PathBuf::from(program_data)
                 .join("cert-x-gen")
                 .join("templates")
