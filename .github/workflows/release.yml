@@ -126,6 +126,15 @@ jobs:
           name: cxg-linux-amd64
           path: .
 
+      - name: Download Linux ARM64 binary
+        uses: actions/download-artifact@v4
+        with:
+          name: cxg-linux-arm64
+          path: .
+
+      - name: Set up QEMU (for multi-arch builds)
+        uses: docker/setup-qemu-action@v3
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -142,7 +151,7 @@ jobs:
           echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
           echo "REPO_LC=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
 
-      - name: Build and push
+      - name: Build and push multi-arch image
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -150,7 +159,7 @@ jobs:
           tags: |
             ghcr.io/${{ steps.version.outputs.REPO_LC }}:${{ steps.version.outputs.VERSION }}
             ghcr.io/${{ steps.version.outputs.REPO_LC }}:latest
-          platforms: linux/amd64
+          platforms: linux/amd64,linux/arm64
 
   # Update Homebrew tap
   homebrew:

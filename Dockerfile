@@ -1,7 +1,11 @@
 # CERT-X-GEN Docker Image
-# Minimal runtime image using pre-built binary
+# Multi-architecture runtime image using pre-built binaries
+# Supports: linux/amd64, linux/arm64
 
 FROM debian:bookworm-slim
+
+# These are automatically set by Docker buildx
+ARG TARGETARCH
 
 LABEL org.opencontainers.image.title="CERT-X-GEN"
 LABEL org.opencontainers.image.description="Polyglot Execution Engine for Vulnerability Detection"
@@ -17,8 +21,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Create non-root user
 RUN useradd -m -s /bin/bash cxg
 
-# Copy pre-built binary (from release workflow artifact)
-COPY cxg-linux-amd64 /usr/local/bin/cxg
+# Copy architecture-specific binary
+# Files are named: cxg-linux-amd64, cxg-linux-arm64
+COPY cxg-linux-${TARGETARCH} /usr/local/bin/cxg
 RUN chmod +x /usr/local/bin/cxg
 
 # Set up directories
