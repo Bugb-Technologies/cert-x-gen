@@ -1,0 +1,55 @@
+# CERT-X-GEN Docker Image - Build from Source
+# Use this for local builds: docker build -f Dockerfile.build -t cert-x-gen .
+
+# Stage 1: Build
+FROM rust:1.75-bookworm AS builder
+
+WORKDIR /app
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    pkg-config \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy source code
+COPY Cargo.toml Cargo.lock ./
+COPY src ./src
+
+# Build release binary
+RUN cargo build --release
+
+# Stage 2: Runtime
+FROM debian:bookworm-slim
+
+LABEL org.opencontainers.image.title="CERT-X-GEN"
+LABEL org.opencontainers.image.description="Polyglot Execution Engine for Vulnerability Detection"
+LABEL org.opencontainers.image.source="https://github.com/Bugb-Technologies/cert-x-gen"
+LABEL org.opencontainers.image.licenses="Apache-2.0"
+
+# Install minimal runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    libssl3 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user
+RUN useradd -m -s /bin/bash cxg
+
+# Copy binary from builder stage
+COPY --from=builder /app/target/release/cxg /usr/local/bin/cxg
+RUN chmod +x /usr/local/bin/cxg
+
+# Set up directories
+RUN mkdir -p /home/cxg/.cert-x-gen/templates && \
+    chown -R cxg:cxg /home/cxg
+
+USER cxg
+WORKDIR /home/cxg
+
+# Download templates on first run
+RUN cxg template update || true
+
+ENTRYPOINT ["cxg"]
+CMD ["--help"]
