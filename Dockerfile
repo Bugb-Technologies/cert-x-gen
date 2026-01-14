@@ -2,7 +2,8 @@
 # Multi-architecture runtime image using pre-built binaries
 # Supports: linux/amd64, linux/arm64
 
-FROM debian:bookworm-slim
+# Use Ubuntu 24.04 to match the build environment (GLIBC 2.39)
+FROM ubuntu:24.04
 
 # These are automatically set by Docker buildx
 ARG TARGETARCH
