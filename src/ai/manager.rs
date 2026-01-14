@@ -694,13 +694,24 @@ mod tests {
 
         if !is_available {
             // If Ollama is not running, generation should fail with helpful error
+            // Explicitly request ollama provider to ensure we test the right code path
             let result = manager
-                .generate_template("test prompt", TemplateLanguage::Python, None)
+                .generate_template("test prompt", TemplateLanguage::Python, Some("ollama"))
                 .await;
 
             assert!(result.is_err());
-            let err_msg = result.unwrap_err().to_string();
-            assert!(err_msg.contains("not available") || err_msg.contains("ollama serve"));
+            let err_msg = result.unwrap_err().to_string().to_lowercase();
+            // Check for various error patterns that indicate Ollama is not available
+            let has_expected_error = err_msg.contains("not available")
+                || err_msg.contains("ollama serve")
+                || err_msg.contains("not running")
+                || err_msg.contains("connection refused")
+                || err_msg.contains("failed to connect");
+            assert!(
+                has_expected_error,
+                "Expected error about Ollama not being available, got: {}",
+                err_msg
+            );
         } else {
             // If Ollama is available, we can't test actual generation here
             // (would be too slow for unit tests)
