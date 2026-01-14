@@ -48,11 +48,13 @@ get_latest_version() {
 download_binary() {
     local version="$1"
     local platform="$2"
-    local url="https://github.com/${REPO}/releases/download/${version}/${BINARY_NAME}-${platform}"
+    local binary_filename="${BINARY_NAME}-${platform}"
+    local url="https://github.com/${REPO}/releases/download/${version}/${binary_filename}"
     local checksum_url="https://github.com/${REPO}/releases/download/${version}/SHA256SUMS"
     
     if [[ "$platform" == *"windows"* ]]; then
         url="${url}.exe"
+        binary_filename="${binary_filename}.exe"
     fi
     
     info "Downloading ${BINARY_NAME} ${version} for ${platform}..."
@@ -61,8 +63,8 @@ download_binary() {
     tmpdir=$(mktemp -d)
     trap "rm -rf ${tmpdir}" EXIT
     
-    # Download binary
-    curl -fsSL -o "${tmpdir}/${BINARY_NAME}" "$url" || error "Failed to download binary"
+    # Download binary (keep original filename for checksum verification)
+    curl -fsSL -o "${tmpdir}/${binary_filename}" "$url" || error "Failed to download binary"
     
     # Download and verify checksum
     info "Verifying checksum..."
@@ -71,23 +73,23 @@ download_binary() {
     if [[ -f "${tmpdir}/SHA256SUMS" ]]; then
         cd "${tmpdir}"
         if command -v sha256sum &> /dev/null; then
-            grep "${BINARY_NAME}-${platform}" SHA256SUMS | sha256sum -c - || error "Checksum verification failed"
+            grep "${binary_filename}" SHA256SUMS | sha256sum -c - || error "Checksum verification failed"
         elif command -v shasum &> /dev/null; then
-            grep "${BINARY_NAME}-${platform}" SHA256SUMS | shasum -a 256 -c - || error "Checksum verification failed"
+            grep "${binary_filename}" SHA256SUMS | shasum -a 256 -c - || error "Checksum verification failed"
         else
             warn "No checksum tool available, skipping verification"
         fi
         cd - > /dev/null
     fi
     
-    # Install binary
+    # Install binary (rename to just 'cxg')
     info "Installing to ${INSTALL_DIR}/${BINARY_NAME}..."
     
     if [[ -w "$INSTALL_DIR" ]]; then
-        mv "${tmpdir}/${BINARY_NAME}" "${INSTALL_DIR}/${BINARY_NAME}"
+        mv "${tmpdir}/${binary_filename}" "${INSTALL_DIR}/${BINARY_NAME}"
         chmod +x "${INSTALL_DIR}/${BINARY_NAME}"
     else
-        sudo mv "${tmpdir}/${BINARY_NAME}" "${INSTALL_DIR}/${BINARY_NAME}"
+        sudo mv "${tmpdir}/${binary_filename}" "${INSTALL_DIR}/${BINARY_NAME}"
         sudo chmod +x "${INSTALL_DIR}/${BINARY_NAME}"
     fi
 }
