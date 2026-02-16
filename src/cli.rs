@@ -143,8 +143,8 @@ pub enum Commands {
     /// Manage sandbox environment
     Sandbox(SandboxCommand),
 
-    /// Start MCP (Model Context Protocol) server for AI agent integration
-    Mcp,
+    /// MCP (Model Context Protocol) server for AI agent integration
+    Mcp(McpCommand),
 
     /// Display version information
     Version,
@@ -1347,6 +1347,33 @@ pub enum SandboxAction {
         #[arg(short, long)]
         dockerfile: Option<PathBuf>,
     },
+}
+
+// ─── MCP Command ─────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Parser)]
+#[command(about = "MCP (Model Context Protocol) server for AI agent integration")]
+pub struct McpCommand {
+    #[command(subcommand)]
+    pub action: Option<McpAction>,
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum McpAction {
+    /// Configure MCP server for AI coding agents (Claude Desktop, Claude Code, Cursor, etc.)
+    Install {
+        /// Specific clients to configure (comma-separated: claude-desktop,claude-code,cursor,windsurf,vscode,zed)
+        #[arg(long)]
+        client: Option<String>,
+    },
+    /// Remove MCP server configuration from AI coding agents
+    Uninstall {
+        /// Specific clients to unconfigure
+        #[arg(long)]
+        client: Option<String>,
+    },
+    /// Show current MCP configuration status across all detected clients
+    Status,
 }
 
 #[derive(Clone, Copy, Debug, clap::ValueEnum)]

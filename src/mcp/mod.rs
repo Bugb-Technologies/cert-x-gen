@@ -2,7 +2,9 @@
 //!
 //! Exposes cxg capabilities as MCP tools for AI agent integration.
 //! Run with: `cxg mcp` (stdio transport)
+//! Install with: `cxg mcp install`
 
+pub mod installer;
 pub mod server;
 
 pub use server::CxgMcpServer;

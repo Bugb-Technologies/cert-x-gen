@@ -157,8 +157,22 @@ async fn run(cli: Cli) -> Result<()> {
         Commands::Sandbox(cmd) => {
             run_sandbox_command(cmd).await?;
         }
-        Commands::Mcp => {
-            cert_x_gen::mcp::run_mcp().await?;
+        Commands::Mcp(cmd) => {
+            match cmd.action {
+                None => {
+                    // Default: start MCP server (stdio)
+                    cert_x_gen::mcp::run_mcp().await?;
+                }
+                Some(cli::McpAction::Install { client }) => {
+                    cert_x_gen::mcp::installer::run_install(client).await?;
+                }
+                Some(cli::McpAction::Uninstall { client }) => {
+                    cert_x_gen::mcp::installer::run_uninstall(client).await?;
+                }
+                Some(cli::McpAction::Status) => {
+                    cert_x_gen::mcp::installer::run_status().await?;
+                }
+            }
         }
         Commands::Version => {
             print_version();
