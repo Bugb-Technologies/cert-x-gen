@@ -143,6 +143,9 @@ pub enum Commands {
     /// Manage sandbox environment
     Sandbox(SandboxCommand),
 
+    /// Start MCP (Model Context Protocol) server for AI agent integration
+    Mcp,
+
     /// Display version information
     Version,
 }

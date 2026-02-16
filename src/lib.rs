@@ -25,6 +25,7 @@ pub mod error;
 pub mod executor;
 pub mod flows;
 pub mod matcher;
+pub mod mcp;
 pub mod metrics;
 pub mod network;
 pub mod output;

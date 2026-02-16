@@ -30,7 +30,9 @@ async fn main() {
     // Display banner first (before parsing CLI)
     // Check if --quiet flag is present in args
     let args: Vec<String> = std::env::args().collect();
-    let is_quiet = args.iter().any(|arg| arg == "--quiet" || arg == "-q");
+    let is_quiet = args.iter().any(|arg| arg == "--quiet" || arg == "-q")
+        || args.iter().any(|arg| arg == "mcp")
+        || std::env::var("CXG_NO_BANNER").is_ok();
 
     if !is_quiet {
         cert_x_gen::banner::display_banner();
@@ -154,6 +156,9 @@ async fn run(cli: Cli) -> Result<()> {
         }
         Commands::Sandbox(cmd) => {
             run_sandbox_command(cmd).await?;
+        }
+        Commands::Mcp => {
+            cert_x_gen::mcp::run_mcp().await?;
         }
         Commands::Version => {
             print_version();
