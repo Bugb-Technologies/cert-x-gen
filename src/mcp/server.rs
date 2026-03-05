@@ -1,12 +1,13 @@
 //! CXG MCP Server implementation
 //!
-//! Provides 9 tools for AI agents:
+//! Provides 10 tools for AI agents:
 //! - cxg_search: Search templates by query/filters
 //! - cxg_template_list: List templates with optional filters
 //! - cxg_template_info: Get detailed info on a specific template
 //! - cxg_scan: Run security scans against targets
 //! - cxg_template_validate: Validate template code (12-language checker)
 //! - cxg_template_create: Scaffold a new template with boilerplate
+//! - cxg_template_write: Validate + save a completed template atomically
 //! - cxg_template_test: Test a specific template against a target
 //! - cxg_template_stats: Get template collection statistics
 //! - cxg_template_update: Pull latest templates from remote repository
@@ -90,6 +91,18 @@ pub struct TemplateCreateRequest {
     pub language: String,
     /// Human-readable name (auto-generated from ID if omitted)
     pub name: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct TemplateWriteRequest {
+    /// Unique template ID (kebab-case, e.g. "jwt-none-alg-check")
+    pub id: String,
+    /// Programming language: python, yaml, rust, shell, javascript, c, cpp, java, go, ruby, perl, php
+    pub language: String,
+    /// Complete template source code (must pass validation before saving)
+    pub code: String,
+    /// Overwrite if a template with this ID already exists (default: false)
+    pub overwrite: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -626,7 +639,109 @@ impl CxgMcpServer {
             "language": format!("{}", language),
             "filename": filename,
             "code": code,
-            "hint": "Customize the detection logic, then use cxg_template_validate to check it."
+            "hint": "Customize the detection logic, then use cxg_template_validate to check it, or cxg_template_write to validate and save in one step."
+        });
+        Ok(CallToolResult::success(vec![Content::text(json.to_string())]))
+    }
+
+    #[tool(description = "Validate and save a completed template atomically. Runs the full 12-language validator first — if any errors are found the file is NOT written and diagnostics are returned for the agent to fix. On success, saves to ~/.cert-x-gen/templates/agent-created/<id>.<ext> and returns the saved path. Use this after cxg_template_create + writing detection logic. Prefer this over cxg_template_validate + manual save to guarantee no broken template ever touches disk.")]
+    async fn cxg_template_write(&self, Parameters(req): Parameters<TemplateWriteRequest>) -> Result<CallToolResult, ErrorData> {
+        use crate::ai::validator::{DiagnosticSeverity, TemplateValidator};
+
+        let language = Self::parse_language(&req.language).ok_or_else(|| {
+            ErrorData::invalid_params(
+                format!("Unknown language '{}'. Supported: yaml, python, rust, shell, javascript, c, cpp, java, go, ruby, perl, php", req.language),
+                None,
+            )
+        })?;
+
+        // --- Step 1: validate ---
+        let validator = TemplateValidator::new();
+        let ext = Self::lang_to_ext(&language);
+        let filename = format!("{}.{}", req.id, ext);
+        let filepath = std::path::Path::new(&filename);
+
+        let diagnostics = validator
+            .validate_with_diagnostics(&req.code, language, Some(filepath))
+            .map_err(|e| ErrorData::internal_error(format!("Validation failed: {}", e), None))?;
+
+        let errors: Vec<_> = diagnostics.iter()
+            .filter(|d| matches!(d.severity, DiagnosticSeverity::Error))
+            .collect();
+        let warnings: Vec<_> = diagnostics.iter()
+            .filter(|d| matches!(d.severity, DiagnosticSeverity::Warning))
+            .collect();
+
+        // Block save if there are errors
+        if !errors.is_empty() {
+            let diag_entries: Vec<serde_json::Value> = diagnostics.iter().map(|d| serde_json::json!({
+                "severity": match d.severity {
+                    DiagnosticSeverity::Error   => "error",
+                    DiagnosticSeverity::Warning => "warning",
+                    DiagnosticSeverity::Info    => "info",
+                },
+                "code":    d.code,
+                "message": d.message,
+                "line":    d.line,
+                "column":  d.column,
+            })).collect();
+
+            let json = serde_json::json!({
+                "saved": false,
+                "reason": "Template has validation errors — fix them and retry cxg_template_write",
+                "errors":   errors.len(),
+                "warnings": warnings.len(),
+                "diagnostics": diag_entries,
+            });
+            return Ok(CallToolResult::success(vec![Content::text(json.to_string())]));
+        }
+
+        // --- Step 2: resolve save path ---
+        let save_dir = dirs::home_dir()
+            .ok_or_else(|| ErrorData::internal_error("Cannot determine home directory".to_string(), None))?
+            .join(".cert-x-gen")
+            .join("templates")
+            .join("agent-created");
+
+        std::fs::create_dir_all(&save_dir)
+            .map_err(|e| ErrorData::internal_error(format!("Cannot create save directory: {}", e), None))?;
+
+        let save_path = save_dir.join(&filename);
+
+        // Overwrite guard
+        if save_path.exists() && !req.overwrite.unwrap_or(false) {
+            let json = serde_json::json!({
+                "saved": false,
+                "reason": format!("Template '{}' already exists at {}. Pass overwrite: true to replace it.", req.id, save_path.display()),
+                "path": save_path.to_string_lossy(),
+            });
+            return Ok(CallToolResult::success(vec![Content::text(json.to_string())]));
+        }
+
+        // --- Step 3: write ---
+        std::fs::write(&save_path, &req.code)
+            .map_err(|e| ErrorData::internal_error(format!("Failed to write template: {}", e), None))?;
+
+        let json = serde_json::json!({
+            "saved": true,
+            "template_id": req.id,
+            "language": format!("{}", language),
+            "path": save_path.to_string_lossy(),
+            "warnings": warnings.len(),
+            "hint": if warnings.is_empty() {
+                "Template saved. Use cxg_template_test to verify it detects correctly against a live target."
+            } else {
+                "Template saved with warnings. Review diagnostics — warnings won't break execution but may indicate quality issues."
+            },
+            "diagnostics": diagnostics.iter()
+                .filter(|d| matches!(d.severity, DiagnosticSeverity::Warning))
+                .map(|d| serde_json::json!({
+                    "severity": "warning",
+                    "code": d.code,
+                    "message": d.message,
+                    "line": d.line,
+                }))
+                .collect::<Vec<_>>(),
         });
         Ok(CallToolResult::success(vec![Content::text(json.to_string())]))
     }
@@ -857,10 +972,10 @@ impl ServerHandler for CxgMcpServer {
         ServerInfo {
             instructions: Some(
                 "CERT-X-GEN: Multi-language security scanning engine. \
-                 Search, validate, create, test, and run vulnerability scanning templates \
+                 Search, validate, create, write, test, and run vulnerability scanning templates \
                  across 12 programming languages with 77+ built-in security checks. \
                  Tools: cxg_search, cxg_template_list, cxg_template_info, cxg_scan, \
-                 cxg_template_validate, cxg_template_create, cxg_template_test, \
+                 cxg_template_validate, cxg_template_create, cxg_template_write, cxg_template_test, \
                  cxg_template_stats, cxg_template_update."
                     .to_string(),
             ),
