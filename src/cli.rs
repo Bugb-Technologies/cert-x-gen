@@ -1664,6 +1664,16 @@ pub enum AiAction {
             help = "Estimate and show cost before generating (cloud providers only)"
         )]
         estimate_cost: bool,
+
+        /// API key for the LLM provider (session-only, not persisted to config).
+        /// Overrides environment variables and stored config for this invocation.
+        /// Use with --provider to specify which provider the key belongs to.
+        #[arg(
+            long,
+            value_name = "KEY",
+            help = "API key for the LLM provider (not saved). E.g. --provider anthropic --api-key sk-ant-..."
+        )]
+        api_key: Option<String>,
     },
 
     /// Manage LLM providers

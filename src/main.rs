@@ -3299,6 +3299,7 @@ async fn run_ai_command(cmd: cli::AiCommand) -> Result<()> {
             test_target,
             force,
             estimate_cost,
+            api_key,
         } => {
             handle_ai_generate(
                 prompt,
@@ -3310,6 +3311,7 @@ async fn run_ai_command(cmd: cli::AiCommand) -> Result<()> {
                 test_target,
                 force,
                 estimate_cost,
+                api_key,
             )
             .await?;
         }
@@ -3332,9 +3334,36 @@ async fn handle_ai_generate(
     test_target: Option<String>,
     force: bool,
     estimate_cost: bool,
+    api_key: Option<String>,
 ) -> Result<()> {
     use console::{style, Term};
     use std::fs;
+
+    // Inject --api-key into the env var for the chosen provider (session-only, not persisted).
+    // AIConfig::load() expands ${PROVIDER_API_KEY} from env, so setting here before
+    // AIManager::new() is the cleanest override path — mirrors GuardLink's approach.
+    if let Some(ref key) = api_key {
+        let env_var = match provider.as_deref() {
+            Some("anthropic") => "ANTHROPIC_API_KEY",
+            Some("openai")    => "OPENAI_API_KEY",
+            Some("deepseek")  => "DEEPSEEK_API_KEY",
+            Some("ollama")    => "", // ollama doesn't use an API key
+            // If no provider specified, try to detect from key prefix
+            _ => {
+                if key.starts_with("sk-ant-") {
+                    "ANTHROPIC_API_KEY"
+                } else if key.starts_with("sk-") {
+                    "OPENAI_API_KEY"
+                } else {
+                    "ANTHROPIC_API_KEY" // safe default
+                }
+            }
+        };
+        if !env_var.is_empty() {
+            std::env::set_var(env_var, key);
+            tracing::info!("Injected --api-key into {} for this session", env_var);
+        }
+    }
 
     let term = Term::stdout();
 
