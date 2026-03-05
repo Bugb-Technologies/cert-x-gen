@@ -772,6 +772,31 @@ pub struct ScanArgs {
         help = "Use named profile from config. Allows quick switching between scan scenarios"
     )]
     pub profile: Option<String>,
+
+    /// JSON context passed to templates via CERT_X_GEN_CONTEXT environment variable.
+    ///
+    /// Templates read this context to receive parameterized input (target URLs,
+    /// parameter names, HTTP methods, baselines, etc.) without hardcoding values.
+    /// This enables reusable parameterized templates driven by external automation.
+    #[arg(
+        long,
+        value_name = "JSON",
+        help = "JSON context for parameterized templates. Passed as CERT_X_GEN_CONTEXT env var. Example: '{\"param_name\":\"username\",\"method\":\"POST\"}'"
+    )]
+    pub context: Option<String>,
+
+    /// Run only templates belonging to this batch group.
+    ///
+    /// Batch groups let you execute a cohort of templates that share the same
+    /// context shape in a single invocation.
+    ///
+    /// Common groups: auth-context, endpoint-params, service-ports, full-surface
+    #[arg(
+        long,
+        value_name = "GROUP",
+        help = "Run templates in batch group. Example: --batch-group auth-context"
+    )]
+    pub batch_group: Option<String>,
 }
 
 #[derive(Parser, Debug)]
@@ -834,6 +859,10 @@ pub enum TemplateAction {
         /// Filter by tags (comma-separated)
         #[arg(long, value_name = "TAG,TAG,...")]
         tags: Option<String>,
+
+        /// Filter by batch group (e.g. auth-context, endpoint-params)
+        #[arg(long, value_name = "GROUP")]
+        batch_group: Option<String>,
     },
 
     /// Validate template files

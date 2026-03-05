@@ -144,6 +144,12 @@ struct TemplateDetail {
     author: String,
     version: String,
     file_path: String,
+    // Parameterisation & routing fields
+    context_vars: Vec<String>,
+    vuln_class: Option<String>,
+    hypothesis_tags: Vec<String>,
+    batch_group: Option<String>,
+    auto_probe: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -407,6 +413,11 @@ impl CxgMcpServer {
                     cvss: m.cvss_score, confidence: m.confidence,
                     author: m.author.name.clone(), version: m.version.clone(),
                     file_path: m.file_path.to_string_lossy().to_string(),
+                    context_vars: m.context_vars.clone(),
+                    vuln_class: m.vuln_class.clone(),
+                    hypothesis_tags: m.hypothesis_tags.clone(),
+                    batch_group: m.batch_group.clone(),
+                    auto_probe: m.auto_probe,
                 };
                 let json = serde_json::to_string_pretty(&detail)
                     .unwrap_or_else(|e| format!("{{\"error\": \"{}\"}}", e));

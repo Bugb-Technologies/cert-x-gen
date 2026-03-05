@@ -15,6 +15,43 @@ use tokio::process::Command;
 // METADATA PARSING FROM COMMENT HEADERS
 // ============================================================================
 
+/// A single context variable declaration parsed from `@context_vars`.
+///
+/// Format in header: `name:required` or `name[]:optional`
+/// The `[]` suffix indicates the variable is a JSON array at runtime.
+#[derive(Debug, Clone, Default)]
+pub struct ContextVarSpec {
+    /// Variable name as it appears in the CERT_X_GEN_CONTEXT JSON dict
+    pub name: String,
+    /// True when the name ends with `[]` — value is a JSON array
+    pub is_array: bool,
+    /// True = template cannot operate without this variable
+    pub required: bool,
+}
+
+impl ContextVarSpec {
+    /// Parse a single spec token such as `auth_token:required` or `endpoints[]:optional`
+    pub fn parse(token: &str) -> Option<Self> {
+        let token = token.trim();
+        if token.is_empty() {
+            return None;
+        }
+        let (raw_name, qualifier) = if let Some(pos) = token.find(':') {
+            let (n, q) = token.split_at(pos);
+            (n.trim(), q.trim_start_matches(':').trim())
+        } else {
+            (token, "optional")
+        };
+        let is_array = raw_name.ends_with("[]");
+        let name = raw_name.trim_end_matches("[]").to_string();
+        if name.is_empty() {
+            return None;
+        }
+        let required = matches!(qualifier.to_lowercase().as_str(), "required" | "req" | "r");
+        Some(Self { name, is_array, required })
+    }
+}
+
 /// Parsed metadata extracted from template comment headers
 #[derive(Debug, Clone, Default)]
 pub struct ParsedMetadata {
@@ -29,6 +66,28 @@ pub struct ParsedMetadata {
     pub references: Vec<String>,
     pub confidence: Option<u8>,
     pub version: Option<String>,
+
+    // --- Parameterisation & routing fields (Task 3a) ---
+
+    /// Context variables the template needs via `--context` / `CERT_X_GEN_CONTEXT`.
+    /// Declared as: `# @context_vars: auth_token:required, endpoints[]:required, user_id:optional`
+    pub context_vars: Vec<ContextVarSpec>,
+
+    /// Coarse vulnerability class for pipeline routing (maps to Bravos `VulnClass`).
+    /// Declared as: `# @vuln_class: idor`
+    pub vuln_class: Option<String>,
+
+    /// Fine-grained hypothesis routing tags consumed by Bravos `TemplateMatcher`.
+    /// Declared as: `# @hypothesis_tags: idor, bola, horizontal-access`
+    pub hypothesis_tags: Vec<String>,
+
+    /// Batch group — the context-shape this template belongs to.
+    /// Declared as: `# @batch_group: auth-context`
+    pub batch_group: Option<String>,
+
+    /// Whether the template can self-acquire missing context via probing.
+    /// Declared as: `# @auto_probe: true`
+    pub auto_probe: bool,
 }
 
 impl ParsedMetadata {
@@ -134,6 +193,36 @@ pub fn parse_metadata_from_comments(content: &str) -> ParsedMetadata {
     // If no @tags found, try fallback extraction from code
     if metadata.tags.is_empty() {
         metadata.tags = extract_tags_from_code(content);
+    }
+
+    // --- Parameterisation & routing fields ---
+
+    // @context_vars: auth_token:required, endpoints[]:required, user_id:optional
+    if let Some(cv_str) = extract_metadata_field(&header_content, "context_vars") {
+        metadata.context_vars = cv_str
+            .split(',')
+            .filter_map(|tok| ContextVarSpec::parse(tok))
+            .collect();
+    }
+
+    // @vuln_class: idor
+    metadata.vuln_class = extract_metadata_field(&header_content, "vuln_class");
+
+    // @hypothesis_tags: idor, bola, horizontal-access
+    if let Some(ht_str) = extract_metadata_field(&header_content, "hypothesis_tags") {
+        metadata.hypothesis_tags = ht_str
+            .split(',')
+            .map(|s| s.trim().to_lowercase())
+            .filter(|s| !s.is_empty())
+            .collect();
+    }
+
+    // @batch_group: auth-context
+    metadata.batch_group = extract_metadata_field(&header_content, "batch_group");
+
+    // @auto_probe: true
+    if let Some(ap_str) = extract_metadata_field(&header_content, "auto_probe") {
+        metadata.auto_probe = matches!(ap_str.to_lowercase().as_str(), "true" | "yes" | "1");
     }
 
     metadata
@@ -533,6 +622,19 @@ pub fn create_metadata(path: &Path, language: TemplateLanguage) -> TemplateMetad
         updated: chrono::Utc::now(),
         version: parsed.version.unwrap_or_else(|| "1.0.0".to_string()),
         confidence: parsed.confidence.or(Some(50)),
+        context_vars: parsed.context_vars.iter().map(|cv| {
+            let name = if cv.is_array {
+                format!("{}[]", cv.name)
+            } else {
+                cv.name.clone()
+            };
+            let qualifier = if cv.required { "required" } else { "optional" };
+            format!("{}:{}", name, qualifier)
+        }).collect(),
+        vuln_class: parsed.vuln_class,
+        hypothesis_tags: parsed.hypothesis_tags,
+        batch_group: parsed.batch_group,
+        auto_probe: parsed.auto_probe,
     }
 }
 

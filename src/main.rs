@@ -553,6 +553,32 @@ async fn run_scan(args: cli::ScanArgs, config_path: Option<PathBuf>) -> Result<(
         );
     }
 
+    // Apply --context JSON to template execution context
+    if let Some(ref context_json) = args.context {
+        match serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(context_json) {
+            Ok(map) => {
+                for (key, value) in map {
+                    let str_value = match value {
+                        serde_json::Value::String(s) => s,
+                        other => other.to_string(),
+                    };
+                    job.context.variables.insert(key, str_value);
+                }
+                tracing::info!(
+                    "Injected {} context variables from --context flag",
+                    job.context.variables.len()
+                );
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to parse --context JSON '{}': {}. Context variables not set.",
+                    context_json,
+                    e
+                );
+            }
+        }
+    }
+
     tracing::info!(
         "Scan job created: {} targets × {} templates = {} total checks",
         job.targets.len(),
@@ -936,6 +962,11 @@ fn create_template_filter(args: &cli::ScanArgs, skip_id_filter: bool) -> Result<
         for pattern in exclude.split(',') {
             filter.exclude_ids.push(pattern.trim().to_string());
         }
+    }
+
+    // Filter by batch group
+    if let Some(bg) = &args.batch_group {
+        filter.batch_group = Some(bg.clone());
     }
 
     Ok(filter)
@@ -1639,6 +1670,7 @@ async fn run_template_command(cmd: cli::TemplateCommand) -> Result<()> {
             language,
             severity,
             tags,
+            batch_group,
         } => {
             // Load configuration
             let config = Config::default();
@@ -1673,6 +1705,17 @@ async fn run_template_command(cmd: cli::TemplateCommand) -> Result<()> {
                     target_tags
                         .iter()
                         .any(|tag| template.metadata().tags.contains(tag))
+                });
+            }
+
+            if let Some(bg) = batch_group {
+                filtered_templates.retain(|template| {
+                    template
+                        .metadata()
+                        .batch_group
+                        .as_deref()
+                        .map(|g| g.eq_ignore_ascii_case(&bg))
+                        .unwrap_or(false)
                 });
             }
 
@@ -1790,6 +1833,37 @@ async fn run_template_command(cmd: cli::TemplateCommand) -> Result<()> {
 
             if !meta.tags.is_empty() {
                 println!("  Tags:        {}", meta.tags.join(", "));
+            }
+
+            if let Some(ref vc) = meta.vuln_class {
+                println!("  Vuln Class:  {}", vc);
+            }
+
+            if !meta.hypothesis_tags.is_empty() {
+                println!("  Hyp. Tags:   {}", meta.hypothesis_tags.join(", "));
+            }
+
+            if let Some(ref bg) = meta.batch_group {
+                println!("  Batch Group: {}", bg);
+            }
+
+            if meta.auto_probe {
+                println!("  Auto-Probe:  yes (template can self-acquire missing context)");
+            }
+
+            if !meta.context_vars.is_empty() {
+                println!("\n  Context Variables:");
+                for cv_str in &meta.context_vars {
+                    // cv_str format: "name:required" or "name[]:optional"
+                    let parts: Vec<&str> = cv_str.splitn(2, ':').collect();
+                    let (name, qualifier) = if parts.len() == 2 {
+                        (parts[0], parts[1])
+                    } else {
+                        (cv_str.as_str(), "optional")
+                    };
+                    let marker = if qualifier == "required" { "✓" } else { "○" };
+                    println!("    {} {:<30} [{}]", marker, name, qualifier);
+                }
             }
 
             if !meta.file_path.as_os_str().is_empty() {

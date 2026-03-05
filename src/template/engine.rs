@@ -211,6 +211,8 @@ pub struct TemplateFilter {
     pub languages: Vec<crate::types::TemplateLanguage>,
     /// Exclude template IDs
     pub exclude_ids: Vec<String>,
+    /// Filter by batch group (e.g. "auth-context", "endpoint-params")
+    pub batch_group: Option<String>,
 }
 
 impl TemplateFilter {
@@ -290,6 +292,14 @@ impl TemplateFilter {
         // Check language
         if !self.languages.is_empty() && !self.languages.contains(&metadata.language) {
             return false;
+        }
+
+        // Check batch group
+        if let Some(ref bg) = self.batch_group {
+            let template_bg = metadata.batch_group.as_deref().unwrap_or("");
+            if !template_bg.eq_ignore_ascii_case(bg) {
+                return false;
+            }
         }
 
         true
