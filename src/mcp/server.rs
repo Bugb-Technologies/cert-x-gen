@@ -72,6 +72,11 @@ pub struct ScanRequest {
     pub timeout: Option<u64>,
     /// Additional ports (comma-separated)
     pub ports: Option<String>,
+    /// JSON context for parameterised templates. Injected as CERT_X_GEN_CONTEXT env var.
+    /// Example: {"auth_token":"Bearer eyJ...","user_id":"6","endpoints":["/api/users/6"]}
+    pub context: Option<String>,
+    /// Run only templates in this batch group (e.g. "auth-context", "endpoint-params")
+    pub batch_group: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -461,7 +466,7 @@ impl CxgMcpServer {
         }
     }
 
-    #[tool(description = "Run a security scan against a target. Executes vulnerability detection templates and returns findings with evidence and remediation.")]
+    #[tool(description = "Run a security scan against a target. Executes vulnerability detection templates and returns findings with evidence and remediation. Pass 'context' as a JSON object to inject auth tokens and endpoint lists into parameterised templates (e.g. auth-context batch group). Use 'batch_group' to run only templates sharing a context shape.")]
     async fn cxg_scan(&self, Parameters(req): Parameters<ScanRequest>) -> Result<CallToolResult, ErrorData> {
         let timeout = req.timeout;
         let scope = req.scope.clone();
@@ -469,6 +474,8 @@ impl CxgMcpServer {
         let tags = req.tags.clone();
         let severity = req.severity.clone();
         let ports = req.ports.clone();
+        let context_json = req.context.clone();
+        let batch_group = req.batch_group.clone();
 
         let output = Self::run_non_send(move || async move {
             let mut config = Config::default();
@@ -502,9 +509,29 @@ impl CxgMcpServer {
             if let Some(ref s) = severity {
                 filter.severities = s.split(',').filter_map(|sv| Self::parse_severity(sv.trim())).collect();
             }
+            if let Some(ref bg) = batch_group {
+                filter.batch_group = Some(bg.clone());
+            }
             job.filter_templates(&filter);
             if !additional_ports.is_empty() {
                 job.context.additional_ports = additional_ports;
+            }
+            // Inject context variables — same logic as CLI --context flag
+            if let Some(ref json_str) = context_json {
+                match serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(json_str) {
+                    Ok(map) => {
+                        for (key, value) in map {
+                            let str_value = match value {
+                                serde_json::Value::String(s) => s,
+                                other => other.to_string(),
+                            };
+                            job.context.variables.insert(key, str_value);
+                        }
+                    }
+                    Err(e) => {
+                        return Err(format!("Invalid context JSON: {}. Expected object like {{\"auth_token\":\"Bearer eyJ...\"}}", e));
+                    }
+                }
             }
 
             let template_count = job.templates.len();
