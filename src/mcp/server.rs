@@ -1,6 +1,6 @@
 //! CXG MCP Server implementation
 //!
-//! Provides 10 tools for AI agents:
+//! Provides 11 tools for AI agents:
 //! - cxg_search: Search templates by query/filters
 //! - cxg_template_list: List templates with optional filters
 //! - cxg_template_info: Get detailed info on a specific template
@@ -8,6 +8,7 @@
 //! - cxg_template_validate: Validate template code (12-language checker)
 //! - cxg_template_create: Scaffold a new template with boilerplate
 //! - cxg_template_write: Validate + save a completed template atomically
+//! - cxg_template_get_notes: Get the AI generation guide for a language
 //! - cxg_template_test: Test a specific template against a target
 //! - cxg_template_stats: Get template collection statistics
 //! - cxg_template_update: Pull latest templates from remote repository
@@ -103,6 +104,12 @@ pub struct TemplateWriteRequest {
     pub code: String,
     /// Overwrite if a template with this ID already exists (default: false)
     pub overwrite: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct TemplateNotesRequest {
+    /// Programming language to get guidance for: python, yaml, rust, shell, javascript, c, cpp, java, go, ruby, perl, php
+    pub language: String,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -746,6 +753,54 @@ impl CxgMcpServer {
         Ok(CallToolResult::success(vec![Content::text(json.to_string())]))
     }
 
+    #[tool(description = "Get the AI generation guide for a specific template language. Returns the full guidance document covering metadata format, required fields, runtime environment variables (CERT_X_GEN_TARGET_HOST, CERT_X_GEN_CONTEXT, etc.), output JSON contract, validation rules, and a complete working example. Call this before cxg_template_create to understand what a correct template looks like in your chosen language.")]
+    async fn cxg_template_get_notes(&self, Parameters(req): Parameters<TemplateNotesRequest>) -> Result<CallToolResult, ErrorData> {
+        let language = Self::parse_language(&req.language).ok_or_else(|| {
+            ErrorData::invalid_params(
+                format!("Unknown language '{}'. Supported: yaml, python, rust, shell, javascript, c, cpp, java, go, ruby, perl, php", req.language),
+                None,
+            )
+        })?;
+
+        let lang_name = match language {
+            TemplateLanguage::Python     => "python",
+            TemplateLanguage::Rust       => "rust",
+            TemplateLanguage::Shell      => "shell",
+            TemplateLanguage::JavaScript => "javascript",
+            TemplateLanguage::C          => "c",
+            TemplateLanguage::Cpp        => "cpp",
+            TemplateLanguage::Java       => "java",
+            TemplateLanguage::Go         => "go",
+            TemplateLanguage::Ruby       => "ruby",
+            TemplateLanguage::Perl       => "perl",
+            TemplateLanguage::Php        => "php",
+            TemplateLanguage::Yaml       => "yaml",
+        };
+
+        let notes_filename = format!("{}-template-ai-notes.md", lang_name);
+        let notes_paths = vec![
+            PathBuf::from("templates/skeleton").join(&notes_filename),
+            dirs::home_dir().unwrap_or_default()
+                .join(".cert-x-gen/templates/official/templates/skeleton")
+                .join(&notes_filename),
+        ];
+
+        let notes = notes_paths.iter()
+            .find_map(|p| std::fs::read_to_string(p).ok())
+            .ok_or_else(|| ErrorData::internal_error(
+                format!("AI notes for '{}' not found. Run cxg_template_update to fetch the latest templates.", lang_name),
+                None,
+            ))?;
+
+        let json = serde_json::json!({
+            "language": lang_name,
+            "notes_file": notes_filename,
+            "content": notes,
+            "hint": "Read these notes carefully before writing template code. Then call cxg_template_create to get the skeleton, fill in the detection logic, and use cxg_template_write to validate and save.",
+        });
+        Ok(CallToolResult::success(vec![Content::text(json.to_string())]))
+    }
+
     #[tool(description = "Test a specific template against a target. More targeted than cxg_scan — runs a single template and returns detailed results.")]
     async fn cxg_template_test(&self, Parameters(req): Parameters<TemplateTestRequest>) -> Result<CallToolResult, ErrorData> {
         let template_id = req.template_id.clone();
@@ -975,7 +1030,8 @@ impl ServerHandler for CxgMcpServer {
                  Search, validate, create, write, test, and run vulnerability scanning templates \
                  across 12 programming languages with 77+ built-in security checks. \
                  Tools: cxg_search, cxg_template_list, cxg_template_info, cxg_scan, \
-                 cxg_template_validate, cxg_template_create, cxg_template_write, cxg_template_test, \
+                 cxg_template_validate, cxg_template_create, cxg_template_write, \
+                 cxg_template_get_notes, cxg_template_test, \
                  cxg_template_stats, cxg_template_update."
                     .to_string(),
             ),
