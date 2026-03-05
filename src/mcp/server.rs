@@ -1,6 +1,6 @@
 //! CXG MCP Server implementation
 //!
-//! Provides 11 tools for AI agents:
+//! Provides 12 tools for AI agents:
 //! - cxg_search: Search templates by query/filters
 //! - cxg_template_list: List templates with optional filters
 //! - cxg_template_info: Get detailed info on a specific template
@@ -9,6 +9,7 @@
 //! - cxg_template_create: Scaffold a new template with boilerplate
 //! - cxg_template_write: Validate + save a completed template atomically
 //! - cxg_template_get_notes: Get the AI generation guide for a language
+//! - cxg_ai_generate: Generate a template from natural language (dual-mode)
 //! - cxg_template_test: Test a specific template against a target
 //! - cxg_template_stats: Get template collection statistics
 //! - cxg_template_update: Pull latest templates from remote repository
@@ -115,6 +116,21 @@ pub struct TemplateWriteRequest {
 pub struct TemplateNotesRequest {
     /// Programming language to get guidance for: python, yaml, rust, shell, javascript, c, cpp, java, go, ruby, perl, php
     pub language: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct AiGenerateRequest {
+    /// Natural language description of what to detect.
+    /// Examples: "detect Redis without authentication", "find JWT none algorithm", "check for exposed Memcached"
+    pub prompt: String,
+    /// Programming language for the template (default: yaml)
+    pub language: Option<String>,
+    /// LLM provider override: anthropic, openai, deepseek, ollama.
+    /// If omitted, uses the configured default provider.
+    pub provider: Option<String>,
+    /// Model name override (e.g. claude-sonnet-4-20250514, gpt-4o).
+    /// If omitted, uses the provider default.
+    pub model: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -828,6 +844,139 @@ impl CxgMcpServer {
         Ok(CallToolResult::success(vec![Content::text(json.to_string())]))
     }
 
+    #[tool(description = "Generate a security template from a natural language prompt. Dual-mode: if an LLM provider is configured with an API key, generates the template internally and returns the code ready to save with cxg_template_write. If no provider is configured, returns the generation prompt + skeleton + ai-notes for the calling agent to generate directly — the agent should then call cxg_template_write with the result.")]
+    async fn cxg_ai_generate(&self, Parameters(req): Parameters<AiGenerateRequest>) -> Result<CallToolResult, ErrorData> {
+        use crate::ai::manager::AIManager;
+        use crate::ai::prompt::PromptBuilder;
+        use crate::types::TemplateLanguage;
+
+        let language = req.language.as_deref()
+            .and_then(|l| Self::parse_language(l))
+            .unwrap_or(TemplateLanguage::Yaml);
+
+        let lang_name = match language {
+            TemplateLanguage::Python     => "python",
+            TemplateLanguage::Rust       => "rust",
+            TemplateLanguage::Shell      => "shell",
+            TemplateLanguage::JavaScript => "javascript",
+            TemplateLanguage::C          => "c",
+            TemplateLanguage::Cpp        => "cpp",
+            TemplateLanguage::Java       => "java",
+            TemplateLanguage::Go         => "go",
+            TemplateLanguage::Ruby       => "ruby",
+            TemplateLanguage::Perl       => "perl",
+            TemplateLanguage::Php        => "php",
+            TemplateLanguage::Yaml       => "yaml",
+        };
+
+        let prompt = req.prompt.clone();
+        let provider = req.provider.clone();
+
+        // --- Check whether a provider is usable ---
+        let manager_result: Result<_, String> = Self::run_non_send(move || async move {
+            AIManager::new().map_err(|e| e.to_string())
+        }).await;
+
+        let api_available = match &manager_result {
+            Ok(manager) => {
+                let p = provider.as_deref().unwrap_or_else(|| manager.config().default_provider_name());
+                manager.config().is_provider_enabled(p)
+                    && manager.config().get_provider(p)
+                        .and_then(|pc| pc.api_key.as_ref())
+                        .map(|k| !k.is_empty() && !k.starts_with("${"))
+                        .unwrap_or(false)
+            }
+            Err(_) => false,
+        };
+
+        if api_available {
+            // ── API mode: generate internally ──────────────────────────────
+            let prompt2   = req.prompt.clone();
+            let provider2 = req.provider.clone();
+
+            let result = Self::run_non_send(move || async move {
+                let manager = AIManager::new()
+                    .map_err(|e| format!("AIManager init failed: {}", e))?;
+                let code = manager
+                    .generate_template(&prompt2, language, provider2.as_deref())
+                    .await
+                    .map_err(|e| format!("Generation failed: {}", e))?;
+                Ok::<String, String>(code)
+            }).await.map_err(|e| ErrorData::internal_error(e, None))?;
+
+            // Suggest a save ID from the prompt
+            let save_id = req.prompt
+                .to_lowercase()
+                .split_whitespace()
+                .take(5)
+                .collect::<Vec<_>>()
+                .join("-")
+                .chars()
+                .filter(|c| c.is_alphanumeric() || *c == '-')
+                .collect::<String>();
+
+            let json = serde_json::json!({
+                "mode": "api",
+                "language": lang_name,
+                "code": result,
+                "suggested_id": save_id,
+                "hint": "Template generated. Call cxg_template_write with this code to validate and save it, then cxg_template_test to verify it detects correctly.",
+            });
+            return Ok(CallToolResult::success(vec![Content::text(json.to_string())]));
+        }
+
+        // ── Agent mode: no API key — return prompt + skeleton + notes ──────
+        // Build the same generation prompt the CLI uses
+        let builder = PromptBuilder::new();
+        let generation_prompt = builder.build_generation_prompt(&req.prompt, language);
+
+        // Load skeleton
+        let skeleton_name = format!("{}-template-skeleton.{}", lang_name, Self::lang_to_ext(&language));
+        let skeleton_paths = vec![
+            PathBuf::from("templates/skeleton").join(&skeleton_name),
+            dirs::home_dir().unwrap_or_default()
+                .join(".cert-x-gen/templates/official/templates/skeleton")
+                .join(&skeleton_name),
+        ];
+        let skeleton = skeleton_paths.iter()
+            .find_map(|p| std::fs::read_to_string(p).ok())
+            .unwrap_or_default();
+
+        // Load notes
+        let notes_name = format!("{}-template-ai-notes.md", lang_name);
+        let notes_paths = vec![
+            PathBuf::from("templates/skeleton").join(&notes_name),
+            dirs::home_dir().unwrap_or_default()
+                .join(".cert-x-gen/templates/official/templates/skeleton")
+                .join(&notes_name),
+        ];
+        let notes = notes_paths.iter()
+            .find_map(|p| std::fs::read_to_string(p).ok())
+            .unwrap_or_default();
+
+        let save_id = req.prompt
+            .to_lowercase()
+            .split_whitespace()
+            .take(5)
+            .collect::<Vec<_>>()
+            .join("-")
+            .chars()
+            .filter(|c| c.is_alphanumeric() || *c == '-')
+            .collect::<String>();
+
+        let json = serde_json::json!({
+            "mode": "agent",
+            "message": "No LLM API key configured. Use the prompt, skeleton, and notes below to generate the template directly, then call cxg_template_write to validate and save it.",
+            "language": lang_name,
+            "suggested_id": save_id,
+            "generation_prompt": generation_prompt,
+            "skeleton": skeleton,
+            "notes": notes,
+            "save_hint": format!("After generating, call cxg_template_write with id='{}', language='{}', code=<generated code>", save_id, lang_name),
+        });
+        Ok(CallToolResult::success(vec![Content::text(json.to_string())]))
+    }
+
     #[tool(description = "Test a specific template against a target. More targeted than cxg_scan — runs a single template and returns detailed results.")]
     async fn cxg_template_test(&self, Parameters(req): Parameters<TemplateTestRequest>) -> Result<CallToolResult, ErrorData> {
         let template_id = req.template_id.clone();
@@ -1058,7 +1207,7 @@ impl ServerHandler for CxgMcpServer {
                  across 12 programming languages with 77+ built-in security checks. \
                  Tools: cxg_search, cxg_template_list, cxg_template_info, cxg_scan, \
                  cxg_template_validate, cxg_template_create, cxg_template_write, \
-                 cxg_template_get_notes, cxg_template_test, \
+                 cxg_template_get_notes, cxg_ai_generate, cxg_template_test, \
                  cxg_template_stats, cxg_template_update."
                     .to_string(),
             ),
