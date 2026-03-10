@@ -160,3 +160,7 @@ scan_test_plan.md
 # Build artifacts
 /target/
 *.log
+
+# Linux cross-compiled binaries (used for Docker sandbox builds, not for repo)
+cxg-linux
+cxg-linux-build
