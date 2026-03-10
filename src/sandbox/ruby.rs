@@ -21,7 +21,7 @@ pub async fn init_environment(sandbox: &Sandbox) -> Result<()> {
 
     // Check Ruby version
     let ruby_version = Command::new("ruby")
-        .args(&["-e", "puts RUBY_VERSION"])
+        .args(["-e", "puts RUBY_VERSION"])
         .output();
 
     if let Ok(output) = ruby_version {
@@ -29,13 +29,12 @@ pub async fn init_environment(sandbox: &Sandbox) -> Result<()> {
         tracing::info!("Ruby version: {}", version);
 
         // Parse version and warn if too old
-        if let Some(major_minor) = version
+        if let Ok(major_minor) = version
             .split('.')
             .take(2)
             .collect::<Vec<_>>()
             .join(".")
             .parse::<f32>()
-            .ok()
         {
             if major_minor < 3.0 {
                 tracing::warn!(
@@ -90,7 +89,7 @@ pub async fn install_gems(sandbox: &Sandbox, gems: &[&str]) -> Result<()> {
 
     for gem in gems {
         let output = Command::new("gem")
-            .args(&[
+            .args([
                 "install",
                 gem,
                 "--install-dir",

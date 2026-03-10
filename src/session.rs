@@ -252,7 +252,7 @@ impl JwtToken {
             .decode(data)
             .map_err(|e| Error::Parse(format!("Base64 decode failed: {}", e)))?;
 
-        serde_json::from_slice(&decoded).map_err(|e| Error::JsonParse(e))
+        serde_json::from_slice(&decoded).map_err(Error::JsonParse)
     }
 
     /// Check if token is expired

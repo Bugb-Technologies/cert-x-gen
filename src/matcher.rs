@@ -329,14 +329,11 @@ impl Matcher {
 
                 if let Some(vuln_checks) = vulnerabilities {
                     for vuln in vuln_checks {
-                        match vuln.to_lowercase().as_str() {
-                            "heartbleed" => {
-                                // Check for heartbleed indicators
-                                if headers_str.contains("heartbeat") {
-                                    matched = true;
-                                }
+                        if vuln.to_lowercase().as_str() == "heartbleed" {
+                            // Check for heartbleed indicators
+                            if headers_str.contains("heartbeat") {
+                                matched = true;
                             }
-                            _ => {}
                         }
                     }
                 }

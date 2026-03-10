@@ -112,15 +112,14 @@ fn check_cpp_patterns(code: &str) -> Vec<TemplateDiagnostic> {
     // Check for iostream and cstdio mixing
     if (code.contains("iostream") || code.contains("cout") || code.contains("cin"))
         && (code.contains("cstdio") || code.contains("printf") || code.contains("scanf"))
+        && !code.contains("sync_with_stdio")
     {
-        if !code.contains("sync_with_stdio") {
-            diagnostics.push(
+        diagnostics.push(
                 TemplateDiagnostic::info(
                     "cpp.mixed_io",
                     "Mixing iostream and cstdio. Consider std::ios_base::sync_with_stdio(false) for consistency.",
                 )
             );
-        }
     }
 
     diagnostics

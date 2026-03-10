@@ -124,7 +124,7 @@ impl CsrfDetector {
             let form_html = form_match.get(1).map(|m| m.as_str()).unwrap_or("");
 
             // Check if form has CSRF token
-            let has_csrf = self.detect_tokens(form_html).is_empty() == false;
+            let has_csrf = !self.detect_tokens(form_html).is_empty();
 
             // Check if form modifies state (POST, PUT, DELETE)
             let is_state_changing = self.is_state_changing_form(&form_match[0]);

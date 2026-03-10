@@ -564,7 +564,6 @@ pub struct TemplateMetadata {
     pub confidence: Option<u8>,
 
     // --- Parameterisation & routing fields (Task 3a) ---
-
     /// Context variables required/optional at runtime, parsed from `@context_vars`.
     /// Each entry: `{ name, is_array, required }`.
     /// Serialised as a compact string vec: `["auth_token:required", "endpoints[]:required"]`

@@ -48,7 +48,11 @@ impl ContextVarSpec {
             return None;
         }
         let required = matches!(qualifier.to_lowercase().as_str(), "required" | "req" | "r");
-        Some(Self { name, is_array, required })
+        Some(Self {
+            name,
+            is_array,
+            required,
+        })
     }
 }
 
@@ -68,7 +72,6 @@ pub struct ParsedMetadata {
     pub version: Option<String>,
 
     // --- Parameterisation & routing fields (Task 3a) ---
-
     /// Context variables the template needs via `--context` / `CERT_X_GEN_CONTEXT`.
     /// Declared as: `# @context_vars: auth_token:required, endpoints[]:required, user_id:optional`
     pub context_vars: Vec<ContextVarSpec>,
@@ -201,7 +204,7 @@ pub fn parse_metadata_from_comments(content: &str) -> ParsedMetadata {
     if let Some(cv_str) = extract_metadata_field(&header_content, "context_vars") {
         metadata.context_vars = cv_str
             .split(',')
-            .filter_map(|tok| ContextVarSpec::parse(tok))
+            .filter_map(ContextVarSpec::parse)
             .collect();
     }
 
@@ -435,7 +438,7 @@ pub fn parse_findings(stdout: &str, target: &Target, template_id: &str) -> Resul
 
     // Otherwise, parse as simplified format array and convert
     let simple_findings: Vec<serde_json::Value> =
-        serde_json::from_str(stdout).map_err(|e| Error::JsonParse(e))?;
+        serde_json::from_str(stdout).map_err(Error::JsonParse)?;
 
     parse_simple_findings(&simple_findings, target, template_id)
 }
@@ -571,7 +574,7 @@ pub fn create_metadata(path: &Path, language: TemplateLanguage) -> TemplateMetad
     let id = parsed.id.unwrap_or_else(|| fallback_id.clone());
     let name = parsed
         .name
-        .unwrap_or_else(|| fallback_id.replace('-', " ").replace('_', " "));
+        .unwrap_or_else(|| fallback_id.replace(['-', '_'], " "));
     let author_name = parsed.author.unwrap_or_else(|| "Unknown".to_string());
     let severity = parsed
         .severity
@@ -622,15 +625,19 @@ pub fn create_metadata(path: &Path, language: TemplateLanguage) -> TemplateMetad
         updated: chrono::Utc::now(),
         version: parsed.version.unwrap_or_else(|| "1.0.0".to_string()),
         confidence: parsed.confidence.or(Some(50)),
-        context_vars: parsed.context_vars.iter().map(|cv| {
-            let name = if cv.is_array {
-                format!("{}[]", cv.name)
-            } else {
-                cv.name.clone()
-            };
-            let qualifier = if cv.required { "required" } else { "optional" };
-            format!("{}:{}", name, qualifier)
-        }).collect(),
+        context_vars: parsed
+            .context_vars
+            .iter()
+            .map(|cv| {
+                let name = if cv.is_array {
+                    format!("{}[]", cv.name)
+                } else {
+                    cv.name.clone()
+                };
+                let qualifier = if cv.required { "required" } else { "optional" };
+                format!("{}:{}", name, qualifier)
+            })
+            .collect(),
         vuln_class: parsed.vuln_class,
         hypothesis_tags: parsed.hypothesis_tags,
         batch_group: parsed.batch_group,
@@ -705,7 +712,7 @@ pub fn generate_cache_key(path: &Path) -> Result<String> {
     use std::fs;
     use std::hash::{Hash, Hasher};
 
-    let metadata = fs::metadata(path).map_err(|e| Error::Io(e))?;
+    let metadata = fs::metadata(path).map_err(Error::Io)?;
 
     let mut hasher = DefaultHasher::new();
     path.hash(&mut hasher);

@@ -27,7 +27,7 @@ pub async fn init_environment(sandbox: &Sandbox) -> Result<()> {
         venv_path.display()
     );
     let output = Command::new("python3")
-        .args(&["-m", "venv", venv_path.to_str().unwrap()])
+        .args(["-m", "venv", venv_path.to_str().unwrap()])
         .output()
         .map_err(|e| Error::command(format!("Failed to create Python venv: {}", e)))?;
 
@@ -76,7 +76,7 @@ pub async fn install_packages(sandbox: &Sandbox, packages: &[&str]) -> Result<()
         }
 
         let output = Command::new(&pip_path)
-            .args(&["install", "--upgrade", package])
+            .args(["install", "--upgrade", package])
             .output();
 
         match output {

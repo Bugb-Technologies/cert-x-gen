@@ -101,7 +101,7 @@ impl GitClient {
         // This prevents macOS keychain from asking for credentials
         let output = Command::new("git")
             .env("GIT_TERMINAL_PROMPT", "0") // Disable terminal prompts
-            .args(&[
+            .args([
                 "-c",
                 "credential.helper=", // Temporarily disable credential helper
                 "clone",
@@ -242,7 +242,7 @@ impl GitClient {
         // First, fetch updates
         let fetch_output = Command::new("git")
             .current_dir(path)
-            .args(&["fetch", "origin", branch])
+            .args(["fetch", "origin", branch])
             .output()
             .map_err(|e| Error::config(format!("Failed to run git fetch: {}", e)))?;
 
@@ -254,7 +254,7 @@ impl GitClient {
         // Then, merge with fast-forward only
         let merge_output = Command::new("git")
             .current_dir(path)
-            .args(&["merge", "--ff-only", &format!("origin/{}", branch)])
+            .args(["merge", "--ff-only", &format!("origin/{}", branch)])
             .output()
             .map_err(|e| Error::config(format!("Failed to run git merge: {}", e)))?;
 

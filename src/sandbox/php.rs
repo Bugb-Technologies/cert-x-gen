@@ -66,7 +66,7 @@ pub async fn install_packages(sandbox: &Sandbox, packages: &[&str]) -> Result<()
 
     for package in packages {
         let output = Command::new("composer")
-            .args(&["require", package])
+            .args(["require", package])
             .current_dir(&php_dir)
             .output()
             .map_err(|e| {

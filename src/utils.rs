@@ -113,7 +113,7 @@ pub fn extract_domain(input: &str) -> String {
 
     // Remove port if present
     if let Some(pos) = input.rfind(':') {
-        if let Ok(_) = input[pos + 1..].parse::<u16>() {
+        if input[pos + 1..].parse::<u16>().is_ok() {
             return input[..pos].to_string();
         }
     }

@@ -172,7 +172,9 @@ impl AutoUpdater {
         );
         println!(
             "{}",
-            format!("│  ✅ Templates installed successfully!                       │").green()
+            "│  ✅ Templates installed successfully!                       │"
+                .to_string()
+                .green()
         );
         println!(
             "{}",

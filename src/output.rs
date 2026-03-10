@@ -18,9 +18,8 @@ pub trait OutputFormatter: Send + Sync {
     /// Write formatted results to file
     fn write_to_file(&self, results: &ScanResults, path: &Path) -> Result<()> {
         let output = self.format(results)?;
-        let mut file = File::create(path).map_err(|e| Error::Io(e))?;
-        file.write_all(output.as_bytes())
-            .map_err(|e| Error::Io(e))?;
+        let mut file = File::create(path).map_err(Error::Io)?;
+        file.write_all(output.as_bytes()).map_err(Error::Io)?;
         Ok(())
     }
 }
@@ -176,7 +175,7 @@ impl OutputFormatter for MarkdownFormatter {
                 .unwrap_or(&0);
             output.push_str(&format!("- **{}**: {}\n", severity, count));
         }
-        output.push_str("\n");
+        output.push('\n');
 
         // Findings
         if !results.findings.is_empty() {

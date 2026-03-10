@@ -95,7 +95,7 @@ impl DockerSandbox {
     pub fn load(name: &str) -> Result<Self> {
         // Check if container exists
         let output = Command::new("docker")
-            .args(&[
+            .args([
                 "ps",
                 "-a",
                 "--filter",
@@ -138,7 +138,7 @@ impl DockerSandbox {
     /// Check if Docker daemon is running
     pub fn docker_running() -> bool {
         Command::new("docker")
-            .args(&["ps"])
+            .args(["ps"])
             .output()
             .map(|out| out.status.success())
             .unwrap_or(false)
@@ -162,7 +162,7 @@ impl DockerSandbox {
     /// Check if image exists locally
     fn image_exists(&self) -> bool {
         Command::new("docker")
-            .args(&["images", "-q", &self.config.image])
+            .args(["images", "-q", &self.config.image])
             .output()
             .map(|out| !String::from_utf8_lossy(&out.stdout).trim().is_empty())
             .unwrap_or(false)
@@ -214,7 +214,7 @@ impl DockerSandbox {
         }
 
         let output = Command::new("docker")
-            .args(&[
+            .args([
                 "build",
                 "-t",
                 &self.config.image,
@@ -248,7 +248,7 @@ impl DockerSandbox {
 
                 // Try again with --no-cache and without pulling
                 let retry_output = Command::new("docker")
-                    .args(&[
+                    .args([
                         "build",
                         "--no-cache",
                         "--pull=false",
@@ -455,7 +455,7 @@ impl DockerSandbox {
         tracing::info!("Starting container: {}", container_id);
 
         let output = Command::new("docker")
-            .args(&["start", container_id])
+            .args(["start", container_id])
             .output()
             .map_err(|e| Error::command(format!("Failed to start container: {}", e)))?;
 
@@ -473,7 +473,7 @@ impl DockerSandbox {
         if !self.is_running() {
             // Check container logs to see why it exited
             let logs_output = Command::new("docker")
-                .args(&["logs", "--tail", "20", container_id])
+                .args(["logs", "--tail", "20", container_id])
                 .output();
 
             let logs = logs_output
@@ -503,7 +503,7 @@ impl DockerSandbox {
         tracing::info!("Stopping container: {}", container_id);
 
         let output = Command::new("docker")
-            .args(&["stop", container_id])
+            .args(["stop", container_id])
             .output()
             .map_err(|e| Error::command(format!("Failed to stop container: {}", e)))?;
 
@@ -522,7 +522,7 @@ impl DockerSandbox {
     pub fn is_running(&self) -> bool {
         if let Some(container_id) = &self.container_id {
             Command::new("docker")
-                .args(&["ps", "-q", "--filter", &format!("id={}", container_id)])
+                .args(["ps", "-q", "--filter", &format!("id={}", container_id)])
                 .output()
                 .map(|out| !String::from_utf8_lossy(&out.stdout).trim().is_empty())
                 .unwrap_or(false)
@@ -569,7 +569,7 @@ impl DockerSandbox {
             .ok_or_else(|| Error::config("Container ID not set"))?;
 
         Command::new("docker")
-            .args(&["exec", container_id, "/bin/bash", "-c", command])
+            .args(["exec", container_id, "/bin/bash", "-c", command])
             .output()
             .map_err(|e| Error::command(format!("Failed to execute command in container: {}", e)))
     }
@@ -585,7 +585,7 @@ impl DockerSandbox {
         tracing::info!("Type 'exit' to leave the sandbox");
 
         let status = Command::new("docker")
-            .args(&["exec", "-it", container_id, "/bin/bash"])
+            .args(["exec", "-it", container_id, "/bin/bash"])
             .stdin(Stdio::inherit())
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit())
@@ -614,7 +614,7 @@ impl DockerSandbox {
         }
 
         let output = Command::new("docker")
-            .args(&["rm", container_id])
+            .args(["rm", container_id])
             .output()
             .map_err(|e| Error::command(format!("Failed to delete container: {}", e)))?;
 
@@ -684,7 +684,7 @@ pub struct SandboxStatus {
 /// List all sandboxes
 pub fn list_sandboxes() -> Result<Vec<SandboxStatus>> {
     let output = Command::new("docker")
-        .args(&[
+        .args([
             "ps",
             "-a",
             "--filter",

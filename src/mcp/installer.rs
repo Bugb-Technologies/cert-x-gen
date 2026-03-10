@@ -37,11 +37,20 @@ fn cxg_command() -> String {
 
 fn claude_desktop_config() -> Option<PathBuf> {
     #[cfg(target_os = "macos")]
-    { dirs::home_dir().map(|h| h.join("Library/Application Support/Claude/claude_desktop_config.json")) }
+    {
+        dirs::home_dir()
+            .map(|h| h.join("Library/Application Support/Claude/claude_desktop_config.json"))
+    }
     #[cfg(target_os = "windows")]
-    { std::env::var("APPDATA").ok().map(|a| PathBuf::from(a).join("Claude/claude_desktop_config.json")) }
+    {
+        std::env::var("APPDATA")
+            .ok()
+            .map(|a| PathBuf::from(a).join("Claude/claude_desktop_config.json"))
+    }
     #[cfg(target_os = "linux")]
-    { dirs::config_dir().map(|c| c.join("Claude/claude_desktop_config.json")) }
+    {
+        dirs::config_dir().map(|c| c.join("Claude/claude_desktop_config.json"))
+    }
 }
 
 fn claude_code_config() -> Option<PathBuf> {
@@ -62,9 +71,13 @@ fn vscode_config() -> Option<PathBuf> {
 
 fn zed_config() -> Option<PathBuf> {
     #[cfg(target_os = "macos")]
-    { dirs::home_dir().map(|h| h.join(".config/zed/settings.json")) }
+    {
+        dirs::home_dir().map(|h| h.join(".config/zed/settings.json"))
+    }
     #[cfg(not(target_os = "macos"))]
-    { dirs::config_dir().map(|c| c.join("zed/settings.json")) }
+    {
+        dirs::config_dir().map(|c| c.join("zed/settings.json"))
+    }
 }
 
 /// All supported MCP clients
@@ -126,18 +139,25 @@ struct ClientStatus {
 }
 
 fn detect_clients() -> Vec<ClientStatus> {
-    all_clients().into_iter().map(|client| {
-        let path = (client.config_path)();
-        let config_exists = path.as_ref().map_or(false, |p| p.exists());
-        let already_configured = if config_exists {
-            path.as_ref().map_or(false, |p| {
-                check_already_configured(p, client.servers_key)
-            })
-        } else {
-            false
-        };
-        ClientStatus { client, config_exists, already_configured, config_path: path }
-    }).collect()
+    all_clients()
+        .into_iter()
+        .map(|client| {
+            let path = (client.config_path)();
+            let config_exists = path.as_ref().is_some_and(|p| p.exists());
+            let already_configured = if config_exists {
+                path.as_ref()
+                    .is_some_and(|p| check_already_configured(p, client.servers_key))
+            } else {
+                false
+            };
+            ClientStatus {
+                client,
+                config_exists,
+                already_configured,
+                config_path: path,
+            }
+        })
+        .collect()
 }
 
 fn check_already_configured(path: &PathBuf, servers_key: &str) -> bool {
@@ -171,21 +191,31 @@ fn prompt_client_selection(statuses: &[ClientStatus]) -> Result<Vec<usize>> {
     for (i, status) in statuses.iter().enumerate() {
         let num = i + 1;
         if status.already_configured {
-            println!("  {} {} {} {}",
+            println!(
+                "  {} {} {} {}",
                 style(format!("{}.", num)).dim(),
                 style(&status.client.label).green(),
                 style("✓ already configured").green().dim(),
-                style(format!("({})", status.config_path.as_ref().map_or("".into(), |p| p.display().to_string()))).dim(),
+                style(format!(
+                    "({})",
+                    status
+                        .config_path
+                        .as_ref()
+                        .map_or("".into(), |p| p.display().to_string())
+                ))
+                .dim(),
             );
         } else if status.config_exists {
-            println!("  {} {} {}",
+            println!(
+                "  {} {} {}",
                 style(format!("{}.", num)).bold(),
                 style(&status.client.label).white().bold(),
                 style("(installed)").green(),
             );
             selectable.push(i);
         } else {
-            println!("  {} {} {}",
+            println!(
+                "  {} {} {}",
                 style(format!("{}.", num)).dim(),
                 style(&status.client.label).dim(),
                 style("(not detected)").dim(),
@@ -196,12 +226,17 @@ fn prompt_client_selection(statuses: &[ClientStatus]) -> Result<Vec<usize>> {
 
     if selectable.is_empty() {
         println!();
-        println!("{}", style("All detected clients already configured!").green());
+        println!(
+            "{}",
+            style("All detected clients already configured!").green()
+        );
         return Ok(vec![]);
     }
 
     // Build default selection (installed but not yet configured)
-    let defaults: Vec<usize> = statuses.iter().enumerate()
+    let defaults: Vec<usize> = statuses
+        .iter()
+        .enumerate()
         .filter(|(_, s)| s.config_exists && !s.already_configured)
         .map(|(i, _)| i + 1)
         .collect();
@@ -209,22 +244,34 @@ fn prompt_client_selection(statuses: &[ClientStatus]) -> Result<Vec<usize>> {
     let default_str = if defaults.is_empty() {
         "1".to_string()
     } else {
-        defaults.iter().map(|n| n.to_string()).collect::<Vec<_>>().join(",")
+        defaults
+            .iter()
+            .map(|n| n.to_string())
+            .collect::<Vec<_>>()
+            .join(",")
     };
 
     println!();
-    print!("Configure which clients? (comma-separated, e.g. 1,2) [{}]: ", default_str);
-    io::stdout().flush().map_err(|e| Error::config(e.to_string()))?;
+    print!(
+        "Configure which clients? (comma-separated, e.g. 1,2) [{}]: ",
+        default_str
+    );
+    io::stdout()
+        .flush()
+        .map_err(|e| Error::config(e.to_string()))?;
 
     let mut input = String::new();
-    io::stdin().lock().read_line(&mut input)
+    io::stdin()
+        .lock()
+        .read_line(&mut input)
         .map_err(|e| Error::config(e.to_string()))?;
 
     let input = input.trim();
     let selected_nums: Vec<usize> = if input.is_empty() {
         defaults
     } else {
-        input.split(',')
+        input
+            .split(',')
             .filter_map(|s| s.trim().parse::<usize>().ok())
             .filter(|&n| n >= 1 && n <= statuses.len())
             .collect()
@@ -249,8 +296,9 @@ fn write_config_entry(path: &PathBuf, servers_key: &str) -> Result<()> {
     } else {
         // Create parent dirs if needed
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| Error::config(format!("Failed to create {}: {}", parent.display(), e)))?;
+            std::fs::create_dir_all(parent).map_err(|e| {
+                Error::config(format!("Failed to create {}: {}", parent.display(), e))
+            })?;
         }
         serde_json::json!({})
     };
@@ -290,7 +338,8 @@ fn remove_config_entry(path: &PathBuf, servers_key: &str) -> Result<bool> {
     let mut json: Value = serde_json::from_str(&content)
         .map_err(|e| Error::config(format!("Invalid JSON in {}: {}", path.display(), e)))?;
 
-    let removed = json.get_mut(servers_key)
+    let removed = json
+        .get_mut(servers_key)
         .and_then(|s| s.as_object_mut())
         .map(|obj| obj.remove("cert-x-gen").is_some())
         .unwrap_or(false);
@@ -324,7 +373,9 @@ pub async fn run_install(client_filter: Option<String>) -> Result<()> {
                 None => {
                     let valid: Vec<&str> = statuses.iter().map(|s| s.client.id).collect();
                     return Err(Error::config(format!(
-                        "Unknown client '{}'. Valid: {}", id, valid.join(", ")
+                        "Unknown client '{}'. Valid: {}",
+                        id,
+                        valid.join(", ")
                     )));
                 }
             }
@@ -347,43 +398,60 @@ pub async fn run_install(client_filter: Option<String>) -> Result<()> {
         let path = match &status.config_path {
             Some(p) => p,
             None => {
-                println!("  {} {} — config path not found",
-                    style("⚠").yellow(), status.client.label);
+                println!(
+                    "  {} {} — config path not found",
+                    style("⚠").yellow(),
+                    status.client.label
+                );
                 continue;
             }
         };
 
         if status.already_configured {
-            println!("  {} {} — already configured",
-                style("✓").green(), style(status.client.label).green());
+            println!(
+                "  {} {} — already configured",
+                style("✓").green(),
+                style(status.client.label).green()
+            );
             continue;
         }
 
         match write_config_entry(path, status.client.servers_key) {
             Ok(()) => {
-                println!("  {} {} — configured",
-                    style("✓").green(), style(status.client.label).green().bold());
+                println!(
+                    "  {} {} — configured",
+                    style("✓").green(),
+                    style(status.client.label).green().bold()
+                );
                 if status.client.needs_restart {
                     needs_restart.push(status.client.label);
                 }
             }
             Err(e) => {
-                println!("  {} {} — {}",
-                    style("✗").red(), status.client.label, style(e).red());
+                println!(
+                    "  {} {} — {}",
+                    style("✗").red(),
+                    status.client.label,
+                    style(e).red()
+                );
             }
         }
     }
 
     if !needs_restart.is_empty() {
         println!();
-        println!("{} Restart {} to activate.",
+        println!(
+            "{} Restart {} to activate.",
             style("→").cyan(),
-            needs_restart.join(", "));
+            needs_restart.join(", ")
+        );
     }
 
     println!();
-    println!("{} CXG MCP server provides 9 tools: search, scan, validate, create, test, and more.",
-        style("ℹ").blue());
+    println!(
+        "{} CXG MCP server provides 9 tools: search, scan, validate, create, test, and more.",
+        style("ℹ").blue()
+    );
 
     Ok(())
 }
@@ -408,7 +476,9 @@ pub async fn run_uninstall(client_filter: Option<String>) -> Result<()> {
         resolved
     } else {
         // Uninstall from all configured clients
-        statuses.iter().enumerate()
+        statuses
+            .iter()
+            .enumerate()
             .filter(|(_, s)| s.already_configured)
             .map(|(i, _)| i)
             .collect()
@@ -424,12 +494,18 @@ pub async fn run_uninstall(client_filter: Option<String>) -> Result<()> {
         let status = &statuses[idx];
         if let Some(ref path) = status.config_path {
             match remove_config_entry(path, status.client.servers_key) {
-                Ok(true) => println!("  {} {} — removed",
-                    style("✓").green(), status.client.label),
-                Ok(false) => println!("  {} {} — was not configured",
-                    style("–").dim(), style(status.client.label).dim()),
-                Err(e) => println!("  {} {} — {}",
-                    style("✗").red(), status.client.label, style(e).red()),
+                Ok(true) => println!("  {} {} — removed", style("✓").green(), status.client.label),
+                Ok(false) => println!(
+                    "  {} {} — was not configured",
+                    style("–").dim(),
+                    style(status.client.label).dim()
+                ),
+                Err(e) => println!(
+                    "  {} {} — {}",
+                    style("✗").red(),
+                    status.client.label,
+                    style(e).red()
+                ),
             }
         }
     }
@@ -450,26 +526,31 @@ pub async fn run_status() -> Result<()> {
     println!();
 
     for status in &statuses {
-        let path_str = status.config_path.as_ref()
+        let path_str = status
+            .config_path
+            .as_ref()
             .map(|p| p.display().to_string())
             .unwrap_or_else(|| "—".to_string());
 
         if status.already_configured {
-            println!("  {} {:<22} {} {}",
+            println!(
+                "  {} {:<22} {} {}",
                 style("●").green(),
                 style(status.client.label).green().bold(),
                 style("configured").green(),
                 style(format!("({})", path_str)).dim(),
             );
         } else if status.config_exists {
-            println!("  {} {:<22} {} {}",
+            println!(
+                "  {} {:<22} {} {}",
                 style("○").yellow(),
                 style(status.client.label).white(),
                 style("installed, not configured").yellow(),
                 style(format!("({})", path_str)).dim(),
             );
         } else {
-            println!("  {} {:<22} {}",
+            println!(
+                "  {} {:<22} {}",
                 style("·").dim(),
                 style(status.client.label).dim(),
                 style("not detected").dim(),
@@ -478,19 +559,32 @@ pub async fn run_status() -> Result<()> {
     }
 
     let configured = statuses.iter().filter(|s| s.already_configured).count();
-    let installed = statuses.iter().filter(|s| s.config_exists && !s.already_configured).count();
+    let installed = statuses
+        .iter()
+        .filter(|s| s.config_exists && !s.already_configured)
+        .count();
 
     println!();
     if configured > 0 {
-        println!("  {} {} client(s) configured", style("✓").green(), configured);
+        println!(
+            "  {} {} client(s) configured",
+            style("✓").green(),
+            configured
+        );
     }
     if installed > 0 {
-        println!("  {} {} client(s) can be configured — run {}",
-            style("→").cyan(), installed, style("cxg mcp install").bold());
+        println!(
+            "  {} {} client(s) can be configured — run {}",
+            style("→").cyan(),
+            installed,
+            style("cxg mcp install").bold()
+        );
     }
     if configured == 0 && installed == 0 {
-        println!("  {} No MCP clients detected. Install Claude Desktop, Claude Code, or Cursor first.",
-            style("ℹ").blue());
+        println!(
+            "  {} No MCP clients detected. Install Claude Desktop, Claude Code, or Cursor first.",
+            style("ℹ").blue()
+        );
     }
     println!();
 

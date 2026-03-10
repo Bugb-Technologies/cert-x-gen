@@ -72,17 +72,17 @@ fn check_perl_patterns(code: &str) -> Vec<TemplateDiagnostic> {
         if line.trim().starts_with("print ")
             && !line.contains("encode_json")
             && !line.contains("to_json")
+            && !line.contains("{")
+            && !line.trim().starts_with('#')
         {
-            if !line.contains("{") && !line.trim().starts_with('#') {
-                diagnostics.push(
-                    TemplateDiagnostic::info(
-                        "perl.print_without_json",
-                        "print without JSON encoding. Ensure output is valid JSON format.",
-                    )
-                    .with_location(line_num + 1, None),
-                );
-                break;
-            }
+            diagnostics.push(
+                TemplateDiagnostic::info(
+                    "perl.print_without_json",
+                    "print without JSON encoding. Ensure output is valid JSON format.",
+                )
+                .with_location(line_num + 1, None),
+            );
+            break;
         }
     }
 

@@ -463,7 +463,7 @@ async fn run_scan(args: cli::ScanArgs, config_path: Option<PathBuf>) -> Result<(
     // Apply mode-based template filtering
     if args.safe {
         // Safe mode: Exclude dangerous templates
-        let dangerous_tags = vec![
+        let dangerous_tags = [
             "dos",
             "resource-exhaustion",
             "intrusive",
@@ -489,7 +489,7 @@ async fn run_scan(args: cli::ScanArgs, config_path: Option<PathBuf>) -> Result<(
 
     if args.passive {
         // Passive mode: Only include passive templates or exclude active ones
-        let active_tags = vec!["active", "probe", "intrusive", "exploit"];
+        let active_tags = ["active", "probe", "intrusive", "exploit"];
         let before_passive = job.templates.len();
         job.templates.retain(|template| {
             let metadata = template.metadata();
@@ -644,9 +644,9 @@ fn apply_scan_args_to_config(config: &mut Config, args: &cli::ScanArgs) {
     // Apply mode-specific optimizations
     if args.aggressive {
         // Aggressive mode: Increase concurrency, remove rate limits, increase retries
-        config.execution.parallel_targets = config.execution.parallel_targets * 2;
-        config.execution.parallel_templates = config.execution.parallel_templates * 2;
-        config.execution.max_retries = config.execution.max_retries * 2;
+        config.execution.parallel_targets *= 2;
+        config.execution.parallel_templates *= 2;
+        config.execution.max_retries *= 2;
         config.network.rate_limit = None; // Remove rate limits
         tracing::info!("Aggressive mode: Increased concurrency and retries, removed rate limits");
     }
@@ -1386,21 +1386,19 @@ async fn run_validate_command(
                     }
                 }
             }
-        } else {
-            if let Ok(entries) = fs::read_dir(&path) {
-                for entry in entries.filter_map(|e| e.ok()) {
-                    let entry_path = entry.path();
-                    if entry_path.is_file() {
-                        if let Some(ext) = entry_path.extension() {
-                            let ext_str = ext.to_string_lossy();
-                            if [
-                                "py", "js", "sh", "rb", "pl", "php", "rs", "c", "cpp", "go",
-                                "java", "yaml", "yml",
-                            ]
-                            .contains(&ext_str.as_ref())
-                            {
-                                template_files.push(entry_path);
-                            }
+        } else if let Ok(entries) = fs::read_dir(&path) {
+            for entry in entries.filter_map(|e| e.ok()) {
+                let entry_path = entry.path();
+                if entry_path.is_file() {
+                    if let Some(ext) = entry_path.extension() {
+                        let ext_str = ext.to_string_lossy();
+                        if [
+                            "py", "js", "sh", "rb", "pl", "php", "rs", "c", "cpp", "go", "java",
+                            "yaml", "yml",
+                        ]
+                        .contains(&ext_str.as_ref())
+                        {
+                            template_files.push(entry_path);
                         }
                     }
                 }
@@ -1498,7 +1496,7 @@ async fn run_validate_command(
 
         // Validate template with structured diagnostics
         let mut diagnostics =
-            match validator.validate_with_diagnostics(&content, language, Some(&template_path)) {
+            match validator.validate_with_diagnostics(&content, language, Some(template_path)) {
                 Ok(diags) => diags,
                 Err(e) => {
                     vec![TemplateDiagnostic {
@@ -1636,7 +1634,7 @@ async fn run_validate_command(
                 style("✗").red().bold(),
                 style(format!("Failed: {}", failed_count)).red()
             );
-            if results.len() > 0 {
+            if !results.is_empty() {
                 println!(
                     "  Success Rate: {}%",
                     style(passed_count * 100 / results.len()).bold()
@@ -1861,7 +1859,11 @@ async fn run_template_command(cmd: cli::TemplateCommand) -> Result<()> {
                     } else {
                         (cv_str.as_str(), "optional")
                     };
-                    let marker = if qualifier == "required" { "✓" } else { "○" };
+                    let marker = if qualifier == "required" {
+                        "✓"
+                    } else {
+                        "○"
+                    };
                     println!("    {} {:<30} [{}]", marker, name, qualifier);
                 }
             }
@@ -2151,9 +2153,9 @@ async fn run_sandbox_command(cmd: cli::SandboxCommand) -> Result<()> {
                         style("🐳").cyan(),
                         style(&sandbox_name).yellow()
                     ))?;
-                    term.write_line(&format!(
-                        "  Initializing package environment inside the container..."
-                    ))?;
+                    term.write_line(
+                        &"  Initializing package environment inside the container...".to_string(),
+                    )?;
                     term.write_line("")?;
                 }
             } else {
@@ -2166,44 +2168,48 @@ async fn run_sandbox_command(cmd: cli::SandboxCommand) -> Result<()> {
                                 style("🐳").cyan(),
                                 style(name).yellow()
                             ))?;
-                            term.write_line(&format!(
-                                "  This command will run INSIDE the Docker container."
-                            ))?;
-                            term.write_line(&format!(
-                                "  You'll stay on your host, but init happens in the sandbox."
-                            ))?;
+                            term.write_line(
+                                &"  This command will run INSIDE the Docker container.".to_string(),
+                            )?;
+                            term.write_line(
+                                &"  You'll stay on your host, but init happens in the sandbox."
+                                    .to_string(),
+                            )?;
                             term.write_line("")?;
                         }
                     }
                 }
 
                 // Check if Docker is available and recommend it (only if no default sandbox)
-                if DockerSandbox::docker_available() && DockerSandbox::docker_running() {
-                    if SandboxConfigFile::load()
+                if DockerSandbox::docker_available()
+                    && DockerSandbox::docker_running()
+                    && SandboxConfigFile::load()
                         .ok()
                         .and_then(|c| c.default_sandbox)
                         .is_none()
-                    {
-                        term.write_line(&format!("\n{} Docker detected!", style("ℹ").blue()))?;
-                        term.write_line(&format!("  For true OS-level isolation, consider using Docker sandboxes instead:"))?;
-                        term.write_line(&format!(
-                            "  {}",
-                            style("cxg sandbox create my-env").yellow()
-                        ))?;
-                        term.write_line(&format!(
-                            "  {}",
-                            style("cxg sandbox set-default my-env").yellow()
-                        ))?;
-                        term.write_line("")?;
-                        term.write_line(&format!("  This command (init) creates a package-level sandbox using your host's language runtimes."))?;
-                        term.write_line(&format!("  Docker sandboxes provide complete isolation with fresh runtimes inside containers."))?;
-                        term.write_line("")?;
-                        term.write_line(&format!(
-                            "  Run {} for more info.",
-                            style("cxg sandbox info").cyan()
-                        ))?;
-                        term.write_line("")?;
-                    }
+                {
+                    term.write_line(&format!("\n{} Docker detected!", style("ℹ").blue()))?;
+                    term.write_line(
+                        &"  For true OS-level isolation, consider using Docker sandboxes instead:"
+                            .to_string(),
+                    )?;
+                    term.write_line(&format!(
+                        "  {}",
+                        style("cxg sandbox create my-env").yellow()
+                    ))?;
+                    term.write_line(&format!(
+                        "  {}",
+                        style("cxg sandbox set-default my-env").yellow()
+                    ))?;
+                    term.write_line("")?;
+                    term.write_line(&"  This command (init) creates a package-level sandbox using your host's language runtimes.".to_string())?;
+                    term.write_line(&"  Docker sandboxes provide complete isolation with fresh runtimes inside containers.".to_string())?;
+                    term.write_line("")?;
+                    term.write_line(&format!(
+                        "  Run {} for more info.",
+                        style("cxg sandbox info").cyan()
+                    ))?;
+                    term.write_line("")?;
                 }
             }
 
@@ -2324,9 +2330,9 @@ async fn run_sandbox_command(cmd: cli::SandboxCommand) -> Result<()> {
                     "{} Force re-initialization requested",
                     style("→").cyan()
                 ))?;
-                term.write_line(&format!(
-                    "  Rebuilding all language environments from scratch..."
-                ))?;
+                term.write_line(
+                    &"  Rebuilding all language environments from scratch...".to_string(),
+                )?;
             }
 
             term.write_line(&format!(
@@ -2377,10 +2383,10 @@ async fn run_sandbox_command(cmd: cli::SandboxCommand) -> Result<()> {
                     "{} Sandbox initialization completed with warnings",
                     style("⚠").yellow()
                 ))?;
-                term.write_line(&format!(
-                    "  No language environments were successfully initialized"
-                ))?;
-                term.write_line(&format!("  Check logs above for details on what failed"))?;
+                term.write_line(
+                    &"  No language environments were successfully initialized".to_string(),
+                )?;
+                term.write_line(&"  Check logs above for details on what failed".to_string())?;
             }
 
             term.write_line("")?;
@@ -2812,16 +2818,15 @@ async fn run_sandbox_command(cmd: cli::SandboxCommand) -> Result<()> {
                     "{} Docker is not installed or not available",
                     style("✗").red()
                 ))?;
-                term.write_line(&format!(
-                    "\nTo use Docker sandboxes, please install Docker:"
-                ))?;
-                term.write_line(&format!(
-                    "  macOS: https://docs.docker.com/desktop/install/mac-install/"
-                ))?;
-                term.write_line(&format!("  Linux: https://docs.docker.com/engine/install/"))?;
-                term.write_line(&format!(
-                    "  Windows: https://docs.docker.com/desktop/install/windows-install/"
-                ))?;
+                term.write_line(&"\nTo use Docker sandboxes, please install Docker:".to_string())?;
+                term.write_line(
+                    &"  macOS: https://docs.docker.com/desktop/install/mac-install/".to_string(),
+                )?;
+                term.write_line(&"  Linux: https://docs.docker.com/engine/install/".to_string())?;
+                term.write_line(
+                    &"  Windows: https://docs.docker.com/desktop/install/windows-install/"
+                        .to_string(),
+                )?;
                 return Ok(());
             }
 
@@ -2830,7 +2835,7 @@ async fn run_sandbox_command(cmd: cli::SandboxCommand) -> Result<()> {
                     "{} Docker is installed but not running",
                     style("⚠").yellow()
                 ))?;
-                term.write_line(&format!("  Please start Docker Desktop and try again"))?;
+                term.write_line(&"  Please start Docker Desktop and try again".to_string())?;
                 return Ok(());
             }
 
@@ -2889,7 +2894,7 @@ async fn run_sandbox_command(cmd: cli::SandboxCommand) -> Result<()> {
             ))?;
             sandbox.build_image(None).await?;
 
-            term.write_line(&format!("  Creating container..."))?;
+            term.write_line(&"  Creating container...".to_string())?;
             sandbox.create().await?;
 
             // Save to config file
@@ -2921,7 +2926,7 @@ async fn run_sandbox_command(cmd: cli::SandboxCommand) -> Result<()> {
                     style("⚠").yellow(),
                     name
                 ))?;
-                term.write_line(&format!("  Use --force to confirm deletion"))?;
+                term.write_line(&"  Use --force to confirm deletion".to_string())?;
                 return Ok(());
             }
 
@@ -2931,7 +2936,7 @@ async fn run_sandbox_command(cmd: cli::SandboxCommand) -> Result<()> {
             match DockerSandbox::load(&name) {
                 Ok(mut sandbox) => {
                     sandbox.delete().await?;
-                    term.write_line(&format!("  Container deleted"))?;
+                    term.write_line(&"  Container deleted".to_string())?;
                 }
                 Err(_) => {
                     term.write_line(&format!(
@@ -2973,7 +2978,7 @@ async fn run_sandbox_command(cmd: cli::SandboxCommand) -> Result<()> {
             let mut sandbox = DockerSandbox::load(&sandbox_name)?;
 
             if !sandbox.is_running() {
-                term.write_line(&format!("  Starting container..."))?;
+                term.write_line(&"  Starting container...".to_string())?;
                 sandbox.start().await?;
             }
 
@@ -3038,18 +3043,19 @@ async fn run_sandbox_command(cmd: cli::SandboxCommand) -> Result<()> {
                         "{} Docker Daemon: Not running",
                         style("⚠").yellow()
                     ))?;
-                    term.write_line(&format!("  Please start Docker Desktop"))?;
+                    term.write_line(&"  Please start Docker Desktop".to_string())?;
                 }
             } else {
                 term.write_line(&format!("{} Docker: Not installed", style("✗").red()))?;
-                term.write_line(&format!("\nInstallation:"))?;
-                term.write_line(&format!(
-                    "  macOS: https://docs.docker.com/desktop/install/mac-install/"
-                ))?;
-                term.write_line(&format!("  Linux: https://docs.docker.com/engine/install/"))?;
-                term.write_line(&format!(
-                    "  Windows: https://docs.docker.com/desktop/install/windows-install/"
-                ))?;
+                term.write_line(&"\nInstallation:".to_string())?;
+                term.write_line(
+                    &"  macOS: https://docs.docker.com/desktop/install/mac-install/".to_string(),
+                )?;
+                term.write_line(&"  Linux: https://docs.docker.com/engine/install/".to_string())?;
+                term.write_line(
+                    &"  Windows: https://docs.docker.com/desktop/install/windows-install/"
+                        .to_string(),
+                )?;
             }
 
             // Show configured sandboxes
@@ -3062,8 +3068,8 @@ async fn run_sandbox_command(cmd: cli::SandboxCommand) -> Result<()> {
             term.write_line(&format!("{}", style("═".repeat(60)).dim()))?;
 
             if cfg.sandboxes.is_empty() {
-                term.write_line(&format!("  No sandboxes configured"))?;
-                term.write_line(&format!("\nCreate one: cxg sandbox create my-sandbox"))?;
+                term.write_line(&"  No sandboxes configured".to_string())?;
+                term.write_line(&"\nCreate one: cxg sandbox create my-sandbox".to_string())?;
             } else {
                 for (name, config) in &cfg.sandboxes {
                     let is_default = cfg.default_sandbox.as_ref() == Some(name);
@@ -3345,9 +3351,9 @@ async fn handle_ai_generate(
     if let Some(ref key) = api_key {
         let env_var = match provider.as_deref() {
             Some("anthropic") => "ANTHROPIC_API_KEY",
-            Some("openai")    => "OPENAI_API_KEY",
-            Some("deepseek")  => "DEEPSEEK_API_KEY",
-            Some("ollama")    => "", // ollama doesn't use an API key
+            Some("openai") => "OPENAI_API_KEY",
+            Some("deepseek") => "DEEPSEEK_API_KEY",
+            Some("ollama") => "", // ollama doesn't use an API key
             // If no provider specified, try to detect from key prefix
             _ => {
                 if key.starts_with("sk-ant-") {

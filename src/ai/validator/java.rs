@@ -57,17 +57,15 @@ fn check_java_patterns(code: &str) -> Vec<TemplateDiagnostic> {
 
     // Check for string comparison with ==
     for (line_num, line) in code.lines().enumerate() {
-        if line.contains("== \"") || line.contains("!= \"") {
-            if !line.trim().starts_with("//") {
-                diagnostics.push(
+        if (line.contains("== \"") || line.contains("!= \"")) && !line.trim().starts_with("//") {
+            diagnostics.push(
                     TemplateDiagnostic::warning(
                         "java.string_comparison",
                         "String comparison with == detected. Use .equals() for string content comparison.",
                     )
                     .with_location(line_num + 1, None),
                 );
-                break;
-            }
+            break;
         }
     }
 

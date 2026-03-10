@@ -147,7 +147,7 @@ async fn install_with_brew(runtime_name: &str) -> Result<bool> {
     tracing::info!("This may require administrator privileges.");
 
     let output = Command::new("brew")
-        .args(&["install", package_name])
+        .args(["install", package_name])
         .output();
 
     match output {
@@ -194,11 +194,11 @@ async fn install_with_apt(runtime_name: &str) -> Result<bool> {
     tracing::info!("This may require administrator privileges (sudo).");
 
     // Try apt-get update first
-    let update_output = Command::new("sudo").args(&["apt-get", "update"]).output();
+    let update_output = Command::new("sudo").args(["apt-get", "update"]).output();
 
     // Try without sudo if sudo fails (we might be root)
     let _update_ok = if update_output.is_err() {
-        Command::new("apt-get").args(&["update"]).output().is_ok()
+        Command::new("apt-get").args(["update"]).output().is_ok()
     } else {
         update_output.as_ref().unwrap().status.success()
     };
@@ -206,14 +206,14 @@ async fn install_with_apt(runtime_name: &str) -> Result<bool> {
     // Install package(s) - split package names into separate args
     let packages: Vec<&str> = package_name.split_whitespace().collect();
     let output = Command::new("sudo")
-        .args(&["apt-get", "install", "-y"])
+        .args(["apt-get", "install", "-y"])
         .args(&packages)
         .output();
 
     // Try without sudo if sudo fails
     let output = if output.is_err() {
         Command::new("apt-get")
-            .args(&["install", "-y"])
+            .args(["install", "-y"])
             .args(&packages)
             .output()
     } else {
@@ -256,13 +256,13 @@ async fn install_with_yum(runtime_name: &str) -> Result<bool> {
     tracing::info!("Installing {} using yum...", runtime_name);
 
     let output = Command::new("sudo")
-        .args(&["yum", "install", "-y"])
+        .args(["yum", "install", "-y"])
         .args(package_name.split_whitespace())
         .output();
 
     let output = if output.is_err() {
         Command::new("yum")
-            .args(&["install", "-y"])
+            .args(["install", "-y"])
             .args(package_name.split_whitespace())
             .output()
     } else {
@@ -302,13 +302,13 @@ async fn install_with_dnf(runtime_name: &str) -> Result<bool> {
     tracing::info!("Installing {} using dnf...", runtime_name);
 
     let output = Command::new("sudo")
-        .args(&["dnf", "install", "-y"])
+        .args(["dnf", "install", "-y"])
         .args(package_name.split_whitespace())
         .output();
 
     let output = if output.is_err() {
         Command::new("dnf")
-            .args(&["install", "-y"])
+            .args(["install", "-y"])
             .args(package_name.split_whitespace())
             .output()
     } else {
@@ -348,13 +348,13 @@ async fn install_with_pacman(runtime_name: &str) -> Result<bool> {
     tracing::info!("Installing {} using pacman...", runtime_name);
 
     let output = Command::new("sudo")
-        .args(&["pacman", "-S", "--noconfirm"])
+        .args(["pacman", "-S", "--noconfirm"])
         .arg(package_name)
         .output();
 
     let output = if output.is_err() {
         Command::new("pacman")
-            .args(&["-S", "--noconfirm"])
+            .args(["-S", "--noconfirm"])
             .arg(package_name)
             .output()
     } else {
@@ -395,7 +395,7 @@ async fn install_with_choco(runtime_name: &str) -> Result<bool> {
     tracing::info!("This may require administrator privileges.");
 
     let output = Command::new("choco")
-        .args(&["install", package_name, "-y"])
+        .args(["install", package_name, "-y"])
         .output();
 
     match output {

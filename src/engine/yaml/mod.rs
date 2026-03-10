@@ -464,11 +464,7 @@ impl YamlTemplateImpl {
         // The connection will simply fail if the port doesn't speak HTTP.
 
         // Get paths to test
-        let paths = spec
-            .path
-            .as_ref()
-            .map(|p| p.clone())
-            .unwrap_or_else(|| vec!["/".to_string()]);
+        let paths = spec.path.clone().unwrap_or_else(|| vec!["/".to_string()]);
 
         for path in paths {
             let url = format!("{}{}", target.url(), path);
@@ -618,7 +614,7 @@ impl YamlTemplateImpl {
                         self.metadata().name.clone(),
                         self.metadata().description.clone(),
                     )
-                    .with_confidence(self.metadata().confidence.unwrap_or(90) as u8)
+                    .with_confidence(self.metadata().confidence.unwrap_or(90))
                     .with_evidence(evidence);
 
                     findings.push(finding);
@@ -819,7 +815,7 @@ impl YamlTemplateImpl {
                     self.metadata().name.clone(),
                     self.metadata().description.clone(),
                 )
-                .with_confidence(self.metadata().confidence.unwrap_or(90) as u8)
+                .with_confidence(self.metadata().confidence.unwrap_or(90))
                 .with_evidence(evidence);
 
                 findings.push(finding);
