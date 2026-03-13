@@ -200,20 +200,14 @@ impl TemplateSearchEngine {
         );
 
         for word in Self::extract_words(&text) {
-            search_index
-                .entry(word)
-                .or_insert_with(Vec::new)
-                .push(index);
+            search_index.entry(word).or_default().push(index);
         }
     }
 
     /// Index template content for search
     fn index_content(content: &str, index: usize, content_index: &mut HashMap<String, Vec<usize>>) {
         for word in Self::extract_words(content) {
-            content_index
-                .entry(word)
-                .or_insert_with(Vec::new)
-                .push(index);
+            content_index.entry(word).or_default().push(index);
         }
     }
 
@@ -263,13 +257,13 @@ impl TemplateSearchEngine {
     ) -> Vec<SearchResult> {
         // Filter by language
         if let Some(language) = &args.language {
-            let target_language: TemplateLanguage = (*language).into();
+            let target_language: TemplateLanguage = (*language);
             results.retain(|template| template.language == target_language);
         }
 
         // Filter by severity
         if let Some(severity) = &args.severity {
-            let target_severity: Severity = (*severity).into();
+            let target_severity: Severity = (*severity);
             results.retain(|template| template.severity == target_severity);
         }
 
@@ -291,7 +285,7 @@ impl TemplateSearchEngine {
 
         // Filter by CWE
         if let Some(cwe) = &args.cwe {
-            results.retain(|template| template.cwe.as_ref().map_or(false, |t| t.contains(cwe)));
+            results.retain(|template| template.cwe.as_ref().is_some_and(|t| t.contains(cwe)));
         }
 
         results
@@ -609,12 +603,11 @@ impl SearchResultFormatter {
 
     /// Format results as YAML
     fn format_yaml(results: &[SearchResult], stats: &SearchStats) -> String {
-        let data = serde_yaml::to_string(&serde_json::json!({
+        serde_yaml::to_string(&serde_json::json!({
             "statistics": stats,
             "results": results
         }))
-        .unwrap_or_else(|_| "".to_string());
-        data
+        .unwrap_or_else(|_| "".to_string())
     }
 
     /// Format results as CSV
@@ -681,7 +674,7 @@ impl SearchResultFormatter {
             for (language, count) in &stats.languages {
                 output.push_str(&format!("  - {:?}: {}\n", language, count));
             }
-            output.push_str("\n");
+            output.push('\n');
         }
 
         // Add severity breakdown
@@ -690,7 +683,7 @@ impl SearchResultFormatter {
             for (severity, count) in &stats.severities {
                 output.push_str(&format!("  - {:?}: {}\n", severity, count));
             }
-            output.push_str("\n");
+            output.push('\n');
         }
 
         // Add detailed results
@@ -728,7 +721,7 @@ impl SearchResultFormatter {
                 output.push_str(&format!("Content Preview: {}\n", preview));
             }
 
-            output.push_str("\n");
+            output.push('\n');
         }
 
         output

@@ -50,7 +50,7 @@ pub async fn init_environment(sandbox: &Sandbox) -> Result<()> {
 
         // Download cpanm to sandbox directory
         let download_result = Command::new("curl")
-            .args(&[
+            .args([
                 "-L",
                 "https://cpanmin.us",
                 "-o",
@@ -66,7 +66,7 @@ pub async fn init_environment(sandbox: &Sandbox) -> Result<()> {
 
         // Make cpanm executable
         let chmod_result = Command::new("chmod")
-            .args(&["+x", sandbox_cpanm.to_str().unwrap()])
+            .args(["+x", sandbox_cpanm.to_str().unwrap()])
             .output();
 
         if chmod_result.is_err() {
@@ -156,7 +156,7 @@ pub async fn install_modules(sandbox: &Sandbox, modules: &[&str]) -> Result<()> 
 
     for module in modules {
         let output = Command::new(&cpanm_path)
-            .args(&["-L", local_lib.to_str().unwrap(), module])
+            .args(["-L", local_lib.to_str().unwrap(), module])
             .output();
 
         match output {

@@ -113,7 +113,7 @@ impl SandboxExport {
         }
 
         let output = std::process::Command::new(pip_list)
-            .args(&["list", "--format=freeze"])
+            .args(["list", "--format=freeze"])
             .output()
             .map_err(|e| Error::command(format!("Failed to list Python packages: {}", e)))?;
 
@@ -157,7 +157,7 @@ impl SandboxExport {
         }
 
         let output = std::process::Command::new("gem")
-            .args(&["list", "--local"])
+            .args(["list", "--local"])
             .env("GEM_HOME", &gem_home)
             .output()
             .map_err(|e| Error::command(format!("Failed to list Ruby gems: {}", e)))?;

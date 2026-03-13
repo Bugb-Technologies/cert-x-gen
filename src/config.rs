@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 /// Main configuration structure
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Config {
     /// Global configuration
     pub global: GlobalConfig,
@@ -25,21 +25,6 @@ pub struct Config {
     pub metrics: MetricsConfig,
     /// Plugin configuration
     pub plugins: PluginConfig,
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            global: GlobalConfig::default(),
-            templates: TemplateConfig::default(),
-            network: NetworkConfig::default(),
-            execution: ExecutionConfig::default(),
-            output: OutputConfig::default(),
-            sandbox: SandboxConfig::default(),
-            metrics: MetricsConfig::default(),
-            plugins: PluginConfig::default(),
-        }
-    }
 }
 
 impl Config {

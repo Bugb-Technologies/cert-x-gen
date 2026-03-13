@@ -365,7 +365,7 @@ impl AIConfig {
 
             // Check temperature is in valid range
             if let Some(temperature) = provider.temperature {
-                if temperature < 0.0 || temperature > 2.0 {
+                if !(0.0..=2.0).contains(&temperature) {
                     anyhow::bail!(
                         "Provider '{}' has invalid temperature: {}. Must be between 0.0 and 2.0",
                         name,

@@ -195,7 +195,7 @@ impl PatternRegistry {
     ) {
         self.patterns
             .entry(language)
-            .or_insert_with(HashMap::new)
+            .or_default()
             .insert(category, patterns);
     }
 

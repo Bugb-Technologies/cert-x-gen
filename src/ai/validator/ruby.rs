@@ -78,17 +78,18 @@ fn check_ruby_patterns(code: &str) -> Vec<TemplateDiagnostic> {
     // Check for rescue without specific exception
     for (line_num, line) in code.lines().enumerate() {
         let trimmed = line.trim();
-        if trimmed == "rescue" || trimmed.starts_with("rescue =>") {
-            if !trimmed.contains("StandardError") && !trimmed.contains("Exception") {
-                diagnostics.push(
-                    TemplateDiagnostic::info(
-                        "ruby.bare_rescue",
-                        "Bare rescue catches StandardError. Consider specifying exception types.",
-                    )
-                    .with_location(line_num + 1, None),
-                );
-                break;
-            }
+        if (trimmed == "rescue" || trimmed.starts_with("rescue =>"))
+            && !trimmed.contains("StandardError")
+            && !trimmed.contains("Exception")
+        {
+            diagnostics.push(
+                TemplateDiagnostic::info(
+                    "ruby.bare_rescue",
+                    "Bare rescue catches StandardError. Consider specifying exception types.",
+                )
+                .with_location(line_num + 1, None),
+            );
+            break;
         }
     }
 

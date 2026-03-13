@@ -242,6 +242,11 @@ mod tests {
                 updated: Utc::now(),
                 version: "1.0".to_string(),
                 confidence: None,
+                context_vars: Vec::new(),
+                vuln_class: None,
+                hypothesis_tags: Vec::new(),
+                batch_group: None,
+                auto_probe: false,
             },
         }
     }

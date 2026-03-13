@@ -85,7 +85,7 @@ impl FindingSchemaValidator {
         // Check for each required field
         for field in FINDING_REQUIRED_FIELDS {
             // Look for various ways the field might appear
-            let field_patterns = vec![
+            let field_patterns = [
                 format!("\"{}\"", field),
                 format!("'{}'", field),
                 format!("{} =", field),

@@ -84,7 +84,7 @@ pub async fn install_packages(sandbox: &Sandbox, packages: &[&str]) -> Result<()
     // Install packages one by one to avoid one failure stopping all others
     for package in filtered_packages {
         let output = Command::new("npm")
-            .args(&["install", "--save", "--no-audit", "--no-fund", package])
+            .args(["install", "--save", "--no-audit", "--no-fund", package])
             .current_dir(&js_dir)
             .output();
 

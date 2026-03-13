@@ -167,10 +167,8 @@ impl Executor {
             .await;
 
         // Collect successful results
-        for result in template_findings {
-            if let Ok(mut template_findings) = result {
-                findings.append(&mut template_findings);
-            }
+        for mut template_findings in template_findings.into_iter().flatten() {
+            findings.append(&mut template_findings);
         }
 
         Ok(findings)

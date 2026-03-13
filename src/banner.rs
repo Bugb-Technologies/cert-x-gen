@@ -8,8 +8,7 @@ pub fn display_banner() {
     let term = Term::stdout();
     let version = env!("CARGO_PKG_VERSION");
 
-    let banner = format!(
-        r#"
+    let banner = r#"
  ██████╗███████╗██████╗ ████████╗     ██╗  ██╗      ██████╗ ███████╗███╗   ██╗
 ██╔════╝██╔════╝██╔══██╗╚══██╔══╝     ╚██╗██╔╝     ██╔════╝ ██╔════╝████╗  ██║
 ██║     █████╗  ██████╔╝   ██║  █████╗ ╚███╔╝█████╗██║  ███╗█████╗  ██╔██╗ ██║
@@ -17,7 +16,7 @@ pub fn display_banner() {
 ╚██████╗███████╗██║  ██║   ██║        ██╔╝ ██╗     ╚██████╔╝███████╗██║ ╚████║
  ╚═════╝╚══════╝╚═╝  ╚═╝   ╚═╝        ╚═╝  ╚═╝      ╚═════╝ ╚══════╝╚═╝  ╚═══╝
 "#
-    );
+    .to_string();
 
     // Print banner in cyan
     let _ = term.write_line(&style(banner).cyan().to_string());

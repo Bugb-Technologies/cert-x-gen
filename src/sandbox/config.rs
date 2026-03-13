@@ -7,22 +7,13 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 /// Main sandbox configuration file
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SandboxConfigFile {
     /// Default sandbox to use
     pub default_sandbox: Option<String>,
 
     /// All configured sandboxes
     pub sandboxes: HashMap<String, DockerConfig>,
-}
-
-impl Default for SandboxConfigFile {
-    fn default() -> Self {
-        Self {
-            default_sandbox: None,
-            sandboxes: HashMap::new(),
-        }
-    }
 }
 
 impl SandboxConfigFile {

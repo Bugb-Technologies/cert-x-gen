@@ -211,6 +211,8 @@ pub struct TemplateFilter {
     pub languages: Vec<crate::types::TemplateLanguage>,
     /// Exclude template IDs
     pub exclude_ids: Vec<String>,
+    /// Filter by batch group (e.g. "auth-context", "endpoint-params")
+    pub batch_group: Option<String>,
 }
 
 impl TemplateFilter {
@@ -292,6 +294,14 @@ impl TemplateFilter {
             return false;
         }
 
+        // Check batch group
+        if let Some(ref bg) = self.batch_group {
+            let template_bg = metadata.batch_group.as_deref().unwrap_or("");
+            if !template_bg.eq_ignore_ascii_case(bg) {
+                return false;
+            }
+        }
+
         true
     }
 
@@ -348,6 +358,11 @@ mod tests {
                 updated: Utc::now(),
                 version: "1.0".to_string(),
                 confidence: None,
+                context_vars: Vec::new(),
+                vuln_class: None,
+                hypothesis_tags: Vec::new(),
+                batch_group: None,
+                auto_probe: false,
             },
         })
     }

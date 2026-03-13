@@ -562,6 +562,29 @@ pub struct TemplateMetadata {
     pub version: String,
     /// Confidence (0-100)
     pub confidence: Option<u8>,
+
+    // --- Parameterisation & routing fields (Task 3a) ---
+    /// Context variables required/optional at runtime, parsed from `@context_vars`.
+    /// Each entry: `{ name, is_array, required }`.
+    /// Serialised as a compact string vec: `["auth_token:required", "endpoints[]:required"]`
+    #[serde(default)]
+    pub context_vars: Vec<String>,
+
+    /// Coarse vulnerability class for Bravos pipeline routing, from `@vuln_class`.
+    #[serde(default)]
+    pub vuln_class: Option<String>,
+
+    /// Fine-grained hypothesis routing tags for Bravos `TemplateMatcher`, from `@hypothesis_tags`.
+    #[serde(default)]
+    pub hypothesis_tags: Vec<String>,
+
+    /// Batch group identifier for running context-shape cohorts together, from `@batch_group`.
+    #[serde(default)]
+    pub batch_group: Option<String>,
+
+    /// Whether the template can self-probe for missing context, from `@auto_probe`.
+    #[serde(default)]
+    pub auto_probe: bool,
 }
 
 /// Author information

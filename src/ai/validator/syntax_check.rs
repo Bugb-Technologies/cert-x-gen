@@ -62,8 +62,7 @@ impl SyntaxChecker {
     fn check_python(&self, code: &str) -> Result<Vec<TemplateDiagnostic>> {
         let python_cmd = self.find_python()?;
 
-        let script = format!(
-            r#"
+        let script = r#"
 import sys
 import py_compile
 import tempfile
@@ -78,11 +77,11 @@ try:
     py_compile.compile(temp_path, doraise=True)
     print("OK")
 except py_compile.PyCompileError as e:
-    print(f"ERROR:{{e.lineno}}:{{e.msg}}")
+    print(f"ERROR:{e.lineno}:{e.msg}")
 finally:
     os.unlink(temp_path)
 "#
-        );
+        .to_string();
 
         self.run_syntax_check(&python_cmd, &["-c", &script], code, "python")
     }

@@ -84,33 +84,36 @@ fn check_php_patterns(code: &str) -> Vec<TemplateDiagnostic> {
 
     // Check for XSS patterns
     for (line_num, line) in code.lines().enumerate() {
-        if line.contains("echo") && (line.contains("$_GET") || line.contains("$_POST")) {
-            if !line.contains("htmlspecialchars") && !line.contains("htmlentities") {
-                diagnostics.push(
-                    TemplateDiagnostic::warning(
-                        "php.xss_risk",
-                        "Echoing user input without sanitization. Use htmlspecialchars().",
-                    )
-                    .with_location(line_num + 1, None),
-                );
-                break;
-            }
+        if line.contains("echo")
+            && (line.contains("$_GET") || line.contains("$_POST"))
+            && !line.contains("htmlspecialchars")
+            && !line.contains("htmlentities")
+        {
+            diagnostics.push(
+                TemplateDiagnostic::warning(
+                    "php.xss_risk",
+                    "Echoing user input without sanitization. Use htmlspecialchars().",
+                )
+                .with_location(line_num + 1, None),
+            );
+            break;
         }
     }
 
     // Check for echo without json_encode
     for (line_num, line) in code.lines().enumerate() {
-        if line.trim().starts_with("echo ") && !line.contains("json_encode") {
-            if !line.trim().starts_with("//") {
-                diagnostics.push(
-                    TemplateDiagnostic::info(
-                        "php.echo_without_json",
-                        "echo without json_encode. Ensure output is valid JSON format.",
-                    )
-                    .with_location(line_num + 1, None),
-                );
-                break;
-            }
+        if line.trim().starts_with("echo ")
+            && !line.contains("json_encode")
+            && !line.trim().starts_with("//")
+        {
+            diagnostics.push(
+                TemplateDiagnostic::info(
+                    "php.echo_without_json",
+                    "echo without json_encode. Ensure output is valid JSON format.",
+                )
+                .with_location(line_num + 1, None),
+            );
+            break;
         }
     }
 

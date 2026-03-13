@@ -144,7 +144,7 @@ fn validate_severity(yaml_map: &serde_yaml::Mapping) -> Vec<TemplateDiagnostic> 
     let mut diagnostics = Vec::new();
 
     if let Some(severity) = yaml_map.get("severity").and_then(|v| v.as_str()) {
-        let valid = vec!["critical", "high", "medium", "low", "info", "informational"];
+        let valid = ["critical", "high", "medium", "low", "info", "informational"];
         if !valid.contains(&severity.to_lowercase().as_str()) {
             diagnostics.push(TemplateDiagnostic::error(
                 "yaml.invalid_severity",
@@ -934,7 +934,7 @@ fn find_yaml_field_line(code: &str, field: &str) -> Option<usize> {
             let trimmed = line.trim_start();
             trimmed.starts_with(&format!("{}:", field))
                 || trimmed.starts_with(&format!("{} :", field))
-                || trimmed == &format!("- {}:", field)
+                || trimmed == format!("- {}:", field)
         })
         .map(|(idx, _)| idx + 1)
 }

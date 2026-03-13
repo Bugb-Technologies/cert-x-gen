@@ -158,27 +158,27 @@ fn check_output_statements(code: &str) -> Vec<TemplateDiagnostic> {
         }
 
         // Check for echo/printf outside heredoc (but allow in functions that build JSON)
-        if !in_heredoc && !trimmed.starts_with('#') {
-            if (trimmed.starts_with("echo ") || trimmed.contains("printf "))
-                && !trimmed.contains("FINDINGS=")
-                && !trimmed.contains("$(")
-                && !line.contains("add_finding")
+        if !in_heredoc
+            && !trimmed.starts_with('#')
+            && (trimmed.starts_with("echo ") || trimmed.contains("printf "))
+            && !trimmed.contains("FINDINGS=")
+            && !trimmed.contains("$(")
+            && !line.contains("add_finding")
+        {
+            // Skip if it's clearly building JSON
+            if !trimmed.contains("\"findings\"")
+                && !trimmed.contains("\"metadata\"")
+                && !trimmed.contains("template_id")
             {
-                // Skip if it's clearly building JSON
-                if !trimmed.contains("\"findings\"")
-                    && !trimmed.contains("\"metadata\"")
-                    && !trimmed.contains("template_id")
-                {
-                    diagnostics.push(
-                        TemplateDiagnostic::warning(
-                            "shell.echo_outside_json",
-                            "Echo/printf statement outside JSON heredoc detected. \
+                diagnostics.push(
+                    TemplateDiagnostic::warning(
+                        "shell.echo_outside_json",
+                        "Echo/printf statement outside JSON heredoc detected. \
                              This will output text before/after JSON and cause parsing errors. \
                              Collect findings in variables instead.",
-                        )
-                        .with_location(line_num + 1, None),
-                    );
-                }
+                    )
+                    .with_location(line_num + 1, None),
+                );
             }
         }
     }
@@ -260,13 +260,14 @@ fn check_metadata_variables(code: &str) -> Vec<TemplateDiagnostic> {
     }
 
     // Check if metadata is used in JSON output
-    if code.contains("\"metadata\"") {
-        if !code.contains("${TEMPLATE_ID}") && !code.contains("$TEMPLATE_ID") {
-            diagnostics.push(TemplateDiagnostic::warning(
-                "shell.metadata_not_used",
-                "Metadata field defined but TEMPLATE_ID not interpolated in JSON output",
-            ));
-        }
+    if code.contains("\"metadata\"")
+        && !code.contains("${TEMPLATE_ID}")
+        && !code.contains("$TEMPLATE_ID")
+    {
+        diagnostics.push(TemplateDiagnostic::warning(
+            "shell.metadata_not_used",
+            "Metadata field defined but TEMPLATE_ID not interpolated in JSON output",
+        ));
     }
 
     diagnostics

@@ -143,6 +143,9 @@ pub enum Commands {
     /// Manage sandbox environment
     Sandbox(SandboxCommand),
 
+    /// MCP (Model Context Protocol) server for AI agent integration
+    Mcp(McpCommand),
+
     /// Display version information
     Version,
 }
@@ -769,6 +772,31 @@ pub struct ScanArgs {
         help = "Use named profile from config. Allows quick switching between scan scenarios"
     )]
     pub profile: Option<String>,
+
+    /// JSON context passed to templates via CERT_X_GEN_CONTEXT environment variable.
+    ///
+    /// Templates read this context to receive parameterized input (target URLs,
+    /// parameter names, HTTP methods, baselines, etc.) without hardcoding values.
+    /// This enables reusable parameterized templates driven by external automation.
+    #[arg(
+        long,
+        value_name = "JSON",
+        help = "JSON context for parameterized templates. Passed as CERT_X_GEN_CONTEXT env var. Example: '{\"param_name\":\"username\",\"method\":\"POST\"}'"
+    )]
+    pub context: Option<String>,
+
+    /// Run only templates belonging to this batch group.
+    ///
+    /// Batch groups let you execute a cohort of templates that share the same
+    /// context shape in a single invocation.
+    ///
+    /// Common groups: auth-context, endpoint-params, service-ports, full-surface
+    #[arg(
+        long,
+        value_name = "GROUP",
+        help = "Run templates in batch group. Example: --batch-group auth-context"
+    )]
+    pub batch_group: Option<String>,
 }
 
 #[derive(Parser, Debug)]
@@ -831,6 +859,10 @@ pub enum TemplateAction {
         /// Filter by tags (comma-separated)
         #[arg(long, value_name = "TAG,TAG,...")]
         tags: Option<String>,
+
+        /// Filter by batch group (e.g. auth-context, endpoint-params)
+        #[arg(long, value_name = "GROUP")]
+        batch_group: Option<String>,
     },
 
     /// Validate template files
@@ -1346,6 +1378,33 @@ pub enum SandboxAction {
     },
 }
 
+// ─── MCP Command ─────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Parser)]
+#[command(about = "MCP (Model Context Protocol) server for AI agent integration")]
+pub struct McpCommand {
+    #[command(subcommand)]
+    pub action: Option<McpAction>,
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum McpAction {
+    /// Configure MCP server for AI coding agents (Claude Desktop, Claude Code, Cursor, etc.)
+    Install {
+        /// Specific clients to configure (comma-separated: claude-desktop,claude-code,cursor,windsurf,vscode,zed)
+        #[arg(long)]
+        client: Option<String>,
+    },
+    /// Remove MCP server configuration from AI coding agents
+    Uninstall {
+        /// Specific clients to unconfigure
+        #[arg(long)]
+        client: Option<String>,
+    },
+    /// Show current MCP configuration status across all detected clients
+    Status,
+}
+
 #[derive(Clone, Copy, Debug, clap::ValueEnum)]
 pub enum SeverityArg {
     /// Critical severity (highest priority)
@@ -1605,6 +1664,16 @@ pub enum AiAction {
             help = "Estimate and show cost before generating (cloud providers only)"
         )]
         estimate_cost: bool,
+
+        /// API key for the LLM provider (session-only, not persisted to config).
+        /// Overrides environment variables and stored config for this invocation.
+        /// Use with --provider to specify which provider the key belongs to.
+        #[arg(
+            long,
+            value_name = "KEY",
+            help = "API key for the LLM provider (not saved). E.g. --provider anthropic --api-key sk-ant-..."
+        )]
+        api_key: Option<String>,
     },
 
     /// Manage LLM providers
