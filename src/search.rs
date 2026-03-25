@@ -257,13 +257,13 @@ impl TemplateSearchEngine {
     ) -> Vec<SearchResult> {
         // Filter by language
         if let Some(language) = &args.language {
-            let target_language: TemplateLanguage = (*language);
+            let target_language: TemplateLanguage = *language;
             results.retain(|template| template.language == target_language);
         }
 
         // Filter by severity
         if let Some(severity) = &args.severity {
-            let target_severity: Severity = (*severity);
+            let target_severity: Severity = *severity;
             results.retain(|template| template.severity == target_severity);
         }
 

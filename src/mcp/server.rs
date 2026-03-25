@@ -590,7 +590,7 @@ impl CxgMcpServer {
 
             let targets: Vec<Target> = scope.split(',').map(|s| Self::parse_target(s.trim())).collect();
             let additional_ports: Vec<u16> = ports.as_deref()
-                .map(|p| p.split(',').filter_map(|s| s.trim().parse().ok()).collect())
+                .map(|p| p.split(',').filter_map(|s| s.trim().parse::<u16>().ok()).collect())
                 .unwrap_or_default();
 
             let mut job = engine.create_scan_job(targets, templates);
