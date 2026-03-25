@@ -818,9 +818,25 @@ EXAMPLES:
   cxg template list --language c --severity critical
   cxg template list --tags database,unauthenticated
 
+  # Search templates
+  cxg template search redis
+  cxg template search \"sql injection\" --language python
+  cxg template search unauthenticated --detailed
+
   # Get template information
   cxg template info redis-unauthenticated
   cxg template info sql-injection-detection
+
+  # Show template directories
+  cxg template pwd
+
+  # View skeleton template for a language
+  cxg template skeleton python
+  cxg template skeleton c
+
+  # Add a local template to cxg
+  cxg template add ./my-redis-check.py
+  cxg template add ./custom-check.c custom/network
 
   # Validate templates
   cxg template validate ~/.cert-x-gen/templates/
@@ -923,6 +939,57 @@ pub enum TemplateAction {
         /// Enable debug output
         #[arg(long)]
         debug: bool,
+    },
+
+    /// Search templates (shortcut for `cxg search`)
+    Search {
+        /// Search query
+        query: String,
+
+        /// Filter by programming language
+        #[arg(long, value_enum, value_name = "LANG")]
+        language: Option<LanguageArg>,
+
+        /// Filter by severity level
+        #[arg(long, value_enum, value_name = "LEVEL")]
+        severity: Option<SeverityArg>,
+
+        /// Filter by tags (comma-separated)
+        #[arg(long, value_name = "TAG,TAG,...")]
+        tags: Option<String>,
+
+        /// Search in template content/code
+        #[arg(long)]
+        content: bool,
+
+        /// Show detailed results
+        #[arg(long)]
+        detailed: bool,
+
+        /// Maximum number of results
+        #[arg(long, default_value_t = 50, value_name = "N")]
+        limit: usize,
+    },
+
+    /// Show the template directories used by cxg
+    Pwd,
+
+    /// Display the skeleton/scaffold template for a language
+    Skeleton {
+        /// Programming language for the skeleton
+        #[arg(value_enum, value_name = "LANG")]
+        language: LanguageArg,
+    },
+
+    /// Add a local template file into the cxg template directory
+    Add {
+        /// Path to the template file to add
+        #[arg(value_name = "FILE")]
+        file: PathBuf,
+
+        /// Destination subdirectory within the user template folder (e.g. "custom/redis")
+        #[arg(value_name = "DEST")]
+        dest: Option<String>,
     },
 }
 

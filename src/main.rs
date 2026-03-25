@@ -1983,6 +1983,197 @@ async fn run_template_command(cmd: cli::TemplateCommand) -> Result<()> {
             // TODO: Implement template testing
             Ok(())
         }
+
+        // @g.comment -- "Delegates `cxg template search <query>` to the existing search engine"
+        TemplateAction::Search {
+            query,
+            language,
+            severity,
+            tags,
+            content,
+            detailed,
+            limit,
+        } => {
+            use cert_x_gen::search::{
+                SearchArgs as LibSearchArgs, SearchFormat, SearchResultFormatter, SearchSort,
+                TemplateSearchEngine,
+            };
+
+            let config = Config::default();
+            let engine = CertXGen::new(config).await?;
+            let templates = engine.load_templates().await?;
+
+            let search_args = LibSearchArgs {
+                query: Some(query),
+                language: language.map(|l| l.into()),
+                severity: severity.map(|s| s.into()),
+                tags,
+                author: None,
+                cwe: None,
+                content,
+                case_sensitive: false,
+                regex: false,
+                limit,
+                format: SearchFormat::Table,
+                detailed,
+                sort: SearchSort::Relevance,
+                reverse: false,
+                ids_only: false,
+                stats: false,
+            };
+
+            let search_engine = TemplateSearchEngine::new(templates);
+            let (results, stats) = search_engine.search(&search_args);
+
+            let output = SearchResultFormatter::format_results(
+                &results,
+                &stats,
+                search_args.format,
+                detailed,
+                false,
+            );
+            print!("{}", output);
+
+            Ok(())
+        }
+
+        // @g.comment -- "Prints all template directory paths with existence status"
+        TemplateAction::Pwd => {
+            use cert_x_gen::template::PathResolver;
+
+            println!("\n📂 Template Directories (priority order):\n");
+
+            let dirs = vec![
+                ("Local (project)", PathResolver::local_template_dir()),
+                ("User", PathResolver::user_template_dir()),
+                ("System", PathResolver::system_template_dir()),
+            ];
+
+            for (label, dir) in &dirs {
+                let exists = dir.exists();
+                let marker = if exists { "✓" } else { "✗" };
+                let abs_path = if dir.is_relative() {
+                    let stripped = dir.strip_prefix("./").unwrap_or(dir);
+                    let joined = std::env::current_dir()
+                        .map(|cwd| cwd.join(stripped))
+                        .unwrap_or_else(|_| dir.clone());
+                    joined.canonicalize().unwrap_or(joined)
+                } else {
+                    dir.clone()
+                };
+                println!("  [{}] {:<18} {}", marker, label, abs_path.display());
+            }
+
+            println!();
+            Ok(())
+        }
+
+        // @g.comment -- "Reads and prints the skeleton scaffold file for a given language"
+        TemplateAction::Skeleton { language } => {
+            use cli::LanguageArg;
+
+            let skeleton_name = match language {
+                LanguageArg::Python => "python-template-skeleton.py",
+                LanguageArg::Rust => "rust-template-skeleton.rs",
+                LanguageArg::C => "c-template-skeleton.c",
+                LanguageArg::Cpp => "cpp-template-skeleton.cpp",
+                LanguageArg::Java => "java-template-skeleton.java",
+                LanguageArg::Go => "go-template-skeleton.go",
+                LanguageArg::JavaScript => "javascript-template-skeleton.js",
+                LanguageArg::Ruby => "ruby-template-skeleton.rb",
+                LanguageArg::Perl => "perl-template-skeleton.pl",
+                LanguageArg::Php => "php-template-skeleton.php",
+                LanguageArg::Shell => "shell-template-skeleton.sh",
+                LanguageArg::Yaml => "yaml-template-skeleton.yaml",
+            };
+
+            let skeleton_paths = vec![
+                std::path::PathBuf::from("templates/skeleton").join(skeleton_name),
+                dirs::home_dir()
+                    .unwrap_or_default()
+                    .join(".cert-x-gen/templates/official/templates/skeleton")
+                    .join(skeleton_name),
+            ];
+
+            match skeleton_paths.iter().find_map(|p| {
+                std::fs::read_to_string(p)
+                    .ok()
+                    .map(|content| (p.clone(), content))
+            }) {
+                Some((path, content)) => {
+                    println!(
+                        "📄 Skeleton template for {:?} ({})\n",
+                        language,
+                        path.display()
+                    );
+                    println!("{}", content);
+                }
+                None => {
+                    eprintln!("❌ Skeleton template '{}' not found.", skeleton_name);
+                    eprintln!("   Run 'cxg template update' to download templates.");
+                }
+            }
+
+            Ok(())
+        }
+
+        // @g.comment -- "Copies a researcher-authored template file into the user template directory"
+        TemplateAction::Add { file, dest } => {
+            use cert_x_gen::template::PathResolver;
+
+            if !file.exists() {
+                eprintln!("❌ File not found: {}", file.display());
+                return Err(Error::config(format!(
+                    "Template file does not exist: {}",
+                    file.display()
+                )));
+            }
+
+            let file_name = file
+                .file_name()
+                .ok_or_else(|| Error::config("Invalid file path".to_string()))?;
+
+            let user_dir = PathResolver::user_template_dir();
+            let target_dir = match &dest {
+                Some(sub) => user_dir.join(sub),
+                None => user_dir.clone(),
+            };
+
+            std::fs::create_dir_all(&target_dir).map_err(|e| {
+                Error::config(format!(
+                    "Failed to create directory {}: {}",
+                    target_dir.display(),
+                    e
+                ))
+            })?;
+
+            let target_path = target_dir.join(file_name);
+
+            if target_path.exists() {
+                println!("⚠️  File already exists: {}", target_path.display());
+                println!("   Overwriting...");
+            }
+
+            std::fs::copy(&file, &target_path).map_err(|e| {
+                Error::config(format!(
+                    "Failed to copy {} → {}: {}",
+                    file.display(),
+                    target_path.display(),
+                    e
+                ))
+            })?;
+
+            println!("✅ Template added: {}", target_path.display());
+            println!("   Source: {}", file.display());
+            println!("\nNext steps:");
+            println!(
+                "   1. Validate: cxg template validate {}",
+                target_path.display()
+            );
+            println!("   2. List:     cxg template list");
+
+            Ok(())
+        }
     }
 }
 

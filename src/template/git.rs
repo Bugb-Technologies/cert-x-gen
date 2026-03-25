@@ -308,6 +308,28 @@ impl GitClient {
         path.join(".git").exists()
     }
 
+    // @g.comment -- "Returns the origin remote URL for an existing repo"
+    /// Get the current remote URL for origin
+    pub fn get_remote_url(path: &Path) -> Result<String> {
+        let repo = GitRepository::open(path)
+            .map_err(|e| Error::config(format!("Failed to open repository: {}", e)))?;
+        let remote = repo
+            .find_remote("origin")
+            .map_err(|e| Error::config(format!("Failed to find remote 'origin': {}", e)))?;
+        Ok(remote.url().unwrap_or("").to_string())
+    }
+
+    // @g.comment -- "Updates the origin remote URL and re-fetches from the new remote"
+    /// Update the remote URL for origin
+    pub fn set_remote_url(path: &Path, new_url: &str) -> Result<()> {
+        let repo = GitRepository::open(path)
+            .map_err(|e| Error::config(format!("Failed to open repository: {}", e)))?;
+        repo.remote_set_url("origin", new_url)
+            .map_err(|e| Error::config(format!("Failed to set remote URL: {}", e)))?;
+        info!("Updated remote URL to {}", new_url);
+        Ok(())
+    }
+
     /// Fast-forward merge
     fn fast_forward(repo: &GitRepository, fetch_commit: &AnnotatedCommit<'_>) -> Result<()> {
         let head_ref = repo
