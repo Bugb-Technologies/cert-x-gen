@@ -703,6 +703,7 @@ mod tests {
             let err_msg = result.unwrap_err().to_string().to_lowercase();
             // Check for various error patterns that indicate Ollama is not available
             let has_expected_error = err_msg.contains("not available")
+                || err_msg.contains("not enabled")
                 || err_msg.contains("ollama serve")
                 || err_msg.contains("not running")
                 || err_msg.contains("connection refused")
