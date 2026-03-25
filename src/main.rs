@@ -2109,10 +2109,7 @@ async fn run_template_command(cmd: cli::TemplateCommand) -> Result<()> {
                     println!("{}", content);
                 }
                 None => {
-                    eprintln!(
-                        "❌ Skeleton template '{}' not found.",
-                        skeleton_name
-                    );
+                    eprintln!("❌ Skeleton template '{}' not found.", skeleton_name);
                     eprintln!("   Run 'cxg template update' to download templates.");
                 }
             }

@@ -1431,7 +1431,7 @@ impl ServerHandler for CxgMcpServer {
             instructions: Some(
                 "CERT-X-GEN: Multi-language security scanning engine. \
                  Search, validate, create, write, test, and run vulnerability scanning templates \
-                 across 12 programming languages with 77+ built-in security checks. \
+                 across 12 programming languages with 147 built-in security checks. \
                  Tools: cxg_search, cxg_template_list, cxg_template_info, cxg_scan, \
                  cxg_template_validate, cxg_template_create, cxg_template_write, \
                  cxg_template_get_notes, cxg_ai_generate, cxg_template_test, \
