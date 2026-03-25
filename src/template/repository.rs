@@ -36,10 +36,37 @@ impl RepositoryManager {
             config
         };
 
-        Ok(Self {
+        let mut manager = Self {
             config_path,
             config,
-        })
+        };
+
+        // @g.comment -- "Migrate stale official repo URL from old org to current default"
+        manager.migrate_official_url()?;
+
+        Ok(manager)
+    }
+
+    /// Migrate the official repository URL if it differs from the current default.
+    /// Handles org renames (e.g. BugB-Tech -> Bugb-Technologies) transparently.
+    fn migrate_official_url(&mut self) -> Result<()> {
+        let default_config = RepositoryConfig::default_config();
+        let Some(default_official) = default_config.repositories.first() else {
+            return Ok(());
+        };
+
+        if let Some(official) = self.config.get_repository_mut("official") {
+            if official.url != default_official.url {
+                warn!(
+                    "Migrating official repo URL: {} -> {}",
+                    official.url, default_official.url
+                );
+                official.url = default_official.url.clone();
+                self.save()?;
+            }
+        }
+
+        Ok(())
     }
 
     /// Initialize repositories (clone if needed)
@@ -68,6 +95,7 @@ impl RepositoryManager {
         Ok(())
     }
 
+    // @g.comment -- "Updates a single repo: detects remote URL drift, re-clones if needed, then pulls"
     /// Update a specific repository
     pub fn update_repository(&mut self, name: &str) -> Result<()> {
         let repo = self
@@ -82,11 +110,32 @@ impl RepositoryManager {
         }
 
         if !repo.local_path.exists() {
-            // Clone if doesn't exist
             info!("Cloning repository '{}'...", name);
             GitClient::clone(&repo.url, &repo.local_path, &repo.branch)?;
         } else {
-            // Check if clean
+            // Check if the configured URL differs from the on-disk remote
+            if let Ok(current_url) = GitClient::get_remote_url(&repo.local_path) {
+                if current_url != repo.url {
+                    warn!(
+                        "Repository '{}' remote URL changed: {} -> {}",
+                        name, current_url, repo.url
+                    );
+                    info!("Re-cloning repository '{}' with new URL...", name);
+                    std::fs::remove_dir_all(&repo.local_path).map_err(|e| {
+                        Error::config(format!(
+                            "Failed to remove old clone at {}: {}",
+                            repo.local_path.display(),
+                            e
+                        ))
+                    })?;
+                    GitClient::clone(&repo.url, &repo.local_path, &repo.branch)?;
+                    repo.last_updated = Some(Utc::now());
+                    self.save()?;
+                    info!("Successfully re-cloned repository '{}'", name);
+                    return Ok(());
+                }
+            }
+
             if !GitClient::is_clean(&repo.local_path)? {
                 warn!(
                     "Repository '{}' has uncommitted changes. Skipping update.",
@@ -95,7 +144,6 @@ impl RepositoryManager {
                 return Ok(());
             }
 
-            // Pull updates
             info!("Updating repository '{}'...", name);
             GitClient::pull(&repo.local_path, &repo.branch)?;
         }
