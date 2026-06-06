@@ -174,11 +174,222 @@ async fn run(cli: Cli) -> Result<()> {
                 }
             }
         }
+        Commands::Pentest(cmd) => {
+            run_pentest_command(cmd).await?;
+        }
         Commands::Version => {
             print_version();
         }
     }
 
+    Ok(())
+}
+
+/// Pentest orchestrator install dir — Python sources copied here on first install.
+fn pentest_home() -> PathBuf {
+    if let Ok(home) = std::env::var("HOME") {
+        PathBuf::from(home).join(".cert-x-gen").join("pentest")
+    } else {
+        PathBuf::from(".cert-x-gen/pentest")
+    }
+}
+
+/// Dispatch for `cxg pentest …` — shells out to the Python orchestrator installed under
+/// ~/.cert-x-gen/pentest/. The orchestrator is a Python module that handles auth capture,
+/// codebase ingest, AI generation, browser execution, scope enforcement, and reporting.
+async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
+    use std::process::Command as SysCommand;
+    let home = pentest_home();
+
+    // Install action — copy bundled Python orchestrator + check deps.
+    if matches!(cmd.action, cli::PentestAction::Install { .. }) {
+        let force = matches!(cmd.action, cli::PentestAction::Install { force: true });
+        return pentest_install(&home, force);
+    }
+
+    // For every other action, the orchestrator must be installed.
+    let orchestrator = home.join("cxg_pentest.py");
+    if !orchestrator.exists() {
+        eprintln!("Pentest orchestrator not installed at {}", orchestrator.display());
+        eprintln!("Run: cxg pentest install");
+        return Err(Error::Config("pentest orchestrator not installed".to_string()));
+    }
+
+    // Build argv for the Python orchestrator.
+    let mut args: Vec<String> = vec![orchestrator.to_string_lossy().to_string()];
+    match cmd.action {
+        cli::PentestAction::Install { .. } => unreachable!(),
+        cli::PentestAction::Auth { target, profile, auth_numbers, creds, creds_file, login_path, label, verify_url, headers } => {
+            args.extend(["auth".into(), "login".into(),
+                "--target".into(), target,
+                "--profile".into(), profile,
+                "--auth-numbers".into(), auth_numbers.to_string(),
+                "--login-path".into(), login_path]);
+            if let Some(c) = creds { args.extend(["--creds".into(), c]); }
+            if let Some(f) = creds_file { args.extend(["--creds-file".into(), f.to_string_lossy().to_string()]); }
+            if let Some(l) = label { args.extend(["--label".into(), l]); }
+            if let Some(v) = verify_url { args.extend(["--verify-url".into(), v]); }
+            for h in headers { args.extend(["--header".into(), h]); }
+        }
+        cli::PentestAction::AuthList => {
+            args.extend(["auth".into(), "list".into()]);
+        }
+        cli::PentestAction::ScopeInit { output } => {
+            args.extend(["scope".into(), "init".into(),
+                "--output".into(), output.to_string_lossy().to_string()]);
+        }
+        cli::PentestAction::Run {
+            codebase, target, auth, interactive_auth, auth_profile, auth_numbers, creds_file,
+            template_lang, goal, template_dir, max_templates, mutation_retries, ai_provider,
+            ai, headed, scope_file, destructive_ok, attestation, session_dir, output,
+            mitigation_mode, me_path, generation_timeout, skip_health_check, oast,
+        } => {
+            args.push("pentest".into());
+            args.extend(["--codebase".into(), codebase.to_string_lossy().to_string()]);
+            args.extend(["--target".into(), target]);
+            args.extend(["--auth".into(), auth]);
+            args.extend(["--interactive-auth".into(), interactive_auth.to_string()]);
+            args.extend(["--auth-profile".into(), auth_profile]);
+            if let Some(n) = auth_numbers { args.extend(["--auth-numbers".into(), n.to_string()]); }
+            if let Some(f) = creds_file { args.extend(["--creds-file".into(), f.to_string_lossy().to_string()]); }
+            args.extend(["--template-lang".into(), template_lang]);
+            if let Some(g) = goal { args.extend(["--goal".into(), g]); }
+            if let Some(d) = template_dir { args.extend(["--template-dir".into(), d.to_string_lossy().to_string()]); }
+            args.extend(["--max-templates".into(), max_templates.to_string()]);
+            args.extend(["--mutation-retries".into(), mutation_retries.to_string()]);
+            args.extend(["--ai-provider".into(), ai_provider]);
+            if ai { args.push("--ai".into()); }
+            if headed { args.push("--headed".into()); }
+            if let Some(s) = scope_file { args.extend(["--scope-file".into(), s.to_string_lossy().to_string()]); }
+            if destructive_ok { args.push("--destructive-ok".into()); }
+            if let Some(a) = attestation { args.extend(["--attestation".into(), a]); }
+            if let Some(s) = session_dir { args.extend(["--session-dir".into(), s.to_string_lossy().to_string()]); }
+            if let Some(o) = output { args.extend(["--output".into(), o.to_string_lossy().to_string()]); }
+            args.extend(["--mitigation-mode".into(), mitigation_mode]);
+            args.extend(["--me-path".into(), me_path]);
+            args.extend(["--generation-timeout".into(), generation_timeout.to_string()]);
+            if skip_health_check { args.push("--skip-health-check".into()); }
+            if let Some(h) = oast { args.extend(["--oast".into(), h]); }
+        }
+    }
+
+    let python = which_python()?;
+    let status = SysCommand::new(&python).args(&args).status()
+        .map_err(|e| Error::Config(format!("failed to spawn python orchestrator: {}", e)))?;
+    if !status.success() {
+        // Bubble the non-zero exit code up — Python uses 2 for "findings found", 3 for hard-kill
+        std::process::exit(status.code().unwrap_or(1));
+    }
+    Ok(())
+}
+
+/// Find a usable python3 binary. Tries CXG_PYTHON env var first.
+fn which_python() -> Result<PathBuf> {
+    if let Ok(p) = std::env::var("CXG_PYTHON") {
+        return Ok(PathBuf::from(p));
+    }
+    for candidate in &["python3", "python"] {
+        if let Ok(out) = std::process::Command::new("which").arg(candidate).output() {
+            if out.status.success() {
+                let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                if !path.is_empty() {
+                    return Ok(PathBuf::from(path));
+                }
+            }
+        }
+    }
+    Err(Error::Config("python3 not found on PATH (set CXG_PYTHON env var to override)".into()))
+}
+
+/// Install the pentest orchestrator: copy bundled Python sources to ~/.cert-x-gen/pentest/
+/// and verify deps (playwright, anthropic).
+fn pentest_install(home: &Path, force: bool) -> Result<()> {
+    use std::process::Command as SysCommand;
+
+    if home.exists() && !force {
+        println!("pentest orchestrator already installed at {}", home.display());
+        println!("  use `cxg pentest install --force` to reinstall");
+    } else {
+        if home.exists() {
+            std::fs::remove_dir_all(home).ok();
+        }
+        std::fs::create_dir_all(home).map_err(|e| Error::Config(format!("mkdir failed: {}", e)))?;
+
+        // The Python orchestrator lives in the cxg source tree at pentest/.
+        // For development, we copy from the source dir; for shipped binaries, we'd
+        // bundle these via include_dir!. For now, find the source dir relative to the
+        // running binary OR via CXG_SOURCE env var.
+        let src_dir = find_pentest_source()?;
+        copy_dir_recursive(&src_dir, home)?;
+        println!("installed pentest orchestrator → {}", home.display());
+    }
+
+    // Dep check
+    let python = which_python()?;
+    println!("checking Python deps…");
+    let check = SysCommand::new(&python)
+        .args(["-c", "import playwright, anthropic; print('OK')"])
+        .output();
+    match check {
+        Ok(o) if o.status.success() => println!("  ✓ playwright + anthropic installed"),
+        _ => {
+            println!("  ⚠ missing Python deps. Install with:");
+            println!("    pip3 install --break-system-packages playwright anthropic");
+            println!("    python3 -m playwright install chromium");
+        }
+    }
+    Ok(())
+}
+
+fn find_pentest_source() -> Result<PathBuf> {
+    if let Ok(s) = std::env::var("CXG_SOURCE") {
+        let p = PathBuf::from(s).join("pentest");
+        if p.exists() {
+            return Ok(p);
+        }
+    }
+    // 1) sibling to current_exe (release install layout)
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(parent) = exe.parent() {
+            for rel in &["pentest", "../pentest", "../share/cert-x-gen/pentest"] {
+                let p = parent.join(rel);
+                if p.join("cxg_pentest.py").exists() {
+                    return Ok(p);
+                }
+            }
+        }
+    }
+    // 2) source tree (development): cwd/pentest or ./pentest from cargo's manifest dir
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let cwd_p = cwd.join("pentest");
+    if cwd_p.join("cxg_pentest.py").exists() {
+        return Ok(cwd_p);
+    }
+    Err(Error::Config(
+        "could not locate pentest source dir. Set CXG_SOURCE=<cxg-repo> to override.".into(),
+    ))
+}
+
+fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
+    std::fs::create_dir_all(dst).map_err(|e| Error::Config(format!("mkdir {}: {}", dst.display(), e)))?;
+    for entry in std::fs::read_dir(src).map_err(|e| Error::Config(format!("readdir {}: {}", src.display(), e)))? {
+        let entry = entry.map_err(|e| Error::Config(format!("dirent: {}", e)))?;
+        let ft = entry.file_type().map_err(|e| Error::Config(format!("filetype: {}", e)))?;
+        let name = entry.file_name();
+        // Skip pycache / hidden / temp output
+        let name_s = name.to_string_lossy();
+        if name_s.starts_with("__pycache__") || name_s.starts_with(".") || name_s == "report.json" {
+            continue;
+        }
+        let src_p = entry.path();
+        let dst_p = dst.join(&name);
+        if ft.is_dir() {
+            copy_dir_recursive(&src_p, &dst_p)?;
+        } else {
+            std::fs::copy(&src_p, &dst_p).map_err(|e| Error::Config(format!("copy {}→{}: {}",
+                src_p.display(), dst_p.display(), e)))?;
+        }
+    }
     Ok(())
 }
 
