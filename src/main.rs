@@ -14,6 +14,7 @@ use cert_x_gen::{
     utils,
 };
 use clap::Parser;
+use include_dir::{include_dir, Dir};
 use std::sync::Arc;
 use std::{
     collections::HashSet,
@@ -184,6 +185,12 @@ async fn run(cli: Cli) -> Result<()> {
 
     Ok(())
 }
+
+/// Pentest orchestrator Python sources, embedded into the binary at compile time.
+/// This lets a shipped `cxg` self-install the orchestrator on any machine without
+/// needing the source tree on disk. A development source tree (CXG_SOURCE or a
+/// `pentest/` dir next to the repo) still takes precedence when present.
+static PENTEST_ASSETS: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/pentest");
 
 /// Pentest orchestrator install dir — Python sources copied here on first install.
 fn pentest_home() -> PathBuf {
@@ -408,13 +415,27 @@ fn pentest_install(home: &Path, force: bool) -> Result<()> {
         }
         std::fs::create_dir_all(home).map_err(|e| Error::Config(format!("mkdir failed: {}", e)))?;
 
-        // The Python orchestrator lives in the cxg source tree at pentest/.
-        // For development, we copy from the source dir; for shipped binaries, we'd
-        // bundle these via include_dir!. For now, find the source dir relative to the
-        // running binary OR via CXG_SOURCE env var.
-        let src_dir = find_pentest_source()?;
-        copy_dir_recursive(&src_dir, home)?;
-        println!("installed pentest orchestrator → {}", home.display());
+        // Prefer an on-disk source tree when one is available (development, or an
+        // explicit CXG_SOURCE override) so contributors can iterate on the Python
+        // without rebuilding the binary. Otherwise extract the copy embedded into
+        // the binary at compile time — this is the path every shipped install takes.
+        match find_pentest_source() {
+            Ok(src_dir) => {
+                copy_dir_recursive(&src_dir, home)?;
+                println!(
+                    "installed pentest orchestrator → {} (from {})",
+                    home.display(),
+                    src_dir.display()
+                );
+            }
+            Err(_) => {
+                extract_embedded_pentest(home)?;
+                println!(
+                    "installed pentest orchestrator → {} (embedded)",
+                    home.display()
+                );
+            }
+        }
     }
 
     // Dep check
@@ -495,6 +516,56 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// Extract the pentest orchestrator embedded in the binary (via include_dir!) into
+/// `dst`. Used by shipped installs where no source tree is present on disk.
+fn extract_embedded_pentest(dst: &Path) -> Result<()> {
+    std::fs::create_dir_all(dst)
+        .map_err(|e| Error::Config(format!("mkdir {}: {}", dst.display(), e)))?;
+    extract_embedded_dir(&PENTEST_ASSETS, dst)
+}
+
+/// Recursively write an embedded directory to disk, mirroring copy_dir_recursive's
+/// exclusions so __pycache__, hidden files, *.pyc, and stale report.json never land
+/// in the install dir. Embedded file paths are relative to the include_dir! root, so
+/// each is joined onto `dst_root` directly.
+fn extract_embedded_dir(dir: &Dir, dst_root: &Path) -> Result<()> {
+    for entry in dir.entries() {
+        match entry {
+            include_dir::DirEntry::Dir(d) => {
+                if embedded_should_skip(d.path()) {
+                    continue;
+                }
+                extract_embedded_dir(d, dst_root)?;
+            }
+            include_dir::DirEntry::File(f) => {
+                let rel = f.path();
+                if embedded_should_skip(rel) {
+                    continue;
+                }
+                let dst_p = dst_root.join(rel);
+                if let Some(parent) = dst_p.parent() {
+                    std::fs::create_dir_all(parent)
+                        .map_err(|e| Error::Config(format!("mkdir {}: {}", parent.display(), e)))?;
+                }
+                std::fs::write(&dst_p, f.contents())
+                    .map_err(|e| Error::Config(format!("write {}: {}", dst_p.display(), e)))?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// True if any component of an embedded path should be excluded from extraction.
+fn embedded_should_skip(path: &Path) -> bool {
+    path.components().any(|c| {
+        let s = c.as_os_str().to_string_lossy();
+        s.starts_with("__pycache__")
+            || s.starts_with('.')
+            || s == "report.json"
+            || s.ends_with(".pyc")
+    })
 }
 
 /// Handle auto-update logic based on CLI flags
