@@ -307,6 +307,30 @@ pub enum PentestAction {
         /// touches, including IDPs — keep this in mind for SSO flows.
         #[arg(long = "header", value_name = "NAME:VALUE")]
         headers: Vec<String>,
+
+        /// Explicit privilege rank for this identity: an integer 0-100 or an alias
+        /// high/medium/low (= 90/50/10). Overrides the role-based heuristic and is fed to
+        /// the AI ranker so it selects the right identity per probe (lowest tier for
+        /// privesc, etc.). Omit to auto-derive from the app's role. In multi-capture
+        /// (--auth-numbers > 1) this pre-fills the per-identity prompt.
+        #[arg(long)]
+        tier: Option<String>,
+
+        /// Semantic role hint (e.g. "billing-analyst") passed to the AI as extra context —
+        /// useful when the app's /me endpoint exposes no clear role field.
+        #[arg(long)]
+        persona: Option<String>,
+
+        /// Peer-group name (e.g. "analyst-team-a"). Give two SAME-permission, DIFFERENT-user
+        /// sessions the same cohort so the AI treats them as peers and targets horizontal
+        /// IDOR / cross-tenant access between them.
+        #[arg(long)]
+        cohort: Option<String>,
+
+        /// Free-form `NAME=VALUE` context attached to the profile and shown to the AI.
+        /// Repeatable.
+        #[arg(long = "tag", value_name = "NAME=VALUE")]
+        tags: Vec<String>,
     },
 
     /// List saved auth profiles under ~/.cert-x-gen/auth/
