@@ -146,8 +146,417 @@ pub enum Commands {
     /// MCP (Model Context Protocol) server for AI agent integration
     Mcp(McpCommand),
 
+    /// AI-driven whitebox pentest pipeline (guardlink source code → authenticated browser execution)
+    ///
+    /// Reads `whitebox/findings.sarif` produced by guardlink, ranks threats against an
+    /// operator goal, and asks your local AI CLI (claude / codex / gemini) to write
+    /// JavaScript probe templates that read the target's source to craft code-aware
+    /// payloads. Those templates execute in N parallel authenticated Chromium contexts,
+    /// emitting confirmed/refuted/ambiguous findings to a JSON report plus a JSONL audit
+    /// log of every HTTP request.
+    ///
+    /// Capabilities:
+    ///   • Interactive auth capture for SSO/MFA flows (no need to script logins)
+    ///   • Chained-auth probes (IDOR cross-user) via `--auth-numbers 2+`
+    ///   • Pre-flight identity inspection — landing-test based, no /me-path required
+    ///   • Goal-driven LLM ranking of guardlink hypotheses
+    ///   • Validator-guarded code-generation with hard 240s timeout per AI call
+    ///   • Retry-with-mutation on AMBIGUOUS triage (max N retries, env-bound skip)
+    ///   • Scope enforcement (URL/method allowlist, per-endpoint budget, 5xx hard-kill)
+    ///   • Cookie-jar primitives in templates (HttpOnly-aware via Playwright)
+    ///   • Out-of-band callback support for blind-vuln confirmation (`--oast`)
+    ///   • Per-profile custom headers (WAF bypass, internal-test headers)
+    ///   • Split report: confirmed_findings vs mitigation_verifications vs ambiguous
+    Pentest(PentestCommand),
+
     /// Display version information
     Version,
+}
+
+#[derive(Parser, Debug, Clone)]
+pub struct PentestCommand {
+    #[command(subcommand)]
+    pub action: PentestAction,
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum PentestAction {
+    /// Install the Python orchestrator into ~/.cert-x-gen/pentest/
+    ///
+    /// One-time setup. Copies the Python orchestrator bundled with the cxg source tree
+    /// to `~/.cert-x-gen/pentest/`, then verifies the required Python deps (playwright,
+    /// anthropic) are installed. Must be run before `cxg pentest auth` or `cxg pentest run`.
+    ///
+    /// Examples:
+    ///     cxg pentest install
+    ///     cxg pentest install --force     # reinstall after pulling new cxg source
+    Install {
+        /// Reinstall even if `~/.cert-x-gen/pentest/` already exists. Use after
+        /// updating the cxg source tree or pulling new Python modules.
+        #[arg(long)]
+        force: bool,
+    },
+
+    /// Capture an authenticated browser session as a reusable profile
+    ///
+    /// Spawns a real headed Chromium window. You log in by ANY means — username/password,
+    /// SSO redirect, MFA prompt, hardware key, magic link, OAuth popup. When the app
+    /// dashboard is showing, press ENTER in the terminal (or close the browser) and
+    /// cxg snapshots cookies + localStorage + sessionStorage from every origin the
+    /// browser touched. The profile is saved at `~/.cert-x-gen/auth/<profile>.json`
+    /// plus metadata at `<profile>.meta.json`.
+    ///
+    /// A post-capture landing-test verifies the session works: it re-opens a fresh
+    /// browser context with the saved state, navigates to --target, and checks whether
+    /// the final URL/page looks like a login or the app dashboard.
+    ///
+    /// Use `--auth-numbers N` for chained-auth scenarios (e.g. IDOR testing needs two
+    /// different identities). cxg prompts for a human-readable label for each capture.
+    ///
+    /// Examples:
+    ///     # Single interactive capture
+    ///     cxg pentest auth --target https://app.example.com --profile admin
+    ///
+    ///     # Two identities for chained-auth (e.g. IDOR victim + attacker)
+    ///     cxg pentest auth --target https://app.example.com --profile pentest --auth-numbers 2
+    ///
+    ///     # Scripted login (no browser pop-up)
+    ///     cxg pentest auth --target https://app.example.com --profile bot \
+    ///       --creds 'user@example.com:hunter2' --login-path /api/auth/login
+    ///
+    ///     # Capture a profile that sends a WAF-bypass header on every request
+    ///     cxg pentest auth --target https://app.example.com --profile pentest \
+    ///       --header "x-test-automation:abc123xyz"
+    Auth {
+        /// Target URL where login happens (e.g. https://app.example.com).
+        /// After capture, the landing-test verifier opens this URL with the saved
+        /// cookies; if it doesn't bounce to a login page, the session is alive.
+        #[arg(long)]
+        target: String,
+
+        /// Profile name. If --auth-numbers > 1, this is the PREFIX and final profiles
+        /// are named `<profile>-1`, `<profile>-2`, etc. Use a stable name so subsequent
+        /// `cxg pentest run --auth <profile>` invocations can reload it.
+        #[arg(long)]
+        profile: String,
+
+        /// Number of profiles to capture in sequence. Each capture opens its own
+        /// Chromium window and prompts for a label (e.g. "victim", "attacker", "admin").
+        /// Required ≥2 for chained-auth probes like IDOR cross-user tests.
+        #[arg(long, default_value = "1")]
+        auth_numbers: usize,
+
+        /// Inline credentials `email:password` for scripted login (skips browser pop-up).
+        /// Only works for password-based auth — SSO/MFA flows MUST use interactive capture.
+        #[arg(long)]
+        creds: Option<String>,
+
+        /// File with `profile:email:password[:label]` per line for scripted batch capture.
+        /// Useful for re-auth between scans of password-only test apps.
+        #[arg(long)]
+        creds_file: Option<PathBuf>,
+
+        /// Endpoint path for scripted login POST. Only used with `--creds` or `--creds-file`.
+        /// The captured browser will POST {email, password} as JSON to <target><login-path>.
+        #[arg(long, default_value = "/api/auth/login")]
+        login_path: String,
+
+        /// Human-readable label for the profile (e.g. "admin", "low-priv-user").
+        /// Shown in scan output to make findings readable. Does not affect behavior.
+        #[arg(long)]
+        label: Option<String>,
+
+        /// Optional URL probed after capture as a secondary identity check. The landing
+        /// test is the primary signal regardless. Default: empty (landing test only).
+        /// Pass an empty string to skip the secondary probe entirely.
+        #[arg(long)]
+        verify_url: Option<String>,
+
+        /// Custom HTTP header `NAME:VALUE` sent on every outbound request from this
+        /// profile's browser context — including login, every scan probe, every health
+        /// check. Repeatable for multiple headers. Saved with the profile so future
+        /// `cxg pentest run --auth <profile>` invocations reuse them automatically.
+        ///
+        /// Use case: WAF-bypass tokens granted by infra (e.g. `x-test-automation`),
+        /// internal-test headers, custom forwarding hints.
+        ///
+        /// SECURITY: header values are stored in plaintext under
+        /// `~/.cert-x-gen/auth/<profile>.meta.json`. Treat the file like a credential.
+        /// `chmod 600` if your machine has multiple users. Delete the profile when
+        /// the engagement ends. Header values are sent to EVERY origin the browser
+        /// touches, including IDPs — keep this in mind for SSO flows.
+        #[arg(long = "header", value_name = "NAME:VALUE")]
+        headers: Vec<String>,
+    },
+
+    /// List saved auth profiles under ~/.cert-x-gen/auth/
+    ///
+    /// Shows profile name, label, target URL, and whether extra_headers are present.
+    /// Useful before running `cxg pentest run --auth <name>` to confirm which profile
+    /// you'll be scanning as.
+    AuthList,
+
+    /// Write an example scope.yaml the operator can edit
+    ///
+    /// scope.yaml controls the safety rails for a scan: method allowlist (default
+    /// GET/POST/HEAD/OPTIONS — DELETE/PUT/PATCH require `--destructive-ok`), URL
+    /// allow/blocklist regexes, per-endpoint and total request budgets, 5xx-streak
+    /// hard-kill threshold, and the `authorization_attestation` field that's recorded
+    /// in the audit log header.
+    ///
+    /// Example:
+    ///     cxg pentest scope-init -o my-engagement-scope.yaml
+    ScopeInit {
+        /// Output file path. Default: scope.yaml in the current directory.
+        #[arg(short, long, default_value = "scope.yaml")]
+        output: PathBuf,
+    },
+
+    /// Run the full end-to-end pentest pipeline against a target
+    ///
+    /// Pipeline steps:
+    ///   [1]  Load guardlink hypotheses from `<codebase>/whitebox/findings.sarif`
+    ///   [1b] Inspect captured auth profiles via landing-test
+    ///        (`profile_inspect.inspect_profiles_async`)
+    ///   [2]  LLM-rank hypotheses against --goal + profile coverage; AI generates JS
+    ///        templates that read source via Claude/Codex/Gemini's own Read/Grep tools
+    ///   [3]  Load + statically validate templates (`validator.py`)
+    ///   [4]  Open N parallel authenticated Chromium contexts; inject the cxg JS bridge
+    ///   [5]  Run each template; triage findings (CONFIRMED / REFUTED / AMBIGUOUS);
+    ///        mutate-and-retry on payload-fixable AMBIGUOUS, skip environment-bound
+    ///   [6]  Write `report.json` and `audit.jsonl` to --session-dir
+    ///
+    /// The full set of probes available to templates is documented in
+    /// `pentest/docs/TEMPLATES.md`. The runtime intelligence layer (validator, scope,
+    /// session health, mutation, triage, audit) is in `pentest/docs/ARCHITECTURE.md`.
+    ///
+    /// Examples:
+    ///     # Single-profile read-only scan with default settings
+    ///     cxg pentest run --codebase ./repo --target http://localhost:8000 \
+    ///       --auth admin --ai --ai-provider claude
+    ///
+    ///     # Two identities for IDOR/chained-auth, AI off → built-in probes only
+    ///     cxg pentest run --codebase ./repo --target http://localhost:8000 \
+    ///       --auth victim,attacker
+    ///
+    ///     # Verify mitigations only (skips unmitigated threats so you can confirm
+    ///     # declared defenses hold at runtime). Useful for well-annotated codebases.
+    ///     cxg pentest run --codebase ./repo --target https://staging.app \
+    ///       --auth pentest --ai --ai-provider claude \
+    ///       --mitigation-mode mitigated --max-templates 16
+    ///
+    ///     # OAST-confirmed SSRF testing (definitive blind-vuln confirmation)
+    ///     cxg pentest run --codebase ./repo --target https://staging.app \
+    ///       --auth pentest --ai --ai-provider claude \
+    ///       --oast c4ca4238a0b92.oast.fun \
+    ///       --goal "verify SSRF on /slack/proxy via OAST callback"
+    ///
+    /// Exit codes:
+    ///   0 → no confirmed findings (clean scan)
+    ///   1 → no templates available (guardlink output missing or empty)
+    ///   2 → confirmed findings present
+    ///   3 → scan was hard-killed (5xx streak, scope violation, etc.)
+    Run {
+        /// Source codebase root. MUST contain `whitebox/findings.sarif` produced by
+        /// `guardlink sarif <codebase> -o whitebox/findings.sarif`. The codebase is also
+        /// the working directory of the AI CLI during template generation, so the AI
+        /// can read source via its own Read/Grep tools to craft code-aware payloads.
+        #[arg(long)]
+        codebase: PathBuf,
+
+        /// Running target app URL. Both `http://` and `https://` are supported.
+        /// Multi-tenant note: pass the URL where the SESSION cookies live, not a marketing
+        /// host. The landing test verifies you arrive at a non-login page from this URL.
+        #[arg(long)]
+        target: String,
+
+        /// Comma-separated auth profile names previously captured via `cxg pentest auth`.
+        /// Probes that need multiple identities (IDOR cross-user, session-replay-against-
+        /// victim) require ≥2 profiles. The lowest-privilege identity is auto-selected as
+        /// the actor for privesc-class probes.
+        ///
+        /// Leave empty if you're using --interactive-auth to capture fresh profiles inline.
+        #[arg(long, default_value = "")]
+        auth: String,
+
+        /// Open N headed browser windows for interactive login at scan start, then run
+        /// the pipeline with the resulting fresh profiles. Each capture prompts you for
+        /// a per-identity label. Use this when your captured profiles have expired or
+        /// when you don't want to manage profile lifecycle separately.
+        ///
+        /// Profiles are saved as `<--auth-profile>-1`, `<--auth-profile>-2`, etc.
+        #[arg(long, default_value = "0")]
+        interactive_auth: usize,
+
+        /// Name prefix for `--interactive-auth` captures. The final profile names are
+        /// `<auth_profile>-1`, `<auth_profile>-2`, etc.
+        #[arg(long, default_value = "pentest")]
+        auth_profile: String,
+
+        /// Minimum auth contexts the scan requires. If you pass `--auth a,b` but
+        /// `--auth-numbers 3`, chained-auth templates that need 3 contexts will be
+        /// skipped with a warning. Pure usability check — engine doesn't fabricate
+        /// extra contexts.
+        #[arg(long)]
+        auth_numbers: Option<usize>,
+
+        /// File of `profile:email:password[:label]` lines used to AUTO RE-AUTH a
+        /// dead session mid-scan (the session-health monitor detects death via the
+        /// landing test). Without this, a probe that kills its own session — e.g.
+        /// session_replay's logout — leaves remaining probes unable to run.
+        ///
+        /// Recommended for any scan with `--mutation-retries > 0` or scans with
+        /// SessionReplay / Csrf class templates.
+        #[arg(long)]
+        creds_file: Option<PathBuf>,
+
+        /// Template language. `js` (default): AI generates copy-paste-runnable JS
+        /// templates that drive the cxg JS bridge — recommended for all interactive
+        /// pentests. `py`: Python probe path (legacy) — only built-in probes in
+        /// `pentest/payloads/`, no AI generation.
+        #[arg(long, default_value = "js")]
+        template_lang: String,
+
+        /// Natural-language pentest goal. Used as context for both LLM-based hypothesis
+        /// ranking AND template generation. Be specific about which vuln classes,
+        /// endpoints, or claims you want tested.
+        ///
+        /// Examples:
+        ///   "test for IDOR in records and transactions APIs"
+        ///   "verify each declared @mitigates actually holds at runtime"
+        ///   "find unguarded admin endpoints accessible to non-admin tokens"
+        #[arg(long)]
+        goal: Option<String>,
+
+        /// Reuse JS templates from a previously-generated session directory. Skips the
+        /// AI generation step entirely. Useful for re-running the same templates against
+        /// different targets, or after fixing engine bugs that affected template execution.
+        ///
+        /// Template directories are at `~/.cert-x-gen/templates/session-<timestamp>/`.
+        #[arg(long)]
+        template_dir: Option<PathBuf>,
+
+        /// Maximum number of templates the LLM ranker is allowed to select per scan.
+        /// Each template = one AI generation call (~60-180s with claude/codex). Lower for
+        /// fast feedback loops; higher for engagement-grade coverage.
+        #[arg(long, default_value = "8")]
+        max_templates: usize,
+
+        /// Maximum times the AI is allowed to mutate a template after AMBIGUOUS triage.
+        /// Environment-bound AMBIGUOUS (missing role, missing primitive) skip mutation
+        /// automatically; only payload-fixable ones consume retries.
+        /// 0 disables the loop entirely.
+        #[arg(long, default_value = "2")]
+        mutation_retries: usize,
+
+        /// AI provider. `auto` picks the first available CLI tool (claude > codex > gemini),
+        /// falling back to ANTHROPIC_API_KEY / OPENAI_API_KEY HTTP APIs. Otherwise specify
+        /// explicitly. CLI providers don't need API keys — they use your existing CLI auth.
+        ///
+        /// Options: auto | claude | codex | gemini | anthropic | openai
+        #[arg(long, default_value = "claude")]
+        ai_provider: String,
+
+        /// Enable AI-driven template generation. Without `--ai`, only built-in probes
+        /// from `pentest/payloads/` run. With `--ai`, the orchestrator invokes the
+        /// chosen `--ai-provider` to read the codebase and synthesize code-aware
+        /// templates per guardlink hypothesis.
+        #[arg(long)]
+        ai: bool,
+
+        /// Show Chromium windows during scan instead of running headless. Useful for
+        /// debugging probes, watching auth flows, or when WAF bot-detection is blocking
+        /// headless requests (real Chromium has a stronger fingerprint than headless).
+        #[arg(long)]
+        headed: bool,
+
+        /// Path to scope.yaml. Default: safe permissive defaults (any URL, GET/POST/HEAD/
+        /// OPTIONS, 30 reqs/endpoint, 1500 reqs total, kill on 8-streak 5xx).
+        /// Generate one with `cxg pentest scope-init`.
+        #[arg(long)]
+        scope_file: Option<PathBuf>,
+
+        /// Allow DELETE/PUT/PATCH methods AND paths matching destructive regexes
+        /// (`/wipe`, `/delete-all`, `/factory-reset`, etc.) in scope.yaml.
+        /// Default OFF. Required for templates that test destructive-action authz.
+        ///
+        /// USE WITH CARE on production targets. The engine emits a warning at startup
+        /// and every blocked request is still recorded in the audit log.
+        #[arg(long)]
+        destructive_ok: bool,
+
+        /// Free-text written authorization statement recorded in the audit log header.
+        /// Include engagement ID, operator name, change-management ticket, etc.
+        ///
+        /// Example: "Engagement PT-2026-003, operator J. Doe, ticket CHG-1234"
+        ///
+        /// Strongly recommended for any non-local scan. The audit log header is the
+        /// dispute-ready record of "I had authorization to do this scan."
+        #[arg(long)]
+        attestation: Option<String>,
+
+        /// Session directory where this scan's artifacts (audit.jsonl, report.json,
+        /// any captured screenshots) are written.
+        /// Default: ~/.cert-x-gen/sessions/pentest-<YYYYMMDD-HHMMSS>/
+        #[arg(long)]
+        session_dir: Option<PathBuf>,
+
+        /// JSON report output path. Default: `report.json` under --session-dir.
+        /// The report contains: target, codebase, auth_profiles, goal, scope_stats,
+        /// confirmed_findings, ambiguous, mitigation_verifications, dead_profiles,
+        /// rejected_templates, retried_then_resolved.
+        #[arg(long, short)]
+        output: Option<PathBuf>,
+
+        /// Hypothesis filter by declared-mitigation status from guardlink:
+        ///   `any`         — all HTTP-testable hypotheses (default)
+        ///   `unmitigated` — only threats WITHOUT a declared @mitigates
+        ///                   (find unguarded holes)
+        ///   `mitigated`   — only threats WITH @mitigates declared
+        ///                   (verify defenses actually hold at runtime)
+        #[arg(long, default_value = "any")]
+        mitigation_mode: String,
+
+        /// Optional identity endpoint hit during pre-flight inspection to extract
+        /// role/email/id from a JSON response. Failure here does NOT mark the profile
+        /// dead — the landing test is the source of truth. Override only when you
+        /// want role-tier-based probe selection AND the app has a stable /me endpoint.
+        ///
+        /// Default `/api/me`. Set to empty string to skip the secondary probe.
+        #[arg(long, default_value = "/api/me")]
+        me_path: String,
+
+        /// Hard wall-clock timeout per AI generation call. The whole process tree is
+        /// killed if exceeded. Default 240s.
+        ///
+        /// Claude CLI typically takes 60-170s per template; Codex 90-220s; Gemini 30-180s.
+        /// Bump to 600+ for very large codebases the AI has to grep through.
+        #[arg(long, default_value = "240")]
+        generation_timeout: u64,
+
+        /// Skip the pre-flight session health check entirely. Use when:
+        ///   • Multi-tenant app where the session lives at a subdomain different from --target
+        ///   • App has no stable /me-style endpoint
+        ///   • You know the session is fresh and want to skip the verification roundtrip
+        ///
+        /// Per-template health checks still run during the scan unless you also configure
+        /// scope.yaml to disable them.
+        #[arg(long)]
+        skip_health_check: bool,
+
+        /// Out-of-band callback host (interactsh, Burp Collaborator, etc.). Exposed to
+        /// templates as `cxg.oast.url(label, scheme?)` for definitive blind-vuln
+        /// confirmation. Without this, blind probes (SSRF, blind SQLi, blind XXE,
+        /// blind cmd-injection) must fall back to status-code heuristics and timing,
+        /// which the AI prompt is instructed to mark `confirmed=false`.
+        ///
+        /// Example: `--oast c4ca4238a0b923820dcc.oast.fun`
+        ///
+        /// Start an interactsh-client in another terminal first:
+        ///     interactsh-client  # paste the hostname it prints
+        #[arg(long, value_name = "HOST")]
+        oast: Option<String>,
+    },
 }
 
 #[derive(Parser, Debug)]
