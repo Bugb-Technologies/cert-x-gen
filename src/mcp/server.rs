@@ -29,6 +29,7 @@ use std::path::PathBuf;
 
 // ─── Request types ───────────────────────────────────────────────────────────
 
+/// Parameters for the `cxg_search` MCP tool — searches the template library.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SearchRequest {
     /// Search query text (searches name, description, tags)
@@ -43,6 +44,7 @@ pub struct SearchRequest {
     pub limit: Option<usize>,
 }
 
+/// Parameters for the `cxg_template_list` MCP tool — lists templates with optional filters.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct TemplateListRequest {
     /// Filter by programming language
@@ -53,12 +55,14 @@ pub struct TemplateListRequest {
     pub tags: Option<String>,
 }
 
+/// Parameters for the `cxg_template_info` MCP tool — fetches metadata for a single template.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct TemplateInfoRequest {
     /// Template ID to look up
     pub template_id: String,
 }
 
+/// Parameters for the `cxg_scan` MCP tool — runs templates against a target.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ScanRequest {
     /// Target: URL, IP, domain, CIDR (e.g. "https://example.com")
@@ -80,6 +84,7 @@ pub struct ScanRequest {
     pub batch_group: Option<String>,
 }
 
+/// Parameters for the `cxg_template_validate` MCP tool — statically validates template source.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct TemplateValidateRequest {
     /// Template source code to validate
@@ -90,6 +95,7 @@ pub struct TemplateValidateRequest {
     pub filename: Option<String>,
 }
 
+/// Parameters for the `cxg_template_create` MCP tool — scaffolds a new template skeleton.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct TemplateCreateRequest {
     /// Unique template ID (kebab-case, e.g. "graphql-introspection")
@@ -100,6 +106,7 @@ pub struct TemplateCreateRequest {
     pub name: Option<String>,
 }
 
+/// Parameters for the `cxg_template_write` MCP tool — validates and saves a template.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct TemplateWriteRequest {
     /// Unique template ID (kebab-case, e.g. "jwt-none-alg-check")
@@ -112,12 +119,14 @@ pub struct TemplateWriteRequest {
     pub overwrite: Option<bool>,
 }
 
+/// Parameters for the `cxg_template_get_notes` MCP tool — returns per-language authoring guidance.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct TemplateNotesRequest {
     /// Programming language to get guidance for: python, yaml, rust, shell, javascript, c, cpp, java, go, ruby, perl, php
     pub language: String,
 }
 
+/// Parameters for the `cxg_ai_generate` MCP tool — generates a template from a natural-language prompt.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct AiGenerateRequest {
     /// Natural language description of what to detect.
@@ -133,6 +142,7 @@ pub struct AiGenerateRequest {
     pub model: Option<String>,
 }
 
+/// Parameters for the `cxg_template_test` MCP tool — runs a single template against a target.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct TemplateTestRequest {
     /// Template ID to test
@@ -143,6 +153,7 @@ pub struct TemplateTestRequest {
     pub timeout: Option<u64>,
 }
 
+/// Parameters for the `cxg_template_stats` MCP tool — reports template counts.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct TemplateStatsRequest {
     /// Optional: only count templates for this language
@@ -150,6 +161,7 @@ pub struct TemplateStatsRequest {
 }
 
 // No params needed for update, but rmcp needs a struct
+/// Parameters for the `cxg_template_update` MCP tool — refreshes the official template repository.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct TemplateUpdateRequest {
     /// Force update even if already up-to-date
@@ -243,6 +255,7 @@ impl Default for CxgMcpServer {
 }
 
 impl CxgMcpServer {
+    /// Create a new MCP server instance with the default tool router.
     pub fn new() -> Self {
         Self {
             tool_router: Self::tool_router(),
