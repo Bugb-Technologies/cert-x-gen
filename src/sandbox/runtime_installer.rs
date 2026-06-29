@@ -72,11 +72,12 @@ pub async fn install_runtime(runtime_name: &str) -> Result<bool> {
                 Ok(out) if out.status.success() => {
                     tracing::info!("Rust installed successfully via rustup");
                     // Try to source cargo env
-                    let cargo_path = std::env::var("HOME")
-                        .map(|home| format!("{}/.cargo/bin/cargo", home))
-                        .unwrap_or_else(|_| "cargo".to_string());
+                    // @g.comment -- "resolve ~/.cargo/bin/cargo via dirs::home_dir() for cross-platform support ($HOME is Unix-only)"
+                    let cargo_path = dirs::home_dir()
+                        .map(|home| home.join(".cargo").join("bin").join("cargo"))
+                        .unwrap_or_else(|| std::path::PathBuf::from("cargo"));
 
-                    if std::path::Path::new(&cargo_path).exists()
+                    if cargo_path.exists()
                         || Command::new("cargo").arg("--version").output().is_ok()
                     {
                         tracing::info!("Rust installation verified");
@@ -533,9 +534,10 @@ pub async fn ensure_runtime_available(runtime_name: &str, check_commands: &[&str
 
             // For Rust, also check if cargo is in ~/.cargo/bin
             if runtime_name == "rust" {
-                if let Ok(home) = std::env::var("HOME") {
-                    let cargo_path = format!("{}/.cargo/bin/cargo", home);
-                    if std::path::Path::new(&cargo_path).exists() {
+                // @g.comment -- "check for ~/.cargo/bin/cargo using dirs::home_dir() so it resolves correctly on Windows too"
+                if let Some(home) = dirs::home_dir() {
+                    let cargo_path = home.join(".cargo").join("bin").join("cargo");
+                    if cargo_path.exists() {
                         tracing::info!("Rust installed but not in PATH. Add ~/.cargo/bin to PATH or restart terminal");
                         tracing::info!("Run: export PATH=\"$HOME/.cargo/bin:$PATH\"");
                         return Ok(true);
