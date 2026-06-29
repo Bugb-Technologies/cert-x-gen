@@ -331,14 +331,22 @@ impl RepositoryManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
     use tempfile::TempDir;
+
+    // These tests mutate the global CERT_X_GEN_HOME env var to redirect the config
+    // dir, so they must run serially — otherwise one test's path leaks into another
+    // under cargo's parallel runner. `into_inner` ignores poisoning from a panicked
+    // test so a single failure doesn't cascade into the rest.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn test_new_repository_manager() {
         let temp_dir = TempDir::new().unwrap();
 
         // Override config path for testing
-        std::env::set_var("HOME", temp_dir.path());
+        let _env = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::set_var("CERT_X_GEN_HOME", temp_dir.path());
 
         let result = RepositoryManager::new();
         assert!(result.is_ok());
@@ -350,7 +358,8 @@ mod tests {
     #[test]
     fn test_add_repository() {
         let temp_dir = TempDir::new().unwrap();
-        std::env::set_var("HOME", temp_dir.path());
+        let _env = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::set_var("CERT_X_GEN_HOME", temp_dir.path());
 
         let mut manager = RepositoryManager::new().unwrap();
 
@@ -367,7 +376,8 @@ mod tests {
     #[test]
     fn test_add_duplicate_repository() {
         let temp_dir = TempDir::new().unwrap();
-        std::env::set_var("HOME", temp_dir.path());
+        let _env = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::set_var("CERT_X_GEN_HOME", temp_dir.path());
 
         let mut manager = RepositoryManager::new().unwrap();
 
@@ -393,7 +403,8 @@ mod tests {
     #[test]
     fn test_remove_repository() {
         let temp_dir = TempDir::new().unwrap();
-        std::env::set_var("HOME", temp_dir.path());
+        let _env = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::set_var("CERT_X_GEN_HOME", temp_dir.path());
 
         let mut manager = RepositoryManager::new().unwrap();
 
@@ -413,7 +424,8 @@ mod tests {
     #[test]
     fn test_remove_nonexistent_repository() {
         let temp_dir = TempDir::new().unwrap();
-        std::env::set_var("HOME", temp_dir.path());
+        let _env = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::set_var("CERT_X_GEN_HOME", temp_dir.path());
 
         let mut manager = RepositoryManager::new().unwrap();
 
@@ -425,7 +437,8 @@ mod tests {
     #[test]
     fn test_list_repositories() {
         let temp_dir = TempDir::new().unwrap();
-        std::env::set_var("HOME", temp_dir.path());
+        let _env = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::set_var("CERT_X_GEN_HOME", temp_dir.path());
 
         let manager = RepositoryManager::new().unwrap();
         let repos = manager.list_repositories();
@@ -438,7 +451,8 @@ mod tests {
     #[test]
     fn test_get_repository() {
         let temp_dir = TempDir::new().unwrap();
-        std::env::set_var("HOME", temp_dir.path());
+        let _env = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::set_var("CERT_X_GEN_HOME", temp_dir.path());
 
         let mut manager = RepositoryManager::new().unwrap();
 
