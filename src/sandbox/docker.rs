@@ -183,10 +183,8 @@ impl DockerSandbox {
         }
 
         // Fix Docker credential helper issue by temporarily disabling it
-        let home_dir = std::env::var("HOME").ok();
-        let docker_config_path = home_dir
-            .as_ref()
-            .map(|h| PathBuf::from(h).join(".docker/config.json"));
+        // @g.comment -- "locate the Docker config under the user's home; dirs::home_dir() is cross-platform unlike $HOME, which is unset on Windows"
+        let docker_config_path = dirs::home_dir().map(|h| h.join(".docker/config.json"));
         let mut backup_made = false;
 
         // Backup and modify Docker config if credential helper is causing issues

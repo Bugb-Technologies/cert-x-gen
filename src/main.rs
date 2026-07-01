@@ -178,10 +178,96 @@ async fn run(cli: Cli) -> Result<()> {
         Commands::Pentest(cmd) => {
             run_pentest_command(cmd).await?;
         }
+        Commands::Update(cmd) => {
+            run_update_command(cmd).await?;
+        }
         Commands::Version => {
             print_version();
         }
     }
+
+    Ok(())
+}
+
+/// Map the current platform to the release-asset suffix used by `release.yml`
+/// (e.g. `linux-amd64`, `darwin-arm64`, `windows-amd64`). Returns an error on
+/// platforms we don't publish prebuilt binaries for.
+// @g.comment -- "derives the GitHub release asset identifier for the running OS/arch so self-update fetches the correct binary"
+fn release_target() -> Result<String> {
+    let os = match std::env::consts::OS {
+        "macos" => "darwin",
+        "linux" => "linux",
+        "windows" => "windows",
+        other => {
+            return Err(Error::config(format!(
+                "no prebuilt cxg release for OS '{other}' — build from source"
+            )))
+        }
+    };
+    let arch = match std::env::consts::ARCH {
+        "x86_64" => "amd64",
+        "aarch64" => "arm64",
+        other => {
+            return Err(Error::config(format!(
+                "no prebuilt cxg release for architecture '{other}' — build from source"
+            )))
+        }
+    };
+    Ok(format!("{os}-{arch}"))
+}
+
+/// Handle `cxg update` — self-replace the running binary with the latest GitHub release.
+///
+/// Release assets are plain (non-archived) per-platform binaries named
+/// `cxg-<os>-<arch>` (see `.github/workflows/release.yml`), so we match on that
+/// suffix via `self_update`'s `target` filter rather than the Rust target triple.
+// @g.comment -- "downloads an untrusted binary artifact from GitHub over TLS and atomically overwrites the on-disk cxg executable"
+// @g.source (#github_release) -- "release binary fetched from github.com/Bugb-Technologies/cert-x-gen/releases"
+// @g.sink Commands.Update -- "writes the downloaded executable over the running cxg binary"
+async fn run_update_command(cmd: cli::UpdateCommand) -> Result<()> {
+    let target = release_target()?;
+
+    // self_update uses a blocking HTTP client; run it off the async runtime.
+    tokio::task::spawn_blocking(move || -> Result<()> {
+        let current = env!("CARGO_PKG_VERSION");
+
+        let mut builder = self_update::backends::github::Update::configure();
+        builder
+            .repo_owner("Bugb-Technologies")
+            .repo_name("cert-x-gen")
+            .bin_name("cxg")
+            .target(&target)
+            .current_version(current)
+            .show_download_progress(true)
+            .no_confirm(cmd.yes);
+
+        if let Some(tag) = &cmd.version {
+            builder.target_version_tag(tag);
+        }
+
+        let updater = builder.build()?;
+
+        if cmd.check {
+            let latest = updater.get_latest_release()?;
+            if latest.version.trim_start_matches('v') == current {
+                println!("cxg is up to date (v{current})");
+            } else {
+                println!("Update available: v{current} -> {}", latest.version);
+                println!("Run `cxg update` to install it.");
+            }
+            return Ok(());
+        }
+
+        let status = updater.update()?;
+        if status.updated() {
+            println!("Updated cxg to {}", status.version());
+        } else {
+            println!("cxg is already up to date ({})", status.version());
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|e| Error::Internal(format!("update task panicked: {e}")))??;
 
     Ok(())
 }
@@ -193,9 +279,10 @@ async fn run(cli: Cli) -> Result<()> {
 static PENTEST_ASSETS: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/pentest");
 
 /// Pentest orchestrator install dir — Python sources copied here on first install.
+// @g.comment -- "resolves the pentest install dir under the user's home; uses dirs::home_dir() so it works on Windows where $HOME is unset (USERPROFILE is used instead)"
 fn pentest_home() -> PathBuf {
-    if let Ok(home) = std::env::var("HOME") {
-        PathBuf::from(home).join(".cert-x-gen").join("pentest")
+    if let Some(home) = dirs::home_dir() {
+        home.join(".cert-x-gen").join("pentest")
     } else {
         PathBuf::from(".cert-x-gen/pentest")
     }

@@ -24,9 +24,24 @@ impl PathResolver {
         }
     }
 
+    /// Resolve the base home directory for cert-x-gen's per-user files.
+    ///
+    /// Honors the `CERT_X_GEN_HOME` override (relocation / test isolation) before
+    /// falling back to the OS home dir. The override works on every platform,
+    /// unlike `$HOME`, which `dirs::home_dir()` ignores on Windows.
+    // @g.comment -- "resolves the per-user base dir; CERT_X_GEN_HOME overrides the OS home dir for relocation and cross-platform test isolation"
+    fn user_home() -> Option<PathBuf> {
+        if let Some(dir) = std::env::var_os("CERT_X_GEN_HOME") {
+            if !dir.is_empty() {
+                return Some(PathBuf::from(dir));
+            }
+        }
+        dirs::home_dir()
+    }
+
     /// Get user-specific template directory
     pub fn user_template_dir() -> PathBuf {
-        dirs::home_dir()
+        Self::user_home()
             .map(|h| h.join(".cert-x-gen/templates"))
             .unwrap_or_else(|| PathBuf::from("~/.cert-x-gen/templates"))
     }
@@ -38,7 +53,7 @@ impl PathResolver {
 
     /// Get user config directory
     pub fn user_config_dir() -> PathBuf {
-        dirs::home_dir()
+        Self::user_home()
             .map(|h| h.join(".cert-x-gen"))
             .unwrap_or_else(|| PathBuf::from("~/.cert-x-gen"))
     }

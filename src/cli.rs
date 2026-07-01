@@ -169,8 +169,28 @@ pub enum Commands {
     ///   • Split report: confirmed_findings vs mitigation_verifications vs ambiguous
     Pentest(PentestCommand),
 
+    /// Update cxg to the latest released build
+    Update(UpdateCommand),
+
     /// Display version information
     Version,
+}
+
+/// `cxg update` — self-update the binary from the latest GitHub release.
+// @g.comment -- "CLI options for the self-update command; downloads a release binary and replaces the running executable"
+#[derive(Parser, Debug, Clone)]
+pub struct UpdateCommand {
+    /// Only check whether a newer version exists; don't download or install
+    #[arg(long)]
+    pub check: bool,
+
+    /// Install a specific release tag (e.g. v1.2.0) instead of the latest
+    #[arg(long)]
+    pub version: Option<String>,
+
+    /// Skip the confirmation prompt before replacing the binary
+    #[arg(long, short = 'y')]
+    pub yes: bool,
 }
 
 #[derive(Parser, Debug, Clone)]

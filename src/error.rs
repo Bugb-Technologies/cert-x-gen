@@ -235,6 +235,10 @@ pub enum Error {
     #[error("Internal error: {0}")]
     Internal(String),
 
+    /// Self-update error
+    #[error("Update failed: {0}")]
+    Update(#[from] self_update::errors::Error),
+
     /// Not implemented
     #[error("Not implemented: {0}")]
     NotImplemented(String),
