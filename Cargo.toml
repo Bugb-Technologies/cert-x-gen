@@ -45,7 +45,7 @@ anyhow = "1.0"
 color-eyre = "0.6"
 
 # Networking
-reqwest = { version = "0.11", default-features = false, features = ["json", "cookies", "gzip", "brotli", "stream", "rustls-tls"] }
+reqwest = { version = "0.13", default-features = false, features = ["json", "cookies", "gzip", "brotli", "stream", "rustls", "http2"] }
 hyper = { version = "1.0", features = ["full"] }
 tower = { version = "0.4", features = ["full"] }
 trust-dns-resolver = "0.23"
@@ -53,9 +53,8 @@ trust-dns-resolver = "0.23"
 # HTTP/2 and HTTP/3
 h2 = "0.4"
 
-# TLS
-rustls = "0.22"
-tokio-rustls = "0.25"
+# TLS is provided by reqwest's `rustls` feature; no direct rustls
+# dependency is needed (nothing in src/ references rustls or tokio-rustls).
 
 # Parsing
 regex = "1.10"
