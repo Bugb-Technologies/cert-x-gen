@@ -10,6 +10,7 @@ use std::path::PathBuf;
 
 // ─── Client definitions ──────────────────────────────────────────────
 
+/// Definition of an MCP-compatible client: config path, server-entries key, and restart requirement.
 #[derive(Debug, Clone)]
 pub struct McpClient {
     /// Short ID for --client flag
