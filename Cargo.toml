@@ -136,7 +136,7 @@ nix = "0.27"
 libloading = "0.8"
 
 # MCP (Model Context Protocol) server
-rmcp = { version = "0.8", features = ["server", "transport-io"] }
+rmcp = { version = "1.4", features = ["server", "transport-io"] }
 schemars = "1.0"
 
 # WASM support for templates
