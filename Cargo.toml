@@ -83,7 +83,7 @@ uuid = { version = "1.6", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 
 # Metrics
-prometheus = "0.13"
+prometheus = "0.14"
 metrics = "0.21"
 metrics-exporter-prometheus = "0.13"
 
