@@ -379,6 +379,7 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
             // @g.comment -- "forwards desktop target selection and launch configuration to the Python orchestrator, which owns substrate construction"
             args.push("--target-type".into());
             args.push(target_type);
+            // @g.sink #operator_app_cmd -- "hands the operator-supplied launch command to the Python orchestrator, which splits and executes it as a child process; cxg itself never executes it"
             if let Some(v) = app_cmd {
                 args.push("--app-cmd".into());
                 args.push(v);
@@ -488,6 +489,7 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
             // @g.comment -- "forwards desktop target selection and launch configuration to the Python orchestrator, which owns substrate construction"
             args.push("--target-type".into());
             args.push(target_type);
+            // @g.sink #operator_app_cmd -- "hands the operator-supplied launch command to the Python orchestrator, which splits and executes it as a child process per identity; cxg itself never executes it"
             if let Some(v) = app_cmd {
                 args.push("--app-cmd".into());
                 args.push(v);
