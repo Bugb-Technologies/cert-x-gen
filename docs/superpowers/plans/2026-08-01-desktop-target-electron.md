@@ -972,6 +972,10 @@ In `js_engine.py`:
 3. In `run()`, replace the `async with async_playwright()` block's context-building loop with:
 
 ```python
+        # `open()` goes INSIDE the try, so a partial failure still reaches the
+        # finally and closes whatever was already launched. The pre-refactor
+        # `async with async_playwright()` guaranteed teardown on that path;
+        # leaving open() outside the try would silently lose that guarantee.
         surfaces = await self.substrate.open(self.profiles, headless=self.headless)
         bridge_ctx = BridgeContext(
             target=self.target,
