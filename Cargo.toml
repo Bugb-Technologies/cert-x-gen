@@ -73,7 +73,7 @@ crossbeam = "0.8"
 walkdir = "2.4"
 
 # Template management
-git2 = "0.18"
+git2 = "0.20"
 
 # OpenSSL (vendored for cross-compilation)
 openssl = { version = "0.10", features = ["vendored"] }
