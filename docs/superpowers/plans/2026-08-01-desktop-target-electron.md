@@ -2171,7 +2171,17 @@ In `src/cli.rs`, inside `PentestAction::Run`:
         host_scan_path: Option<String>,
 ```
 
-`required_if_eq` covers `--target-type electron` with neither flag, but not the case where `--app-binary` alone is supplied — `conflicts_with` plus `required_if_eq` on `app_cmd` would then wrongly demand `app_cmd`. clap resolves this correctly because `conflicts_with` suppresses the `required_if_eq` on the conflicting argument. Test `electron_requires_a_launch_mechanism` and a manual `--app-binary`-only run both confirm this.
+**Do NOT use `required_if_eq` on `app_cmd` for this.** It was tried and is wrong: in clap 4.5.49, `required_if_eq` feeds `r_ifs`, which is checked in a validation loop that never consults `conflicts_with` — so `--target-type electron --app-binary /path` wrongly fails demanding `--app-cmd`.
+
+Put the conditional requirement on `--target-type` instead:
+
+```rust
+#[arg(long, default_value = "web", value_parser = ["web", "electron"],
+      requires_if("electron", "app_cmd"))]
+target_type: String,
+```
+
+`requires_if` feeds `self.requires`, whose validation loop *does* consult `is_missing_required_ok`/`conflicts_with`, so `app_cmd`'s absence is correctly excused when its declared conflict `app_binary` is present. Verified against clap's source. Test all four combinations — cmd alone, binary alone, neither, both — on **both** `Run` and `Auth`.
 
 Add the same four arguments to `PentestAction::Auth`, minus `host_scan_path`.
 
