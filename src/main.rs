@@ -332,6 +332,9 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
             persona,
             cohort,
             tags,
+            target_type,
+            app_cmd,
+            app_binary,
         } => {
             args.extend([
                 "auth".into(),
@@ -373,6 +376,17 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
             for t in tags {
                 args.extend(["--tag".into(), t]);
             }
+            // @g.comment -- "forwards desktop target selection and launch configuration to the Python orchestrator, which owns substrate construction"
+            args.push("--target-type".into());
+            args.push(target_type);
+            if let Some(v) = app_cmd {
+                args.push("--app-cmd".into());
+                args.push(v);
+            }
+            if let Some(v) = app_binary {
+                args.push("--app-binary".into());
+                args.push(v);
+            }
         }
         cli::PentestAction::AuthList => {
             args.extend(["auth".into(), "list".into()]);
@@ -411,6 +425,10 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
             generation_timeout,
             skip_health_check,
             oast,
+            target_type,
+            app_cmd,
+            app_binary,
+            host_scan_path,
         } => {
             args.push("pentest".into());
             args.extend(["--codebase".into(), codebase.to_string_lossy().to_string()]);
@@ -466,6 +484,21 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
             }
             if let Some(h) = oast {
                 args.extend(["--oast".into(), h]);
+            }
+            // @g.comment -- "forwards desktop target selection and launch configuration to the Python orchestrator, which owns substrate construction"
+            args.push("--target-type".into());
+            args.push(target_type);
+            if let Some(v) = app_cmd {
+                args.push("--app-cmd".into());
+                args.push(v);
+            }
+            if let Some(v) = app_binary {
+                args.push("--app-binary".into());
+                args.push(v);
+            }
+            if let Some(v) = host_scan_path {
+                args.push("--host-scan-path".into());
+                args.push(v);
             }
         }
     }
