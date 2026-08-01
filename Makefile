@@ -287,6 +287,11 @@ test-unit: build
 	@echo "$(BLUE)[INFO]$(NC) Running unit tests..."
 	@cargo test --lib -- --nocapture
 
+# Python pentest tests
+.PHONY: test-pentest
+test-pentest:
+	cd pentest && python -m pytest -v
+
 # Scan targets (run templates against a target)
 .PHONY: scan-all
 scan-all: build
