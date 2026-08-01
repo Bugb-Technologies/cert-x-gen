@@ -1065,6 +1065,22 @@ def test_app_cmd_is_split_and_preserved(tmp_path):
     assert argv[:3] == ["npm", "run", "electron:dev"]
 
 
+def test_npm_launch_inserts_argument_separator(tmp_path):
+    """Without `--`, npm swallows the flags instead of forwarding them to Electron."""
+    sub = ElectronSubstrate(target="t", app_cmd="npm run electron:dev",
+                            user_data_root=tmp_path)
+    argv, _ = sub._launch_argv(index=0, port=9333)
+    assert argv[3] == "--"
+    assert argv.index("--") < argv.index("--remote-debugging-port=9333")
+
+
+def test_direct_binary_gets_no_separator(tmp_path):
+    sub = ElectronSubstrate(target="t", app_binary="/Applications/Foo.app",
+                            user_data_root=tmp_path)
+    argv, _ = sub._launch_argv(index=0, port=9333)
+    assert "--" not in argv
+
+
 def test_requires_app_cmd_or_binary():
     with pytest.raises(ValueError, match="--app-cmd or --app-binary"):
         ElectronSubstrate(target="t", user_data_root=Path("/tmp"))
@@ -1119,6 +1135,9 @@ from targets.base import BridgeContext, Liveness, Surface
 
 BOOT_TIMEOUT_SECONDS = 90
 
+# @g.comment -- "Launchers that treat trailing flags as their own arguments; cxg's appended flags must follow an explicit -- separator or they never reach the application."
+_PACKAGE_MANAGERS = {"npm", "yarn", "pnpm", "bun"}
+
 
 class ElectronSubstrate:
     name = "electron"
@@ -1145,13 +1164,14 @@ class ElectronSubstrate:
             s.bind(("127.0.0.1", 0))
             return int(s.getsockname()[1])
 
-    # @g.comment -- "Builds the argv for one app instance: the operator's launch command plus the isolated user-data-dir and CDP port that make N simultaneous identities possible."
+    # @g.comment -- "Builds the argv for one app instance: the operator's launch command plus the isolated user-data-dir and CDP port that make N simultaneous identities possible; package-manager launchers need an explicit -- separator or they consume cxg's flags as their own instead of forwarding them to the app."
     # @g.sink (#operator_app_cmd) -- "operator-supplied command string is split and executed as a child process"
     def _launch_argv(self, index: int, port: int) -> tuple[list[str], Path]:
         user_data_dir = self.user_data_root / f"instance-{index}"
         base = shlex.split(self.app_cmd) if self.app_cmd else [self.app_binary]
-        argv = base + [f"--remote-debugging-port={port}",
-                       f"--user-data-dir={user_data_dir}"]
+        separator = ["--"] if base and base[0] in _PACKAGE_MANAGERS else []
+        argv = base + separator + [f"--remote-debugging-port={port}",
+                                   f"--user-data-dir={user_data_dir}"]
         return argv, user_data_dir
 
     # @g.comment -- "Polls the CDP endpoint until the renderer is reachable or the boot window expires, returning None on timeout so the caller can distinguish a slow app from a single-instance lock."
@@ -2383,7 +2403,7 @@ pytestmark = pytest.mark.skipif(
 
 
 @pytest.mark.asyncio
-async def test_config_probes_confirm_node_integration(fixture_dir, tmp_path):
+async def test_config_probes_confirm_node_integration(fixture_dir, tmp_path, monkeypatch):
     import config_probes
     import electron_surface
     from targets.electron import ElectronSubstrate
@@ -2394,8 +2414,9 @@ async def test_config_probes_confirm_node_integration(fixture_dir, tmp_path):
     sub = ElectronSubstrate(target="http://127.0.0.1:1",
                             app_cmd="npx electron .",
                             user_data_root=tmp_path / "ud")
-    import os
-    os.chdir(fixture_dir)
+    # monkeypatch.chdir restores the original cwd at teardown, so this cannot
+    # leak into tests that run afterwards.
+    monkeypatch.chdir(fixture_dir)
     try:
         surfaces = await sub.open([type("P", (), {"name": "p1", "storage_state": None,
                                                   "extra_headers": {}})()], headless=False)
