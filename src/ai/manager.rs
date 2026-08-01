@@ -629,7 +629,13 @@ mod tests {
 
     #[test]
     fn test_list_providers() {
-        let manager = AIManager::new().unwrap();
+        // Use an explicit in-memory default config rather than AIManager::new(),
+        // which calls AIConfig::load() and reads (or creates) the on-disk config at
+        // config_path(). On a runner with a pre-existing/empty config file that read
+        // yields an empty providers map, so the assertions below would fail for
+        // environmental reasons unrelated to this code. with_config() keeps the test
+        // deterministic and free of filesystem side effects.
+        let manager = AIManager::with_config(AIConfig::default()).unwrap();
         let providers = manager.list_providers();
 
         assert!(!providers.is_empty());
@@ -638,7 +644,9 @@ mod tests {
 
     #[test]
     fn test_prompt_builder_integration() {
-        let manager = AIManager::new().unwrap();
+        // with_config avoids the AIConfig::load() disk read/write that new() performs;
+        // this test only exercises the prompt builder, which is config-independent.
+        let manager = AIManager::with_config(AIConfig::default()).unwrap();
 
         // Verify prompt builder is accessible
         let builder = manager.prompt_builder();
@@ -665,7 +673,9 @@ mod tests {
 
     #[test]
     fn test_prompt_builder_skeletons() {
-        let manager = AIManager::new().unwrap();
+        // with_config avoids the AIConfig::load() disk read/write that new() performs;
+        // this test only exercises the prompt builder, which is config-independent.
+        let manager = AIManager::with_config(AIConfig::default()).unwrap();
         let builder = manager.prompt_builder();
 
         // Verify all supported languages have skeletons except YAML
