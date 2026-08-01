@@ -339,7 +339,12 @@ pub enum PentestAction {
         /// session state instead of a browser's.
         ///
         /// Tauri is not supported — it exposes no CDP endpoint on macOS or Linux.
-        // @g.comment -- "selects which substrate auth capture launches against; an unknown value is rejected by clap so a typo can never silently downgrade a desktop capture to a web capture. requires_if (not required_if_eq on app_cmd) is used deliberately: clap's required_if_eq/required_unless validation path skips the conflicts_with escape hatch, so pairing it with app_cmd's conflicts_with would wrongly demand --app-cmd even when --app-binary alone was supplied; requires_if instead feeds clap's ArgGroup-style required-arg resolution, which does consult conflicts_with"
+        // @g.comment -- "selects which substrate auth capture launches against; an unknown value is rejected by clap so a typo can never silently downgrade a desktop capture to a web capture"
+        // requires_if (not required_if_eq on app_cmd) is deliberate: clap's required_if_eq/
+        // required_unless validation path skips the conflicts_with escape hatch, so pairing it
+        // with app_cmd's conflicts_with would wrongly demand --app-cmd even when --app-binary
+        // alone was supplied. requires_if instead feeds the required-arg resolution path that
+        // does consult conflicts_with. See desktop_flag_tests::auth_electron_with_app_binary_alone_parses.
         #[arg(long, default_value = "web", value_parser = ["web", "electron"], requires_if("electron", "app_cmd"))]
         target_type: String,
 
@@ -641,7 +646,12 @@ pub enum PentestAction {
         ///
         ///     cxg pentest run --target-type electron --app-cmd "npm run electron:dev" \
         ///       --codebase ./app-repo --target https://api.example.com --auth desk-1,desk-2
-        // @g.comment -- "selects which substrate the orchestrator uses; an unknown value is rejected by clap so a typo can never silently downgrade a desktop scan to a web scan. requires_if (not required_if_eq on app_cmd) is used deliberately: clap's required_if_eq/required_unless validation path skips the conflicts_with escape hatch, so pairing it with app_cmd's conflicts_with would wrongly demand --app-cmd even when --app-binary alone was supplied; requires_if instead feeds clap's ArgGroup-style required-arg resolution, which does consult conflicts_with"
+        // @g.comment -- "selects which substrate the orchestrator uses; an unknown value is rejected by clap so a typo can never silently downgrade a desktop scan to a web scan"
+        // requires_if (not required_if_eq on app_cmd) is deliberate: clap's required_if_eq/
+        // required_unless validation path skips the conflicts_with escape hatch, so pairing it
+        // with app_cmd's conflicts_with would wrongly demand --app-cmd even when --app-binary
+        // alone was supplied. requires_if instead feeds the required-arg resolution path that
+        // does consult conflicts_with. See desktop_flag_tests::electron_with_app_binary_alone_parses.
         #[arg(long, default_value = "web", value_parser = ["web", "electron"], requires_if("electron", "app_cmd"))]
         target_type: String,
 
@@ -2441,5 +2451,28 @@ mod desktop_flag_tests {
             }
         }
         panic!("expected pentest auth");
+    }
+
+    #[test]
+    fn auth_electron_with_app_cmd_parses() {
+        let cli = parse(&["cxg", "pentest", "auth", "--target", "http://x", "--profile", "p1",
+                          "--target-type", "electron", "--app-cmd", "npm run electron:dev"])
+            .expect("should parse");
+        if let Some(Commands::Pentest(p)) = cli.command {
+            if let PentestAction::Auth { app_cmd, app_binary, .. } = p.action {
+                assert_eq!(app_cmd.as_deref(), Some("npm run electron:dev"));
+                assert_eq!(app_binary, None);
+                return;
+            }
+        }
+        panic!("expected pentest auth");
+    }
+
+    #[test]
+    fn auth_app_cmd_and_app_binary_conflict() {
+        let err = parse(&["cxg", "pentest", "auth", "--target", "http://x", "--profile", "p1",
+                          "--target-type", "electron",
+                          "--app-cmd", "npm start", "--app-binary", "/tmp/a"]);
+        assert!(err.is_err(), "--app-cmd and --app-binary are mutually exclusive for auth too");
     }
 }
