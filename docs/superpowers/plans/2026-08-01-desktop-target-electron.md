@@ -850,8 +850,13 @@ Then apply these mechanical substitutions to the pasted body — apply exactly, 
 
 Also move `_ensure_bridge` (`js_engine.py:382`) into this module as
 `async def ensure_installed(page, surface, bridge_ctx, all_profiles)`, keeping
-its existing `typeof window.__cxg === 'object'` check and re-invoking
-`install_base` when it returns false.
+its existing `typeof window.__cxg === 'object'` check.
+
+**Do NOT re-invoke `install_base` when that check returns false.** Playwright
+raises on double-registration of an already-exposed binding, and repeated
+`add_init_script` calls stack duplicate scripts on the page. Preserve the
+original stash-and-re-evaluate behaviour: re-evaluate the bridge JS only,
+leaving the existing bindings in place.
 
 - [ ] **Step 5: Create `targets/web.py`**
 
