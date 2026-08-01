@@ -328,6 +328,10 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
             label,
             verify_url,
             headers,
+            tier,
+            persona,
+            cohort,
+            tags,
         } => {
             args.extend([
                 "auth".into(),
@@ -355,6 +359,19 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
             }
             for h in headers {
                 args.extend(["--header".into(), h]);
+            }
+            // @g.comment -- "Forward the operator identity-metadata flags to the Python orchestrator so tier/persona/cohort/tags reach the auth capture and are persisted with the profile"
+            if let Some(t) = tier {
+                args.extend(["--tier".into(), t]);
+            }
+            if let Some(p) = persona {
+                args.extend(["--persona".into(), p]);
+            }
+            if let Some(c) = cohort {
+                args.extend(["--cohort".into(), c]);
+            }
+            for t in tags {
+                args.extend(["--tag".into(), t]);
             }
         }
         cli::PentestAction::AuthList => {
