@@ -287,10 +287,22 @@ test-unit: build
 	@echo "$(BLUE)[INFO]$(NC) Running unit tests..."
 	@cargo test --lib -- --nocapture
 
-# Python pentest tests
+# Python pentest tests.
+# Uses PYTHON (default python3) rather than a bare `python`, which does not
+# exist on many systems — including pyenv setups where only `python3` is
+# shimmed — so this target failed before it ran a single test. Dependencies
+# come from pentest/requirements.txt; install them with `make deps-pentest`.
+PYTHON ?= python3
+
 .PHONY: test-pentest
 test-pentest:
-	cd pentest && python -m pytest -v
+	@echo "$(BLUE)[INFO]$(NC) Running Python pentest tests..."
+	cd pentest && $(PYTHON) -m pytest -v
+
+.PHONY: deps-pentest
+deps-pentest:
+	@echo "$(BLUE)[INFO]$(NC) Installing Python pentest dependencies..."
+	$(PYTHON) -m pip install -r pentest/requirements.txt
 
 # Scan targets (run templates against a target)
 .PHONY: scan-all
@@ -453,9 +465,12 @@ install-deps:
 	@echo "  - perl for Perl"
 	@echo "  - php for PHP"
 
-# Continuous integration target
+# Continuous integration target.
+# test-pentest is part of this list because it was not: the Python suite that
+# decides whether the desktop scanner reports an insecure app as safe was
+# reachable only by running its target by hand.
 .PHONY: ci
-ci: check-deps build test-unit test-integration
+ci: check-deps build test-unit test-integration test-pentest
 	@echo "$(GREEN)[SUCCESS]$(NC) CI pipeline completed successfully"
 
 # Development target
