@@ -146,6 +146,7 @@ __pycache__/
 # Test outputs and scan results
 *.html
 !docs/**/*.html
+!pentest/tests/fixtures/**/*.html
 *.json
 !package.json
 !package-lock.json
