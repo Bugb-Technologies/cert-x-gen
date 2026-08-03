@@ -431,14 +431,19 @@ from typing import Optional
 
 
 # @g.comment -- "Normalises a Hypothesis.file to a codebase-relative POSIX string so the two producers can be joined at all. They disagree by construction: electron_surface stores str(path) from an absolute walk, guardlink stores the SARIF artifactLocation URI, which is relative. Comparing them raw matches nothing and does so QUIETLY — every threat would be filed review-only and the run would look like a legitimate 'nothing correlates' result rather than a broken join. Returns None for a threat with no recorded file, which the caller treats as review-only rather than as a match against everything."
+# @g.comment -- "The fallback must never manufacture a key that can collide with a legitimate codebase-relative one. An earlier draft ended `.lstrip('./')`, which strips CHARACTERS rather than a prefix: it turned '../foo/a.ts' into 'foo/a.ts' and the out-of-tree '/other/src/a.ts' into 'other/src/a.ts', either of which can equal a real relative threat path and produce a FALSE correlation. That is worse than a miss — a miss surfaces as review-only, while a false match aims a probe at an unrelated file's channels and misattributes whatever it finds to the wrong threat. Leaving an out-of-tree path ABSOLUTE makes the collision structurally impossible, since a relative key never begins with '/'."
 def _rel(file: Optional[str], codebase: str) -> Optional[str]:
     if not file:
         return None
+    # resolve() is non-strict: it collapses '..' and '.' segments without
+    # requiring the path to exist, which is what the tests rely on.
     p = Path(file)
+    p = p.resolve() if p.is_absolute() else Path(p.as_posix().removeprefix("./"))
+    root = Path(codebase).resolve()
     try:
-        return p.relative_to(Path(codebase)).as_posix()
+        return p.relative_to(root).as_posix()
     except ValueError:
-        return p.as_posix().lstrip("./")
+        return p.as_posix()
 
 
 # @g.comment -- "Splits routeless threats into those the generator can aim at and those it cannot. A threat correlates when its source file registers at least one IPC channel; the channels become CANDIDATES, not an answer — one file can register fifteen, and choosing among them from the threat text is the model's job. What this function guarantees is only that the model is never asked to invent an entry point from nothing, which is the condition that produced inconclusive probes on every prior desktop run."
@@ -747,7 +752,9 @@ git commit -m "feat(pentest): report threats no IPC channel can reach"
 **Known cross-task risks, called out in the tasks that own them:**
 - Task 1 Step 4 changes regex group numbering — every `_RE_IPC_HANDLER` call site must move to named groups.
 - Task 2 Step 3 precedence: constant lookup must precede the passthrough comparison.
-- Task 3 path normalisation: absolute vs relative `file` is a silent-zero-match failure.
+- Task 3 path normalisation: absolute vs relative `file` is a silent-zero-match failure. The
+  fallback branch must not strip leading characters — doing so lets an out-of-tree or
+  `..`-escaping path collide with a real relative key and produce a false correlation.
 - Task 4 Step 4 dedupe key: routeless threats sharing a file would otherwise collapse.
 
 **Not verified by any test in this plan**, and deliberately so: that the model, given candidate channels, picks the right one. That requires a live call. Run it by hand against the Mattermost tree after Task 5 and record the result; do not gate CI on it.
