@@ -430,6 +430,9 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
             app_cmd,
             app_binary,
             host_scan_path,
+            template_timeout,
+            stall_timeout,
+            no_restart,
         } => {
             args.push("pentest".into());
             args.extend(["--codebase".into(), codebase.to_string_lossy().to_string()]);
@@ -501,6 +504,18 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
             if let Some(v) = host_scan_path {
                 args.push("--host-scan-path".into());
                 args.push(v);
+            }
+            // @g.comment -- "forwards the two dispatch bounds and the recovery opt-out only when the operator actually set them, so an unset flag leaves the orchestrator's own default in force rather than this layer restating it — one default, in one place, that the two CLIs cannot drift apart on"
+            if let Some(v) = template_timeout {
+                args.push("--template-timeout".into());
+                args.push(v.to_string());
+            }
+            if let Some(v) = stall_timeout {
+                args.push("--stall-timeout".into());
+                args.push(v.to_string());
+            }
+            if no_restart {
+                args.push("--no-restart".into());
             }
         }
     }
