@@ -570,6 +570,18 @@ In `rank_hypotheses_by_goal`, replace the pre-filter line:
                 and (h.http_path or (h.raw or {}).get("candidate_channels"))]
 ```
 
+- [ ] **Step 3b: Fix the SECOND runnable gate**
+
+`_keyword_rank` has its own independent `if h.http_path` filter, downstream of the
+pre-filter above. It re-excludes exactly the hypotheses Step 3 just admitted, and
+because `goal=""` routes straight into it, Step 3 alone leaves the tests still failing.
+
+Extract the rule from Step 3 into a single shared predicate — do **not** write a second
+copy. Two copies can drift, and the symptom is a scan whose selected hypotheses depend on
+whether a goal was set (`_llm_rank`'s success path never consults the keyword gate) rather
+than on the hypotheses themselves. One predicate, called from both sites, covering both the
+`review_only` exclusion and the runnable test.
+
 - [ ] **Step 4: Fix the dedupe key**
 
 In `_dedupe_by_probe_shape`, replace the key construction:
