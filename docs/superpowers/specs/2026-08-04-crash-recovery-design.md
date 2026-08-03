@@ -43,7 +43,7 @@ addresses the two things that fix deliberately left alone:
 | Attribution is by temporal proximity and says so | The audit log proves *what was in flight*, not *what caused it*. An async handler firing late would name the wrong template. |
 | A single-channel re-probe after restart converts correlation to causation | Deterministic experiment, not a judgement. Dies again → reproducible. Survives → the attribution was wrong and the report says so. |
 | Re-probe once, then quarantine | Reproduction is worth more than the one template it may cost. |
-| A fully recovered run exits **2/0**; a partially recovered one exits **3** | `scan_exit_code` checks truncation first, deliberately, so a finding cannot mask a truncation. Recovery must therefore drive `never_executed` to 0 to earn exit 2 — it is not enough to have restarted. |
+| A run that ran probes on a restarted surface exits **2/0** with a caveat naming which ran degraded; a partially recovered one exits **3** | `scan_exit_code` checks truncation first, deliberately, so a finding cannot mask a truncation. Recovery must therefore drive `never_executed` to 0 to earn exit 2 — it is not enough to have restarted. |
 | `--no-restart` escape hatch | Recovery lets cxg's probes restart the operator's application repeatedly. On a real engagement that is a side effect the operator must be able to decline. |
 
 ## Architecture
@@ -91,7 +91,7 @@ absent.
   case today a restart stalls the event loop ~110 s across `copytree`, `Popen`,
   two `proc.wait(timeout=10)` calls and the connect poll.
 
-### 2. Reviving the identity — the contentious part
+### 2. Reviving the identity — a third state, not an override
 
 `results.dead_profiles` is **append-only by documented contract**
 (`js_engine.py:234`): *"it never REMOVES a name. Clearing a dead verdict is the
@@ -100,16 +100,41 @@ path a successful restart would leave the identity permanently dead and every
 subsequent template skipped at `js_engine.py:562`. Recovery would restart the
 app and then decline to use it.
 
-This design introduces a second sanctioned remover, and states the reasoning
-plainly rather than quietly widening the invariant: **a substrate that has
-replaced the surface is strictly stronger evidence than the `verify()` that
-condemned the old one** — it is not overturning a verdict about the same
-object, it is reporting a different object. The clear is gated on
-`await substrate.verify(new_surface)` returning alive; a restart whose result
-does not itself verify leaves the name in place.
+**An earlier draft of this design proposed clearing the flag, gated on
+`substrate.verify()` passing. That is wrong, and the reason is worth recording
+so it is not reintroduced.**
 
-The append-only comment must be amended in the same commit, not left
-contradicting the code.
+`ElectronSubstrate.verify()` proves only that the renderer evaluates
+JavaScript. It does **not** prove the session is authenticated — the code says
+so at `js_engine.py:416`, and every desktop report already carries a caveat to
+that effect. So "restart, verify, clear" checks the wrong property: an app that
+comes back logged out passes `verify()`, the flag is cleared, and every
+subsequent refusal is recorded as a refutation when it was really an absent
+session. That is the false-refutation failure this codebase fights hardest, and
+gating on `verify()` does not close it.
+
+The invariant is therefore **left intact**, and a third state is added beside
+it: a surface is `alive`, `dead`, or **`restarted` — usable for confirmations,
+not for refutations.**
+
+| observation | what it can establish |
+|---|---|
+| probe never reached the app | nothing — `unreachable` is not a refutation |
+| two identities merely saw different things | nothing — `different` is not a confirmation |
+| **probe ran after a restart** | **a confirmation, but not a refutation** |
+
+The asymmetry is sound on its own terms. If a possibly-logged-out renderer
+still gets the app to grant a device permission or persist a config write, that
+is a *stronger* finding than the same result from an authenticated one — it
+needed less privilege than assumed. If it is refused, nothing is learned,
+because "the guard held" and "there was no session" are indistinguishable from
+outside.
+
+Implementation: templates scheduled on a restarted surface run normally;
+`classify()` degrades any `refuted` verdict originating from that surface to
+`ambiguous` with `reason_kind="environment"` and a reason naming the restart.
+Confirmations pass through untouched. The report lists which templates ran
+degraded.
 
 ### 3. The engine loop
 
@@ -208,12 +233,42 @@ and `FakeSubstrate` doubles; extend them with a restart-capable fake.
 - `instances_seeded` stays the same length as `surfaces` across restarts —
   `tests/test_electron_substrate.py:413` and `test_e2e_electron.py:150` pin it.
 
-## Out of scope
+### 7. Stall detection — a heartbeat, not a deadline
 
-- Per-template timeouts. A crash that *hangs* rather than raises is a separate
-  gap: `page.evaluate` is awaited unbounded, so a blocked main process still
-  freezes the scan with zero output. That is the next piece of work and this
-  design does not cover it.
+A crash that *hangs* never raises, so none of the above fires:
+`page.evaluate` is awaited unbounded and a blocked main process freezes the
+scan with no output at all. The observed cause was a native modal dialog, which
+blocks Electron's main process entirely.
+
+**A fixed per-template deadline is the wrong instrument.** Generated templates
+legitimately run for minutes — baseline, mutate, read back, restore, sometimes
+across two identities with many IPC round-trips. Any ceiling generous enough
+not to kill honest work is too generous to catch a freeze promptly.
+
+The right signal is **time since the last dispatch completed**, not time since
+the template started. A slow probe is still making progress: every completed
+IPC call writes an audit entry (`electron.py:391`). A stalled one produces
+nothing — the last entry's timestamp simply stops advancing. A template may run
+for ten minutes provided it keeps getting answers; a stall is caught in ~90 s
+regardless of the template's intended duration.
+
+**Cross-instance corroboration** disambiguates the remaining case at the cost of
+one round-trip. A modal blocks that instance's main process while every other
+identity's app stays healthy. On suspecting a stall, issue a trivial call to
+another surface:
+
+- other surface answers, this one silent → **this instance is stalled**; treat
+  as a dead target and hand it to the restart path.
+- all surfaces silent → environmental; do not attribute to a template, do not
+  restart, hard-kill with that reason.
+
+An absolute ceiling (default 15 min) remains as a backstop for a template that
+neither progresses nor stalls detectably. Both bounds are operator-settable.
+
+A stall promoted to a dead target enters exactly the machinery above, so the
+freeze case and the crash case converge on one code path.
+
+## Out of scope
 - Restarting a web browser context.
 - Teaching the generator to avoid crash-prone channels. Quarantine is a runtime
   measure; a `@destructive_priority` prompt rule is separate work.
