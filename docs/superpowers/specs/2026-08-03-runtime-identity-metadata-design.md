@@ -1,6 +1,6 @@
 # Runtime identity metadata for templates
 
-**Status:** design approved, not implemented
+**Status:** implemented
 **Date:** 2026-08-03
 
 ## Context
@@ -54,7 +54,7 @@ than consulting `label` at all.
 |---|---|
 | Expose `tier` at runtime, not just at generation time | The generation-time block already proves the data is available and useful. The runtime gap is the whole defect. |
 | Expose `persona` and `cohort` too | Same source, same cost. `cohort` is what distinguishes a horizontal (peer) test from a vertical one, and a template currently cannot tell those apart at runtime either. |
-| Expose the **operator-set** tier, `null` when unset | `AuthProfile.tier` is `None` unless `--tier` was passed; the role-derived tier lives in `profile_infos`, which the bridge does not receive. Plumbing it through is a larger change for a weaker signal. An explicit `null` is honest; a derived number presented as fact is not. |
+| Prefer the operator-set tier, fall back to the engine's role-derived one, `null` only when neither exists | `AuthProfile.tier` is `None` unless `--tier` was passed, so operator tiers alone would leave both helpers `null` on an ordinary run and the prompt would tell every privesc probe to give up — trading a minority of mis-oriented probes for the loss of all of them. `JsEngine.profile_tier` already holds a role-derived rank good enough to pick a runner, and it is populated in `__init__` long before `substrate.open`, so passing it is one field on `BridgeContext`. `tierSource` records which was used so neither the model nor a reader has to guess. |
 | Add precomputed `lowestPrivilege` / `highestPrivilege` | The ranking arithmetic is exactly what the templates got wrong. Handing them the answer removes the step that failed. |
 | Those helpers are `null` when the answer is not well-defined | If any tier is `null`, or the extreme is tied, there is no correct ranking. Returning `null` forces the template to report `unevaluated`; returning a guess reproduces the bug this change exists to fix. |
 | Helpers are values, not functions | `profiles` is already a value. A function invites a template to call it once, cache the result, and drift from it. |
@@ -102,8 +102,15 @@ the new fields. The IPC prompt additionally gains the rule:
 
 > Never infer which identity is privileged from its position in `cxg.profiles`.
 > Read `cxg.lowestPrivilege` / `cxg.highestPrivilege`, or compare `tier`
-> directly. If either is `null`, the identities cannot be ranked — report
-> `outcome: "unevaluated"` with that reason rather than assuming an order.
+> directly. If either is `null`, the identities cannot be ranked — say so and
+> return no confirmation, rather than assuming an order.
+
+The HTTP prompt gets the same rule, phrased for its own contract: it uses a
+`confirmed` boolean and has no `outcome` field, so the null case is
+`confirmed: false` with the reason in the description — the shape it already
+uses for an unavailable `cxg.oast`. This matters because `select_system_prompt`
+hands the HTTP prompt to any hypothesis naming a route *even on an Electron
+run*, and `cxg.fetchAs(idx, ...)` is index-addressed exactly like `invokeAs`.
 
 ## Testing
 
@@ -118,7 +125,6 @@ the new fields. The IPC prompt additionally gains the rule:
 
 ## Out of scope
 
-- Plumbing role-derived tiers from `profile_inspect` into the bridge.
 - Any change to `invokeAs` / `fetchAs` dispatch.
 - Re-running the Mattermost scan; that is validation, done by hand.
 
