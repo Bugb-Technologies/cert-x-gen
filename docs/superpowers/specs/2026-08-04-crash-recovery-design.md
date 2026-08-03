@@ -217,8 +217,8 @@ and `FakeSubstrate` doubles; extend them with a restart-capable fake.
 
 - Restart returns a fresh `Surface` with the same index and profile; the engine
   assigns it into the shared list slot and `fetch_as_router` picks it up.
-- `dead_profiles` is cleared **only** when the restarted surface verifies alive;
-  a restart whose `verify()` fails leaves the name in place.
+- `dead_profiles` is NEVER shortened by any path. A restarted profile is
+  schedulable via the third state while its name remains in that list.
 - The streak resets on successful restart; it does not reset on a failed one.
 - Budgets: 2 per surface and 3 per run each fall through to the existing
   hard-kill, producing the truncation caveat and exit 3.
