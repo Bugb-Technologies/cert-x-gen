@@ -2482,14 +2482,32 @@ mod desktop_flag_tests {
     // main.rs forwards nothing and the orchestrator's own defaults stay in force.
     #[test]
     fn timeout_and_restart_flags_parse_and_default_to_unset() {
-        let cli = parse(&["cxg", "pentest", "run", "--codebase", ".", "--target", "http://x",
-                          "--target-type", "electron", "--app-cmd", "npm start",
-                          "--template-timeout", "1200", "--stall-timeout", "45",
-                          "--no-restart"])
-            .expect("should parse");
+        let cli = parse(&[
+            "cxg",
+            "pentest",
+            "run",
+            "--codebase",
+            ".",
+            "--target",
+            "http://x",
+            "--target-type",
+            "electron",
+            "--app-cmd",
+            "npm start",
+            "--template-timeout",
+            "1200",
+            "--stall-timeout",
+            "45",
+            "--no-restart",
+        ])
+        .expect("should parse");
         if let Some(Commands::Pentest(p)) = cli.command {
-            if let PentestAction::Run { template_timeout, stall_timeout, no_restart, .. } =
-                p.action
+            if let PentestAction::Run {
+                template_timeout,
+                stall_timeout,
+                no_restart,
+                ..
+            } = p.action
             {
                 assert_eq!(template_timeout, Some(1200.0));
                 assert_eq!(stall_timeout, Some(45.0));
@@ -2501,11 +2519,23 @@ mod desktop_flag_tests {
             panic!("expected pentest run");
         }
 
-        let bare = parse(&["cxg", "pentest", "run", "--codebase", ".", "--target", "http://x"])
-            .expect("should parse");
+        let bare = parse(&[
+            "cxg",
+            "pentest",
+            "run",
+            "--codebase",
+            ".",
+            "--target",
+            "http://x",
+        ])
+        .expect("should parse");
         if let Some(Commands::Pentest(p)) = bare.command {
-            if let PentestAction::Run { template_timeout, stall_timeout, no_restart, .. } =
-                p.action
+            if let PentestAction::Run {
+                template_timeout,
+                stall_timeout,
+                no_restart,
+                ..
+            } = p.action
             {
                 assert_eq!(template_timeout, None);
                 assert_eq!(stall_timeout, None);
