@@ -54,6 +54,40 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --all-features
 
+  # The Python orchestrator under pentest/ had never run in CI: every job above
+  # is cargo, and there was no dependency manifest to install. This job closes
+  # that gap. Node is installed because a set of config-probe regression tests
+  # evaluate the shipped renderer check expressions as real JavaScript against
+  # modelled Electron renderer environments — without it they skip, which is
+  # exactly the coverage that catches a probe reporting an insecure app as safe.
+  #
+  # Python 3.12 and 3.13 are both verified green. 3.11 is deliberately excluded:
+  # tests/test_electron_substrate.py monkeypatches os.name to "nt", and on 3.11
+  # pathlib.Path() dispatches on os.name at instantiation and raises
+  # NotImplementedError for WindowsPath on a POSIX host. That is a pre-existing
+  # test/interpreter interaction, unrelated to anything this job runs.
+  pentest:
+    name: Pentest (Python)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.12', '3.13']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: pentest/requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: python -m pip install --upgrade pip
+      - run: pip install -r pentest/requirements.txt
+      - run: python -m pytest -v
+        working-directory: pentest
+
   build:
     name: Build
     runs-on: ${{ matrix.os }}

@@ -331,6 +331,38 @@ pub enum PentestAction {
         /// Repeatable.
         #[arg(long = "tag", value_name = "NAME=VALUE")]
         tags: Vec<String>,
+
+        /// Target type to capture auth for.
+        ///
+        /// `web` (default): the existing authenticated-browser capture against an HTTP
+        /// application. `electron`: launch the Electron desktop app and capture its
+        /// session state instead of a browser's.
+        ///
+        /// Tauri is not supported — it exposes no CDP endpoint on macOS or Linux.
+        // @g.comment -- "selects which substrate auth capture launches against; an unknown value is rejected by clap so a typo can never silently downgrade a desktop capture to a web capture"
+        // requires_if (not required_if_eq on app_cmd) is deliberate: clap's required_if_eq/
+        // required_unless validation path skips the conflicts_with escape hatch, so pairing it
+        // with app_cmd's conflicts_with would wrongly demand --app-cmd even when --app-binary
+        // alone was supplied. requires_if instead feeds the required-arg resolution path that
+        // does consult conflicts_with. See desktop_flag_tests::auth_electron_with_app_binary_alone_parses.
+        #[arg(long, default_value = "web", value_parser = ["web", "electron"], requires_if("electron", "app_cmd"))]
+        target_type: String,
+
+        /// Command that launches the desktop app, e.g. "npm run electron:dev".
+        ///
+        /// Required with `--target-type electron` unless `--app-binary` is given.
+        /// cxg appends `--remote-debugging-port` and a per-identity `--user-data-dir`.
+        // @g.comment -- "operator-supplied launch command forwarded to the orchestrator, which splits and executes it as a child process per identity"
+        // @g.source (#operator_app_cmd) -- "command string supplied by the operator on the command line"
+        #[arg(long, conflicts_with = "app_binary")]
+        app_cmd: Option<String>,
+
+        /// Path to a built desktop app, e.g. /Applications/Foo.app.
+        ///
+        /// Alternative to `--app-cmd`; the two are mutually exclusive.
+        // @g.comment -- "operator-supplied path to a packaged application, executed directly instead of via a launch command"
+        #[arg(long, conflicts_with = "app_cmd")]
+        app_binary: Option<String>,
     },
 
     /// List saved auth profiles under ~/.cert-x-gen/auth/
@@ -600,6 +632,52 @@ pub enum PentestAction {
         ///     interactsh-client  # paste the hostname it prints
         #[arg(long, value_name = "HOST")]
         oast: Option<String>,
+
+        /// Target type to pentest.
+        ///
+        /// `web` (default): the existing authenticated-browser pipeline against an HTTP
+        /// application. `electron`: launch N isolated instances of an Electron desktop
+        /// app, drive their renderers over CDP, and additionally probe IPC channels,
+        /// renderer configuration, and local data at rest.
+        ///
+        /// Tauri is not supported — it exposes no CDP endpoint on macOS or Linux.
+        ///
+        /// EXAMPLES:
+        ///
+        ///     cxg pentest run --target-type electron --app-cmd "npm run electron:dev" \
+        ///       --codebase ./app-repo --target https://api.example.com --auth desk-1,desk-2
+        // @g.comment -- "selects which substrate the orchestrator uses; an unknown value is rejected by clap so a typo can never silently downgrade a desktop scan to a web scan"
+        // requires_if (not required_if_eq on app_cmd) is deliberate: clap's required_if_eq/
+        // required_unless validation path skips the conflicts_with escape hatch, so pairing it
+        // with app_cmd's conflicts_with would wrongly demand --app-cmd even when --app-binary
+        // alone was supplied. requires_if instead feeds the required-arg resolution path that
+        // does consult conflicts_with. See desktop_flag_tests::electron_with_app_binary_alone_parses.
+        #[arg(long, default_value = "web", value_parser = ["web", "electron"], requires_if("electron", "app_cmd"))]
+        target_type: String,
+
+        /// Command that launches the desktop app, e.g. "npm run electron:dev".
+        ///
+        /// Required with `--target-type electron` unless `--app-binary` is given.
+        /// cxg appends `--remote-debugging-port` and a per-identity `--user-data-dir`.
+        // @g.comment -- "operator-supplied launch command forwarded to the orchestrator, which splits and executes it as a child process per identity"
+        // @g.source (#operator_app_cmd) -- "command string supplied by the operator on the command line"
+        #[arg(long, conflicts_with = "app_binary")]
+        app_cmd: Option<String>,
+
+        /// Path to a built desktop app, e.g. /Applications/Foo.app.
+        ///
+        /// Alternative to `--app-cmd`; the two are mutually exclusive.
+        // @g.comment -- "operator-supplied path to a packaged application, executed directly instead of via a launch command"
+        #[arg(long, conflicts_with = "app_cmd")]
+        app_binary: Option<String>,
+
+        /// Additionally scan a real installation directory for data at rest.
+        ///
+        /// By default host probes read only the isolated user-data directories cxg
+        /// created itself. Pass this to opt in to scanning an existing install.
+        // @g.comment -- "opt-in expansion of host-probe scan scope beyond cxg-created directories, since reading an operator's real install is host-level access"
+        #[arg(long)]
+        host_scan_path: Option<String>,
     },
 }
 
@@ -2269,4 +2347,263 @@ pub enum ProviderAction {
     /// Tests all enabled providers and displays their health status.
     /// Quick way to see which providers are ready to use.
     Status,
+}
+
+// @g.comment -- "unit tests for the desktop-target CLI flags (--target-type/--app-cmd/--app-binary), verifying clap's default, validation, and conflicts_with/required_if_eq resolution before wiring them into the orchestrator forwarding"
+#[cfg(test)]
+mod desktop_flag_tests {
+    use super::*;
+    use clap::Parser;
+
+    fn parse(args: &[&str]) -> Result<Cli, clap::Error> {
+        Cli::try_parse_from(args)
+    }
+
+    #[test]
+    fn target_type_defaults_to_web() {
+        let cli = parse(&[
+            "cxg",
+            "pentest",
+            "run",
+            "--codebase",
+            ".",
+            "--target",
+            "http://x",
+        ])
+        .expect("should parse");
+        if let Some(Commands::Pentest(p)) = cli.command {
+            if let PentestAction::Run { target_type, .. } = p.action {
+                assert_eq!(target_type, "web");
+                return;
+            }
+        }
+        panic!("expected pentest run");
+    }
+
+    #[test]
+    fn electron_requires_a_launch_mechanism() {
+        let err = parse(&[
+            "cxg",
+            "pentest",
+            "run",
+            "--codebase",
+            ".",
+            "--target",
+            "http://x",
+            "--target-type",
+            "electron",
+        ]);
+        assert!(
+            err.is_err(),
+            "electron without --app-cmd/--app-binary must fail"
+        );
+    }
+
+    #[test]
+    fn app_cmd_and_app_binary_conflict() {
+        let err = parse(&[
+            "cxg",
+            "pentest",
+            "run",
+            "--codebase",
+            ".",
+            "--target",
+            "http://x",
+            "--target-type",
+            "electron",
+            "--app-cmd",
+            "npm start",
+            "--app-binary",
+            "/tmp/a",
+        ]);
+        assert!(
+            err.is_err(),
+            "--app-cmd and --app-binary are mutually exclusive"
+        );
+    }
+
+    #[test]
+    fn electron_with_app_cmd_parses() {
+        let cli = parse(&[
+            "cxg",
+            "pentest",
+            "run",
+            "--codebase",
+            ".",
+            "--target",
+            "http://x",
+            "--target-type",
+            "electron",
+            "--app-cmd",
+            "npm run electron:dev",
+        ])
+        .expect("should parse");
+        if let Some(Commands::Pentest(p)) = cli.command {
+            if let PentestAction::Run { app_cmd, .. } = p.action {
+                assert_eq!(app_cmd.as_deref(), Some("npm run electron:dev"));
+                return;
+            }
+        }
+        panic!("expected pentest run");
+    }
+
+    #[test]
+    fn rejects_unknown_target_type() {
+        assert!(parse(&[
+            "cxg",
+            "pentest",
+            "run",
+            "--codebase",
+            ".",
+            "--target",
+            "http://x",
+            "--target-type",
+            "tauri"
+        ])
+        .is_err());
+    }
+
+    #[test]
+    fn electron_with_app_binary_alone_parses() {
+        // The task brief asserted clap resolves conflicts_with vs required_if_eq
+        // correctly for this case. It does not: clap's r_ifs/r_unless validation path
+        // (which required_if_eq feeds) never consults conflicts_with, so pairing
+        // `conflicts_with = "app_binary"` with `required_if_eq("target_type", "electron")`
+        // on app_cmd wrongly demanded --app-cmd even when --app-binary alone was given.
+        // Fixed by moving the conditional requirement to a `requires_if("electron",
+        // "app_cmd")` on `target_type`, which clap resolves through the ArgGroup-style
+        // "is_missing_required_ok" path that DOES check conflicts_with of present args.
+        let cli = parse(&[
+            "cxg",
+            "pentest",
+            "run",
+            "--codebase",
+            ".",
+            "--target",
+            "http://x",
+            "--target-type",
+            "electron",
+            "--app-binary",
+            "/tmp/a",
+        ])
+        .expect("--app-binary alone with --target-type electron should parse");
+        if let Some(Commands::Pentest(p)) = cli.command {
+            if let PentestAction::Run {
+                app_binary,
+                app_cmd,
+                ..
+            } = p.action
+            {
+                assert_eq!(app_binary.as_deref(), Some("/tmp/a"));
+                assert_eq!(app_cmd, None);
+                return;
+            }
+        }
+        panic!("expected pentest run");
+    }
+
+    #[test]
+    fn auth_electron_requires_a_launch_mechanism() {
+        // Same requires_if wiring was applied to PentestAction::Auth; verify it holds there too.
+        let err = parse(&[
+            "cxg",
+            "pentest",
+            "auth",
+            "--target",
+            "http://x",
+            "--profile",
+            "p1",
+            "--target-type",
+            "electron",
+        ]);
+        assert!(
+            err.is_err(),
+            "electron without --app-cmd/--app-binary must fail"
+        );
+    }
+
+    #[test]
+    fn auth_electron_with_app_binary_alone_parses() {
+        let cli = parse(&[
+            "cxg",
+            "pentest",
+            "auth",
+            "--target",
+            "http://x",
+            "--profile",
+            "p1",
+            "--target-type",
+            "electron",
+            "--app-binary",
+            "/tmp/a",
+        ])
+        .expect("--app-binary alone with --target-type electron should parse for auth too");
+        if let Some(Commands::Pentest(p)) = cli.command {
+            if let PentestAction::Auth {
+                app_binary,
+                app_cmd,
+                ..
+            } = p.action
+            {
+                assert_eq!(app_binary.as_deref(), Some("/tmp/a"));
+                assert_eq!(app_cmd, None);
+                return;
+            }
+        }
+        panic!("expected pentest auth");
+    }
+
+    #[test]
+    fn auth_electron_with_app_cmd_parses() {
+        let cli = parse(&[
+            "cxg",
+            "pentest",
+            "auth",
+            "--target",
+            "http://x",
+            "--profile",
+            "p1",
+            "--target-type",
+            "electron",
+            "--app-cmd",
+            "npm run electron:dev",
+        ])
+        .expect("should parse");
+        if let Some(Commands::Pentest(p)) = cli.command {
+            if let PentestAction::Auth {
+                app_cmd,
+                app_binary,
+                ..
+            } = p.action
+            {
+                assert_eq!(app_cmd.as_deref(), Some("npm run electron:dev"));
+                assert_eq!(app_binary, None);
+                return;
+            }
+        }
+        panic!("expected pentest auth");
+    }
+
+    #[test]
+    fn auth_app_cmd_and_app_binary_conflict() {
+        let err = parse(&[
+            "cxg",
+            "pentest",
+            "auth",
+            "--target",
+            "http://x",
+            "--profile",
+            "p1",
+            "--target-type",
+            "electron",
+            "--app-cmd",
+            "npm start",
+            "--app-binary",
+            "/tmp/a",
+        ]);
+        assert!(
+            err.is_err(),
+            "--app-cmd and --app-binary are mutually exclusive for auth too"
+        );
+    }
 }
