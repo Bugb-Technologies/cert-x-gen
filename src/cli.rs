@@ -678,6 +678,33 @@ pub enum PentestAction {
         // @g.comment -- "opt-in expansion of host-probe scan scope beyond cxg-created directories, since reading an operator's real install is host-level access"
         #[arg(long)]
         host_scan_path: Option<String>,
+
+        /// Absolute ceiling on one template's dispatch before it is abandoned and
+        /// treated as a dead target. Default 900s. This is a BACKSTOP only —
+        /// `--stall-timeout` is what actually catches a frozen app. 0 disables it,
+        /// which lets a wedged app hang the scan indefinitely.
+        // @g.comment -- "forwards the per-template ceiling to the orchestrator; without this the flag existed in Python only and was unreachable from the cxg binary, so an operator could not raise or disable the backstop at all"
+        #[arg(long)]
+        template_timeout: Option<f64>,
+
+        /// How long the run may go with NO completed dispatch before the surface is
+        /// corroborated against the other instances and, if it alone is silent,
+        /// treated as stalled. This is IDLE time, not template runtime: a probe that
+        /// keeps getting answers is never killed however long it runs. Default 90s,
+        /// 0 disables. Applies to `--target-type electron` only.
+        // @g.comment -- "forwards the stall threshold to the orchestrator; the measured freeze (a native modal blocking Electron's main process) produces no exception at all, so this is the only bound that ends such a run, and it was unreachable from the binary until now"
+        #[arg(long)]
+        stall_timeout: Option<f64>,
+
+        /// Do NOT relaunch a desktop target that dies mid-scan.
+        ///
+        /// Default is to restart it (max 2 per instance, 3 per run), report the crash
+        /// as a `denial_of_service` finding, re-probe the suspected IPC channel once
+        /// and then quarantine it. With this flag a dead target ends the scan with a
+        /// truncation caveat and exit 3 — the pre-recovery behaviour.
+        // @g.comment -- "operator opt-out of crash recovery, because recovery lets cxg's own probes restart the application under test repeatedly and that side effect is an availability decision the operator owns, not cxg"
+        #[arg(long)]
+        no_restart: bool,
     },
 }
 
@@ -2441,6 +2468,78 @@ mod desktop_flag_tests {
         if let Some(Commands::Pentest(p)) = cli.command {
             if let PentestAction::Run { app_cmd, .. } = p.action {
                 assert_eq!(app_cmd.as_deref(), Some("npm run electron:dev"));
+                return;
+            }
+        }
+        panic!("expected pentest run");
+    }
+
+    // The two dispatch bounds and the recovery opt-out existed in the Python
+    // orchestrator only, so they were unreachable from the `cxg` binary: an operator
+    // could not raise the per-template ceiling, could not disable the stall watchdog,
+    // and could not decline having their application relaunched mid-engagement. This
+    // pins that all three now parse and that leaving them off yields None/false, so
+    // main.rs forwards nothing and the orchestrator's own defaults stay in force.
+    #[test]
+    fn timeout_and_restart_flags_parse_and_default_to_unset() {
+        let cli = parse(&[
+            "cxg",
+            "pentest",
+            "run",
+            "--codebase",
+            ".",
+            "--target",
+            "http://x",
+            "--target-type",
+            "electron",
+            "--app-cmd",
+            "npm start",
+            "--template-timeout",
+            "1200",
+            "--stall-timeout",
+            "45",
+            "--no-restart",
+        ])
+        .expect("should parse");
+        if let Some(Commands::Pentest(p)) = cli.command {
+            if let PentestAction::Run {
+                template_timeout,
+                stall_timeout,
+                no_restart,
+                ..
+            } = p.action
+            {
+                assert_eq!(template_timeout, Some(1200.0));
+                assert_eq!(stall_timeout, Some(45.0));
+                assert!(no_restart);
+            } else {
+                panic!("expected pentest run");
+            }
+        } else {
+            panic!("expected pentest run");
+        }
+
+        let bare = parse(&[
+            "cxg",
+            "pentest",
+            "run",
+            "--codebase",
+            ".",
+            "--target",
+            "http://x",
+        ])
+        .expect("should parse");
+        if let Some(Commands::Pentest(p)) = bare.command {
+            if let PentestAction::Run {
+                template_timeout,
+                stall_timeout,
+                no_restart,
+                ..
+            } = p.action
+            {
+                assert_eq!(template_timeout, None);
+                assert_eq!(stall_timeout, None);
+                assert!(!no_restart);
                 return;
             }
         }
