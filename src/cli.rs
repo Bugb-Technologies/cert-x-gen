@@ -2361,8 +2361,16 @@ mod desktop_flag_tests {
 
     #[test]
     fn target_type_defaults_to_web() {
-        let cli = parse(&["cxg", "pentest", "run", "--codebase", ".", "--target", "http://x"])
-            .expect("should parse");
+        let cli = parse(&[
+            "cxg",
+            "pentest",
+            "run",
+            "--codebase",
+            ".",
+            "--target",
+            "http://x",
+        ])
+        .expect("should parse");
         if let Some(Commands::Pentest(p)) = cli.command {
             if let PentestAction::Run { target_type, .. } = p.action {
                 assert_eq!(target_type, "web");
@@ -2374,24 +2382,62 @@ mod desktop_flag_tests {
 
     #[test]
     fn electron_requires_a_launch_mechanism() {
-        let err = parse(&["cxg", "pentest", "run", "--codebase", ".", "--target", "http://x",
-                          "--target-type", "electron"]);
-        assert!(err.is_err(), "electron without --app-cmd/--app-binary must fail");
+        let err = parse(&[
+            "cxg",
+            "pentest",
+            "run",
+            "--codebase",
+            ".",
+            "--target",
+            "http://x",
+            "--target-type",
+            "electron",
+        ]);
+        assert!(
+            err.is_err(),
+            "electron without --app-cmd/--app-binary must fail"
+        );
     }
 
     #[test]
     fn app_cmd_and_app_binary_conflict() {
-        let err = parse(&["cxg", "pentest", "run", "--codebase", ".", "--target", "http://x",
-                          "--target-type", "electron",
-                          "--app-cmd", "npm start", "--app-binary", "/tmp/a"]);
-        assert!(err.is_err(), "--app-cmd and --app-binary are mutually exclusive");
+        let err = parse(&[
+            "cxg",
+            "pentest",
+            "run",
+            "--codebase",
+            ".",
+            "--target",
+            "http://x",
+            "--target-type",
+            "electron",
+            "--app-cmd",
+            "npm start",
+            "--app-binary",
+            "/tmp/a",
+        ]);
+        assert!(
+            err.is_err(),
+            "--app-cmd and --app-binary are mutually exclusive"
+        );
     }
 
     #[test]
     fn electron_with_app_cmd_parses() {
-        let cli = parse(&["cxg", "pentest", "run", "--codebase", ".", "--target", "http://x",
-                          "--target-type", "electron", "--app-cmd", "npm run electron:dev"])
-            .expect("should parse");
+        let cli = parse(&[
+            "cxg",
+            "pentest",
+            "run",
+            "--codebase",
+            ".",
+            "--target",
+            "http://x",
+            "--target-type",
+            "electron",
+            "--app-cmd",
+            "npm run electron:dev",
+        ])
+        .expect("should parse");
         if let Some(Commands::Pentest(p)) = cli.command {
             if let PentestAction::Run { app_cmd, .. } = p.action {
                 assert_eq!(app_cmd.as_deref(), Some("npm run electron:dev"));
@@ -2403,8 +2449,18 @@ mod desktop_flag_tests {
 
     #[test]
     fn rejects_unknown_target_type() {
-        assert!(parse(&["cxg", "pentest", "run", "--codebase", ".", "--target", "http://x",
-                        "--target-type", "tauri"]).is_err());
+        assert!(parse(&[
+            "cxg",
+            "pentest",
+            "run",
+            "--codebase",
+            ".",
+            "--target",
+            "http://x",
+            "--target-type",
+            "tauri"
+        ])
+        .is_err());
     }
 
     #[test]
@@ -2417,11 +2473,27 @@ mod desktop_flag_tests {
         // Fixed by moving the conditional requirement to a `requires_if("electron",
         // "app_cmd")` on `target_type`, which clap resolves through the ArgGroup-style
         // "is_missing_required_ok" path that DOES check conflicts_with of present args.
-        let cli = parse(&["cxg", "pentest", "run", "--codebase", ".", "--target", "http://x",
-                          "--target-type", "electron", "--app-binary", "/tmp/a"])
-            .expect("--app-binary alone with --target-type electron should parse");
+        let cli = parse(&[
+            "cxg",
+            "pentest",
+            "run",
+            "--codebase",
+            ".",
+            "--target",
+            "http://x",
+            "--target-type",
+            "electron",
+            "--app-binary",
+            "/tmp/a",
+        ])
+        .expect("--app-binary alone with --target-type electron should parse");
         if let Some(Commands::Pentest(p)) = cli.command {
-            if let PentestAction::Run { app_binary, app_cmd, .. } = p.action {
+            if let PentestAction::Run {
+                app_binary,
+                app_cmd,
+                ..
+            } = p.action
+            {
                 assert_eq!(app_binary.as_deref(), Some("/tmp/a"));
                 assert_eq!(app_cmd, None);
                 return;
@@ -2433,18 +2505,46 @@ mod desktop_flag_tests {
     #[test]
     fn auth_electron_requires_a_launch_mechanism() {
         // Same requires_if wiring was applied to PentestAction::Auth; verify it holds there too.
-        let err = parse(&["cxg", "pentest", "auth", "--target", "http://x", "--profile", "p1",
-                          "--target-type", "electron"]);
-        assert!(err.is_err(), "electron without --app-cmd/--app-binary must fail");
+        let err = parse(&[
+            "cxg",
+            "pentest",
+            "auth",
+            "--target",
+            "http://x",
+            "--profile",
+            "p1",
+            "--target-type",
+            "electron",
+        ]);
+        assert!(
+            err.is_err(),
+            "electron without --app-cmd/--app-binary must fail"
+        );
     }
 
     #[test]
     fn auth_electron_with_app_binary_alone_parses() {
-        let cli = parse(&["cxg", "pentest", "auth", "--target", "http://x", "--profile", "p1",
-                          "--target-type", "electron", "--app-binary", "/tmp/a"])
-            .expect("--app-binary alone with --target-type electron should parse for auth too");
+        let cli = parse(&[
+            "cxg",
+            "pentest",
+            "auth",
+            "--target",
+            "http://x",
+            "--profile",
+            "p1",
+            "--target-type",
+            "electron",
+            "--app-binary",
+            "/tmp/a",
+        ])
+        .expect("--app-binary alone with --target-type electron should parse for auth too");
         if let Some(Commands::Pentest(p)) = cli.command {
-            if let PentestAction::Auth { app_binary, app_cmd, .. } = p.action {
+            if let PentestAction::Auth {
+                app_binary,
+                app_cmd,
+                ..
+            } = p.action
+            {
                 assert_eq!(app_binary.as_deref(), Some("/tmp/a"));
                 assert_eq!(app_cmd, None);
                 return;
@@ -2455,11 +2555,27 @@ mod desktop_flag_tests {
 
     #[test]
     fn auth_electron_with_app_cmd_parses() {
-        let cli = parse(&["cxg", "pentest", "auth", "--target", "http://x", "--profile", "p1",
-                          "--target-type", "electron", "--app-cmd", "npm run electron:dev"])
-            .expect("should parse");
+        let cli = parse(&[
+            "cxg",
+            "pentest",
+            "auth",
+            "--target",
+            "http://x",
+            "--profile",
+            "p1",
+            "--target-type",
+            "electron",
+            "--app-cmd",
+            "npm run electron:dev",
+        ])
+        .expect("should parse");
         if let Some(Commands::Pentest(p)) = cli.command {
-            if let PentestAction::Auth { app_cmd, app_binary, .. } = p.action {
+            if let PentestAction::Auth {
+                app_cmd,
+                app_binary,
+                ..
+            } = p.action
+            {
                 assert_eq!(app_cmd.as_deref(), Some("npm run electron:dev"));
                 assert_eq!(app_binary, None);
                 return;
@@ -2470,9 +2586,24 @@ mod desktop_flag_tests {
 
     #[test]
     fn auth_app_cmd_and_app_binary_conflict() {
-        let err = parse(&["cxg", "pentest", "auth", "--target", "http://x", "--profile", "p1",
-                          "--target-type", "electron",
-                          "--app-cmd", "npm start", "--app-binary", "/tmp/a"]);
-        assert!(err.is_err(), "--app-cmd and --app-binary are mutually exclusive for auth too");
+        let err = parse(&[
+            "cxg",
+            "pentest",
+            "auth",
+            "--target",
+            "http://x",
+            "--profile",
+            "p1",
+            "--target-type",
+            "electron",
+            "--app-cmd",
+            "npm start",
+            "--app-binary",
+            "/tmp/a",
+        ]);
+        assert!(
+            err.is_err(),
+            "--app-cmd and --app-binary are mutually exclusive for auth too"
+        );
     }
 }
