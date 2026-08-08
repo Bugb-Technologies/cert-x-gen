@@ -426,6 +426,7 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
             generation_timeout,
             skip_health_check,
             oast,
+            oast_interactsh,
             target_type,
             app_cmd,
             app_binary,
@@ -488,6 +489,15 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
             }
             if let Some(h) = oast {
                 args.extend(["--oast".into(), h]);
+            }
+            // @g.comment -- "forwards the OAST mode, not a session: which factory in pentest/oast.py builds it (external_session vs interactsh_session) is decided on the Python side, so the two CLIs cannot end up disagreeing about whether a canary is pollable"
+            // @g.sink #operator_oast_server -- "hands the operator-supplied interactsh server URL to the Python orchestrator, which registers the session against it; cxg itself opens no connection here"
+            // @g.comment -- "the bare form is forwarded as the flag ALONE, with no argument, because that is precisely what 'use interactsh's defaults' means downstream — passing an empty string as the value would instead register against a server named '' and fail; clap's empty default_missing_value is a marker for this branch, never a value to relay"
+            if let Some(server) = oast_interactsh {
+                args.push("--oast-interactsh".into());
+                if !server.is_empty() {
+                    args.push(server);
+                }
             }
             // @g.comment -- "forwards desktop target selection and launch configuration to the Python orchestrator, which owns substrate construction"
             args.push("--target-type".into());
