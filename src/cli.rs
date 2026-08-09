@@ -164,7 +164,9 @@ pub enum Commands {
     ///   • Retry-with-mutation on AMBIGUOUS triage (max N retries, env-bound skip)
     ///   • Scope enforcement (URL/method allowlist, per-endpoint budget, 5xx hard-kill)
     ///   • Cookie-jar primitives in templates (HttpOnly-aware via Playwright)
-    ///   • Out-of-band callback support for blind-vuln confirmation (`--oast`)
+    ///   • Out-of-band callbacks in two modes: inject a canary cxg cannot read
+    ///     (`--oast`), or register one cxg owns and polls (`--oast-interactsh`) —
+    ///     only the second yields an in-band blind-vuln confirmation
     ///   • Per-profile custom headers (WAF bypass, internal-test headers)
     ///   • Split report: confirmed_findings vs mitigation_verifications vs ambiguous
     Pentest(PentestCommand),
@@ -200,6 +202,8 @@ pub struct PentestCommand {
 }
 
 #[derive(Subcommand, Debug, Clone)]
+// @g.comment -- "clippy::large_enum_variant, allowed deliberately. Run already carries ~35 operator flags and sat just under the lint's 200-byte spread; adding --oast-interactsh pushed it over. The lint's remedy is to box the variant's payload, which here would mean a Box around a clap-derived struct that main.rs destructures field-by-field — a churn of every pentest call site, and an allocation on a path that parses one command line and exits, to save bytes on a value that exists once per process. The size is a true statement about a subcommand with this many flags, not a defect."
+#[allow(clippy::large_enum_variant)]
 pub enum PentestAction {
     /// Install the Python orchestrator into ~/.cert-x-gen/pentest/
     ///
@@ -421,11 +425,20 @@ pub enum PentestAction {
     ///       --auth pentest --ai --ai-provider claude \
     ///       --mitigation-mode mitigated --max-templates 16
     ///
-    ///     # OAST-confirmed SSRF testing (definitive blind-vuln confirmation)
+    ///     # SSRF testing against a canary cxg OWNS — it registers the interactsh
+    ///     # session and polls it, so a callback becomes a confirmed finding
     ///     cxg pentest run --codebase ./repo --target https://staging.app \
     ///       --auth pentest --ai --ai-provider claude \
-    ///       --oast c4ca4238a0b92.oast.fun \
+    ///       --oast-interactsh \
     ///       --goal "verify SSRF on /slack/proxy via OAST callback"
+    ///
+    ///     # Same probes, but against a canary cxg can only inject into (e.g. a Burp
+    ///     # Collaborator host). Templates build the URL; YOU read the hit in
+    ///     # Collaborator. Findings stay unconfirmed as far as cxg is concerned.
+    ///     cxg pentest run --codebase ./repo --target https://staging.app \
+    ///       --auth pentest --ai --ai-provider claude \
+    ///       --oast c4ca4238a0b92.oastify.com \
+    ///       --goal "test SSRF on /slack/proxy; check Collaborator for callbacks"
     ///
     /// Exit codes:
     ///   0 → no confirmed findings (clean scan)
@@ -620,18 +633,57 @@ pub enum PentestAction {
         #[arg(long)]
         skip_health_check: bool,
 
-        /// Out-of-band callback host (interactsh, Burp Collaborator, etc.). Exposed to
-        /// templates as `cxg.oast.url(label, scheme?)` for definitive blind-vuln
-        /// confirmation. Without this, blind probes (SSRF, blind SQLi, blind XXE,
-        /// blind cmd-injection) must fall back to status-code heuristics and timing,
-        /// which the AI prompt is instructed to mark `confirmed=false`.
+        /// An external out-of-band callback host cxg can INJECT INTO but cannot read
+        /// back (Burp Collaborator, a canary you host, an interactsh domain you
+        /// generated yourself). Exposed to templates as `cxg.oast.url(label, scheme?)`
+        /// so payloads carry a callback URL — but cxg never learns whether it fired,
+        /// so nothing here confirms anything: blind probes (SSRF, blind SQLi, blind
+        /// XXE, blind cmd-injection) still fall back to status-code heuristics and
+        /// timing, and the AI prompt is instructed to mark them `confirmed=false`.
+        /// Reading the callback is the operator's job, in their own tooling.
         ///
-        /// Example: `--oast c4ca4238a0b923820dcc.oast.fun`
+        /// Want cxg to do the confirming? Use `--oast-interactsh` instead.
         ///
-        /// Start an interactsh-client in another terminal first:
-        ///     interactsh-client  # paste the hostname it prints
+        /// Example: `--oast c4ca4238a0b923820dcc.oastify.com`
+        ///
+        /// If the host is an interactsh domain rather than a Collaborator one, run
+        /// `interactsh-client` in another terminal first and paste the hostname it
+        /// prints — that terminal is the only place these callbacks become visible.
+        ///
+        /// (With `--oast-interactsh` there is no second terminal: cxg is the client.)
+        // @g.comment -- "operator-supplied callback host injected into payloads; kept exactly as it was, value and all, because every existing invocation and every template calling cxg.oast.url() depends on it"
+        // @g.comment -- "help text deliberately no longer claims 'definitive blind-vuln confirmation': cxg holds no session for a host it was merely handed, so it cannot poll it, and an operator who read the old wording would take an unconfirmed finding for a confirmed one"
         #[arg(long, value_name = "HOST")]
         oast: Option<String>,
+
+        /// Register an interactsh session cxg OWNS and poll it — the mode that can
+        /// actually confirm a blind vulnerability. Because cxg registered the session
+        /// it holds the correlation id, so templates can call `cxg.oast.poll(label)`,
+        /// read the interactions back in-band, and a callback becomes a genuine
+        /// `confirmed=true` finding with the interaction recorded as evidence. cxg is
+        /// the interactsh client here; you do not run one alongside it.
+        ///
+        /// The optional value is the interactsh server to register against; omit it to
+        /// use interactsh's default public servers.
+        ///
+        /// Mutually exclusive with `--oast`. Two canaries would split payloads between
+        /// a host cxg can poll and one it cannot, so "was this confirmed?" would have
+        /// no single answer per finding.
+        ///
+        /// Examples: `--oast-interactsh` (default servers), or
+        /// `--oast-interactsh https://oast.example.internal` (your own instance).
+        // @g.comment -- "selects the OAST mode in which cxg registers and therefore can read the canary; the server URL, when given, is the interactsh instance the session is registered against"
+        // @g.comment -- "conflicts_with rather than a runtime if-both check, matching --app-cmd/--app-binary above: clap then rejects the pair during parse with the standard usage error, before any scan work, and the constraint is visible in --help instead of hiding in main()"
+        // @g.comment -- "num_args = 0..=1 with an empty default_missing_value keeps the value optional and distinguishes the three states the mode needs — absent (None, no session), bare (Some(\"\"), default servers), explicit (Some(url)). An Option<Option<String>> would encode the same thing while making every downstream match arm nested for no gain"
+        // @g.source (#operator_oast_server) -- "interactsh server URL supplied by the operator on the command line"
+        #[arg(
+            long,
+            value_name = "SERVER_URL",
+            num_args = 0..=1,
+            default_missing_value = "",
+            conflicts_with = "oast"
+        )]
+        oast_interactsh: Option<String>,
 
         /// Target type to pentest.
         ///
@@ -2704,5 +2756,151 @@ mod desktop_flag_tests {
             err.is_err(),
             "--app-cmd and --app-binary are mutually exclusive for auth too"
         );
+    }
+}
+
+// @g.comment -- "unit tests for the two OAST modes: that the pollable one parses in both its bare and explicit forms, that clap rejects the pair (a split canary), and — the one that guards backward compatibility — that a lone --oast still parses to exactly what it always did"
+#[cfg(test)]
+mod oast_flag_tests {
+    use super::*;
+    use clap::Parser;
+
+    fn run_action(args: &[&str]) -> PentestAction {
+        let cli = Cli::try_parse_from(args).expect("should parse");
+        match cli.command {
+            Some(Commands::Pentest(p)) => p.action,
+            _ => panic!("expected pentest"),
+        }
+    }
+
+    fn base() -> Vec<&'static str> {
+        vec![
+            "cxg",
+            "pentest",
+            "run",
+            "--codebase",
+            ".",
+            "--target",
+            "http://x",
+        ]
+    }
+
+    // Backward compatibility is the whole point of this one: an engagement script
+    // that has been passing `--oast <host>` since before the pollable mode existed
+    // must still parse to Some(host) with the new flag absent, so main.rs forwards
+    // the identical `--oast <host>` and nothing about that run changes.
+    #[test]
+    fn oast_alone_is_unchanged_and_leaves_interactsh_unset() {
+        let mut argv = base();
+        argv.extend(["--oast", "c4ca4238a0b92.oastify.com"]);
+        if let PentestAction::Run {
+            oast,
+            oast_interactsh,
+            ..
+        } = run_action(&argv)
+        {
+            assert_eq!(oast.as_deref(), Some("c4ca4238a0b92.oastify.com"));
+            assert_eq!(oast_interactsh, None);
+            return;
+        }
+        panic!("expected pentest run");
+    }
+
+    // The bare form must be distinguishable from absence, not merely falsy: it means
+    // "register against interactsh's default servers", which is a request for a
+    // canary, whereas None means no canary at all. Some("") vs None is what carries
+    // that difference across to the orchestrator.
+    #[test]
+    fn bare_interactsh_yields_empty_string_not_none() {
+        let mut argv = base();
+        argv.push("--oast-interactsh");
+        if let PentestAction::Run {
+            oast,
+            oast_interactsh,
+            ..
+        } = run_action(&argv)
+        {
+            assert_eq!(oast_interactsh.as_deref(), Some(""));
+            assert_eq!(oast, None);
+            return;
+        }
+        panic!("expected pentest run");
+    }
+
+    #[test]
+    fn interactsh_takes_an_explicit_server_url() {
+        let mut argv = base();
+        argv.extend(["--oast-interactsh", "https://oast.example.internal"]);
+        if let PentestAction::Run {
+            oast_interactsh, ..
+        } = run_action(&argv)
+        {
+            assert_eq!(
+                oast_interactsh.as_deref(),
+                Some("https://oast.example.internal")
+            );
+            return;
+        }
+        panic!("expected pentest run");
+    }
+
+    // Two canaries would split payloads between a pollable host and an unpollable
+    // one, so a blind finding could no longer be said to be confirmed or not.
+    // Enforced by clap's conflicts_with, so it fails during parse rather than after
+    // AI generation has already spent minutes and API budget.
+    #[test]
+    fn oast_and_oast_interactsh_conflict() {
+        let mut argv = base();
+        argv.extend([
+            "--oast",
+            "c4ca4238a0b92.oastify.com",
+            "--oast-interactsh",
+            "https://oast.example.internal",
+        ]);
+        assert!(
+            Cli::try_parse_from(&argv).is_err(),
+            "--oast and --oast-interactsh are mutually exclusive"
+        );
+
+        // Also in the bare form, where the conflict is easiest to write by accident.
+        let mut bare = base();
+        bare.extend(["--oast", "c4ca4238a0b92.oastify.com", "--oast-interactsh"]);
+        assert!(
+            Cli::try_parse_from(&bare).is_err(),
+            "bare --oast-interactsh must conflict with --oast too"
+        );
+    }
+
+    // An optional-value flag placed before another flag must not swallow it.
+    #[test]
+    fn bare_interactsh_does_not_consume_a_following_flag() {
+        let mut argv = base();
+        argv.extend(["--oast-interactsh", "--headed"]);
+        if let PentestAction::Run {
+            oast_interactsh,
+            headed,
+            ..
+        } = run_action(&argv)
+        {
+            assert_eq!(oast_interactsh.as_deref(), Some(""));
+            assert!(headed, "--headed must survive the optional-value flag");
+            return;
+        }
+        panic!("expected pentest run");
+    }
+
+    #[test]
+    fn neither_flag_leaves_both_unset() {
+        if let PentestAction::Run {
+            oast,
+            oast_interactsh,
+            ..
+        } = run_action(&base())
+        {
+            assert_eq!(oast, None);
+            assert_eq!(oast_interactsh, None);
+            return;
+        }
+        panic!("expected pentest run");
     }
 }
