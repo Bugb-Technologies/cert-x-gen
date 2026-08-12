@@ -1,7 +1,7 @@
 [package]
 name = "cert-x-gen"
 # @g.comment -- "release 1.2.0: ships the self-update command (#12) and AI pentest pipeline (#10)"
-version = "1.2.0"
+version = "1.3.0"
 edition = "2021"
 authors = ["CERT-X-GEN Core Team"]
 description = "Advanced Multi-Language Security Scanning Engine"
