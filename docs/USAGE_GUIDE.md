@@ -495,40 +495,23 @@ cxg scan --target example.com --output-format json,html,sarif
 ## Advanced Configuration
 
 ### Configuration File
-Create a `config.yaml` file:
-```yaml
-# config.yaml
-targets:
-  - "example.com"
-  - "192.168.1.100"
 
-ports:
-  - 80
-  - 443
-  - 8080
-  - 9090
+Generate a starting config, then edit it:
 
-template_language: "python"
-output_format: "json"
-output_file: "scan-results.json"
-
-timeout: "30s"
-retry_count: 3
-max_concurrent_targets: 10
-max_concurrent_templates: 5
-
-headers:
-  User-Agent: "CERT-X-GEN/1.0"
-  X-Custom-Header: "value"
-
-follow_redirects: true
-max_redirects: 5
-verify_ssl: false
+```bash
+cxg config generate --output config.yaml
 ```
 
-Use configuration file:
+The schema is nested with four required top-level sections — `templates`, `network`,
+`execution`, and `sandbox`. Every key has a runtime effect; see the annotated
+[`cert-x-gen.example.yaml`](../cert-x-gen.example.yaml) for the full reference.
+
+Targets, ports, output format/file, and redirect-following are set on the command line
+(`--scope`, `--ports`, `--output-format`, `--output`, `--follow-redirects`), not in this file.
+
+Use the configuration file:
 ```bash
-cxg scan --config config.yaml
+cxg scan --scope example.com --config config.yaml
 ```
 
 ### Environment Variables
