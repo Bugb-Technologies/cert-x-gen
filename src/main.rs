@@ -4043,9 +4043,17 @@ fn print_version() {
     println!("Advanced Multi-Language Security Scanning Engine");
     println!();
     println!("Build Information:");
-    println!("  Rust Version: {}", env!("CARGO_PKG_RUST_VERSION"));
-    println!("  Target: {}", std::env::consts::ARCH);
-    println!("  OS: {}", std::env::consts::OS);
+    println!("  Version: {}", env!("CARGO_PKG_VERSION"));
+    println!(
+        "  Target:  {}-{}",
+        std::env::consts::ARCH,
+        std::env::consts::OS
+    );
+    println!();
+    println!("Links:");
+    println!("  Repository:    https://github.com/Bugb-Technologies/cert-x-gen");
+    println!("  Documentation: https://github.com/Bugb-Technologies/cert-x-gen/tree/main/docs");
+    println!("  Issues:        https://github.com/Bugb-Technologies/cert-x-gen/issues");
 }
 
 /// Print scan summary

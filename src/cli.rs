@@ -12,7 +12,12 @@ use std::path::PathBuf;
                   12 programming languages for template creation. Write security scanning \
                   templates in Python, JavaScript, Rust, Shell, YAML, C, C++, Java, Go, Ruby, \
                   Perl, or PHP - whatever works best for your use case!",
-    after_help = "KEY FEATURES:
+    after_help = "Run 'cxg <command> --help' for full details on any command.\n\
+                  \n\
+                  Repository:    https://github.com/Bugb-Technologies/cert-x-gen\n\
+                  Documentation: https://github.com/Bugb-Technologies/cert-x-gen/tree/main/docs\n\
+                  Issues:        https://github.com/Bugb-Technologies/cert-x-gen/issues",
+    after_long_help = "KEY FEATURES:
   🎯 12 Programming Languages: Python, JavaScript, Rust, C, C++, Java, Go, Ruby, Perl, PHP, Shell, YAML
   🔧 Flexible Port Configuration: Add or override ports per scan
   🔍 Powerful Template Search: Full-text search, regex, content search, multiple filters
@@ -67,7 +72,12 @@ EXAMPLES:
   cxg scan --scope example.com --stealth --rate-limit 10
   cxg scan --scope example.com --safe --passive
 
-  For detailed help on any command, use: cxg <command> --help"
+  For detailed help on any command, use: cxg <command> --help
+
+LINKS:
+  Repository:    https://github.com/Bugb-Technologies/cert-x-gen
+  Documentation: https://github.com/Bugb-Technologies/cert-x-gen/tree/main/docs
+  Issues:        https://github.com/Bugb-Technologies/cert-x-gen/issues"
 )]
 pub struct Cli {
     #[command(subcommand)]
@@ -479,13 +489,23 @@ pub enum PentestAction {
         /// `guardlink sarif <codebase> -o whitebox/findings.sarif`. The codebase is also
         /// the working directory of the AI CLI during template generation, so the AI
         /// can read source via its own Read/Grep tools to craft code-aware payloads.
-        #[arg(long)]
+        #[arg(
+            long,
+            help_heading = "Target",
+            display_order = 1,
+            help = "Source codebase root (contains whitebox/findings.sarif)"
+        )]
         codebase: PathBuf,
 
         /// Running target app URL. Both `http://` and `https://` are supported.
         /// Multi-tenant note: pass the URL where the SESSION cookies live, not a marketing
         /// host. The landing test verifies you arrive at a non-login page from this URL.
-        #[arg(long)]
+        #[arg(
+            long,
+            help_heading = "Target",
+            display_order = 2,
+            help = "Running target app URL (http:// or https://)"
+        )]
         target: String,
 
         /// Comma-separated auth profile names previously captured via `cxg pentest auth`.
@@ -494,7 +514,13 @@ pub enum PentestAction {
         /// the actor for privesc-class probes.
         ///
         /// Leave empty if you're using --interactive-auth to capture fresh profiles inline.
-        #[arg(long, default_value = "")]
+        #[arg(
+            long,
+            default_value = "",
+            help_heading = "Authentication",
+            display_order = 11,
+            help = "Comma-separated auth profiles (from 'cxg pentest auth')"
+        )]
         auth: String,
 
         /// Open N headed browser windows for interactive login at scan start, then run
@@ -503,19 +529,36 @@ pub enum PentestAction {
         /// when you don't want to manage profile lifecycle separately.
         ///
         /// Profiles are saved as `<--auth-profile>-1`, `<--auth-profile>-2`, etc.
-        #[arg(long, default_value = "0")]
+        #[arg(
+            long,
+            default_value = "0",
+            help_heading = "Authentication",
+            display_order = 13,
+            help = "Capture N fresh identities interactively at start"
+        )]
         interactive_auth: usize,
 
         /// Name prefix for `--interactive-auth` captures. The final profile names are
         /// `<auth_profile>-1`, `<auth_profile>-2`, etc.
-        #[arg(long, default_value = "pentest")]
+        #[arg(
+            long,
+            default_value = "pentest",
+            help_heading = "Authentication",
+            display_order = 12,
+            help = "Name prefix for --interactive-auth captures"
+        )]
         auth_profile: String,
 
         /// Minimum auth contexts the scan requires. If you pass `--auth a,b` but
         /// `--auth-numbers 3`, chained-auth templates that need 3 contexts will be
         /// skipped with a warning. Pure usability check — engine doesn't fabricate
         /// extra contexts.
-        #[arg(long)]
+        #[arg(
+            long,
+            help_heading = "Authentication",
+            display_order = 14,
+            help = "Minimum auth contexts the scan requires"
+        )]
         auth_numbers: Option<usize>,
 
         /// File of `profile:email:password[:label]` lines used to AUTO RE-AUTH a
@@ -525,14 +568,25 @@ pub enum PentestAction {
         ///
         /// Recommended for any scan with `--mutation-retries > 0` or scans with
         /// SessionReplay / Csrf class templates.
-        #[arg(long)]
+        #[arg(
+            long,
+            help_heading = "Authentication",
+            display_order = 15,
+            help = "Creds file for auto re-auth of a dead session"
+        )]
         creds_file: Option<PathBuf>,
 
         /// Template language. `js` (default): AI generates copy-paste-runnable JS
         /// templates that drive the cxg JS bridge — recommended for all interactive
         /// pentests. `py`: Python probe path (legacy) — only built-in probes in
         /// `pentest/payloads/`, no AI generation.
-        #[arg(long, default_value = "js")]
+        #[arg(
+            long,
+            default_value = "js",
+            help_heading = "AI Generation",
+            display_order = 27,
+            help = "Template language: js (default) or py"
+        )]
         template_lang: String,
 
         /// Natural-language pentest goal. Used as context for both LLM-based hypothesis
@@ -543,7 +597,12 @@ pub enum PentestAction {
         ///   "test for IDOR in records and transactions APIs"
         ///   "verify each declared @mitigates actually holds at runtime"
         ///   "find unguarded admin endpoints accessible to non-admin tokens"
-        #[arg(long)]
+        #[arg(
+            long,
+            help_heading = "AI Generation",
+            display_order = 23,
+            help = "Natural-language pentest goal (ranking + generation)"
+        )]
         goal: Option<String>,
 
         /// Reuse JS templates from a previously-generated session directory. Skips the
@@ -551,20 +610,37 @@ pub enum PentestAction {
         /// different targets, or after fixing engine bugs that affected template execution.
         ///
         /// Template directories are at `~/.cert-x-gen/templates/session-<timestamp>/`.
-        #[arg(long)]
+        #[arg(
+            long,
+            help_heading = "AI Generation",
+            display_order = 28,
+            help = "Reuse templates from a prior session dir (skip AI)"
+        )]
         template_dir: Option<PathBuf>,
 
         /// Maximum number of templates the LLM ranker is allowed to select per scan.
         /// Each template = one AI generation call (~60-180s with claude/codex). Lower for
         /// fast feedback loops; higher for engagement-grade coverage.
-        #[arg(long, default_value = "8")]
+        #[arg(
+            long,
+            default_value = "8",
+            help_heading = "AI Generation",
+            display_order = 24,
+            help = "Max templates the LLM ranker may select"
+        )]
         max_templates: usize,
 
         /// Maximum times the AI is allowed to mutate a template after AMBIGUOUS triage.
         /// Environment-bound AMBIGUOUS (missing role, missing primitive) skip mutation
         /// automatically; only payload-fixable ones consume retries.
         /// 0 disables the loop entirely.
-        #[arg(long, default_value = "2")]
+        #[arg(
+            long,
+            default_value = "2",
+            help_heading = "AI Generation",
+            display_order = 25,
+            help = "Max AI mutation retries on AMBIGUOUS triage"
+        )]
         mutation_retries: usize,
 
         /// AI provider. `auto` prefers the editor bridge when $BUGB_BRIDGE_URL is set,
@@ -577,26 +653,47 @@ pub enum PentestAction {
         /// `bridge` posts each prompt to $BUGB_BRIDGE_URL (with Authorization: Bearer
         /// $BUGB_BRIDGE_TOKEN when set) and reads the completion back — an editor/CI
         /// integration point rather than a local CLI.
-        #[arg(long, default_value = "claude")]
+        #[arg(
+            long,
+            default_value = "claude",
+            help_heading = "AI Generation",
+            display_order = 22,
+            help = "AI provider: auto|bridge|claude|codex|gemini|anthropic|openai"
+        )]
         ai_provider: String,
 
         /// Enable AI-driven template generation. Without `--ai`, only built-in probes
         /// from `pentest/payloads/` run. With `--ai`, the orchestrator invokes the
         /// chosen `--ai-provider` to read the codebase and synthesize code-aware
         /// templates per guardlink hypothesis.
-        #[arg(long)]
+        #[arg(
+            long,
+            help_heading = "AI Generation",
+            display_order = 21,
+            help = "Enable AI-driven template generation"
+        )]
         ai: bool,
 
         /// Show Chromium windows during scan instead of running headless. Useful for
         /// debugging probes, watching auth flows, or when WAF bot-detection is blocking
         /// headless requests (real Chromium has a stronger fingerprint than headless).
-        #[arg(long)]
+        #[arg(
+            long,
+            help_heading = "Execution",
+            display_order = 43,
+            help = "Show Chromium windows instead of running headless"
+        )]
         headed: bool,
 
         /// Path to scope.yaml. Default: safe permissive defaults (any URL, GET/POST/HEAD/
         /// OPTIONS, 30 reqs/endpoint, 1500 reqs total, kill on 8-streak 5xx).
         /// Generate one with `cxg pentest scope-init`.
-        #[arg(long)]
+        #[arg(
+            long,
+            help_heading = "Execution",
+            display_order = 41,
+            help = "Path to scope.yaml (URL/method allowlist, budgets)"
+        )]
         scope_file: Option<PathBuf>,
 
         /// Allow DELETE/PUT/PATCH methods AND paths matching destructive regexes
@@ -605,7 +702,12 @@ pub enum PentestAction {
         ///
         /// USE WITH CARE on production targets. The engine emits a warning at startup
         /// and every blocked request is still recorded in the audit log.
-        #[arg(long)]
+        #[arg(
+            long,
+            help_heading = "Execution",
+            display_order = 42,
+            help = "Allow DELETE/PUT/PATCH + destructive paths (use with care)"
+        )]
         destructive_ok: bool,
 
         /// Free-text written authorization statement recorded in the audit log header.
@@ -615,21 +717,13 @@ pub enum PentestAction {
         ///
         /// Strongly recommended for any non-local scan. The audit log header is the
         /// dispute-ready record of "I had authorization to do this scan."
-        #[arg(long)]
+        #[arg(
+            long,
+            help_heading = "Execution",
+            display_order = 47,
+            help = "Written authorization statement for the audit log"
+        )]
         attestation: Option<String>,
-
-        /// Session directory where this scan's artifacts (audit.jsonl, report.json,
-        /// any captured screenshots) are written.
-        /// Default: ~/.cert-x-gen/sessions/pentest-<YYYYMMDD-HHMMSS>/
-        #[arg(long)]
-        session_dir: Option<PathBuf>,
-
-        /// JSON report output path. Default: `report.json` under --session-dir.
-        /// The report contains: target, codebase, auth_profiles, goal, scope_stats,
-        /// confirmed_findings, ambiguous, mitigation_verifications, dead_profiles,
-        /// rejected_templates, retried_then_resolved.
-        #[arg(long, short)]
-        output: Option<PathBuf>,
 
         /// Hypothesis filter by declared-mitigation status from guardlink:
         ///   `any`         — all HTTP-testable hypotheses (default)
@@ -637,7 +731,13 @@ pub enum PentestAction {
         ///                   (find unguarded holes)
         ///   `mitigated`   — only threats WITH @mitigates declared
         ///                   (verify defenses actually hold at runtime)
-        #[arg(long, default_value = "any")]
+        #[arg(
+            long,
+            default_value = "any",
+            help_heading = "AI Generation",
+            display_order = 29,
+            help = "Hypothesis filter: any|unmitigated|mitigated"
+        )]
         mitigation_mode: String,
 
         /// Optional identity endpoint hit during pre-flight inspection to extract
@@ -646,7 +746,13 @@ pub enum PentestAction {
         /// want role-tier-based probe selection AND the app has a stable /me endpoint.
         ///
         /// Default `/api/me`. Set to empty string to skip the secondary probe.
-        #[arg(long, default_value = "/api/me")]
+        #[arg(
+            long,
+            default_value = "/api/me",
+            help_heading = "Authentication",
+            display_order = 16,
+            help = "Identity endpoint for pre-flight role/email (default /api/me)"
+        )]
         me_path: String,
 
         /// Hard wall-clock timeout per AI generation call. The whole process tree is
@@ -654,7 +760,13 @@ pub enum PentestAction {
         ///
         /// Claude CLI typically takes 60-170s per template; Codex 90-220s; Gemini 30-180s.
         /// Bump to 600+ for very large codebases the AI has to grep through.
-        #[arg(long, default_value = "240")]
+        #[arg(
+            long,
+            default_value = "240",
+            help_heading = "AI Generation",
+            display_order = 26,
+            help = "Hard timeout per AI generation call, seconds (default 240)"
+        )]
         generation_timeout: u64,
 
         /// Skip the pre-flight session health check entirely. Use when:
@@ -664,7 +776,12 @@ pub enum PentestAction {
         ///
         /// Per-template health checks still run during the scan unless you also configure
         /// scope.yaml to disable them.
-        #[arg(long)]
+        #[arg(
+            long,
+            help_heading = "Authentication",
+            display_order = 17,
+            help = "Skip the pre-flight session health check"
+        )]
         skip_health_check: bool,
 
         /// An external out-of-band callback host cxg can INJECT INTO but cannot read
@@ -687,7 +804,13 @@ pub enum PentestAction {
         /// (With `--oast-interactsh` there is no second terminal: cxg is the client.)
         // @g.comment -- "operator-supplied callback host injected into payloads; kept exactly as it was, value and all, because every existing invocation and every template calling cxg.oast.url() depends on it"
         // @g.comment -- "help text deliberately no longer claims 'definitive blind-vuln confirmation': cxg holds no session for a host it was merely handed, so it cannot poll it, and an operator who read the old wording would take an unconfirmed finding for a confirmed one"
-        #[arg(long, value_name = "HOST")]
+        #[arg(
+            long,
+            value_name = "HOST",
+            help_heading = "OAST",
+            display_order = 31,
+            help = "OAST canary cxg injects but cannot read back (unconfirmed)"
+        )]
         oast: Option<String>,
 
         /// Register an interactsh session cxg OWNS and poll it — the mode that can
@@ -715,7 +838,10 @@ pub enum PentestAction {
             value_name = "SERVER_URL",
             num_args = 0..=1,
             default_missing_value = "",
-            conflicts_with = "oast"
+            conflicts_with = "oast",
+            help_heading = "OAST",
+            display_order = 32,
+            help = "OAST canary cxg owns and polls (confirms blind vulns)"
         )]
         oast_interactsh: Option<String>,
 
@@ -738,7 +864,15 @@ pub enum PentestAction {
         // with app_cmd's conflicts_with would wrongly demand --app-cmd even when --app-binary
         // alone was supplied. requires_if instead feeds the required-arg resolution path that
         // does consult conflicts_with. See desktop_flag_tests::electron_with_app_binary_alone_parses.
-        #[arg(long, default_value = "web", value_parser = ["web", "electron"], requires_if("electron", "app_cmd"))]
+        #[arg(
+            long,
+            default_value = "web",
+            value_parser = ["web", "electron"],
+            requires_if("electron", "app_cmd"),
+            help_heading = "Target",
+            display_order = 3,
+            help = "Target type: web (default) or electron"
+        )]
         target_type: String,
 
         /// Command that launches the desktop app, e.g. "npm run electron:dev".
@@ -747,14 +881,26 @@ pub enum PentestAction {
         /// cxg appends `--remote-debugging-port` and a per-identity `--user-data-dir`.
         // @g.comment -- "operator-supplied launch command forwarded to the orchestrator, which splits and executes it as a child process per identity"
         // @g.source (#operator_app_cmd) -- "command string supplied by the operator on the command line"
-        #[arg(long, conflicts_with = "app_binary")]
+        #[arg(
+            long,
+            conflicts_with = "app_binary",
+            help_heading = "Target",
+            display_order = 4,
+            help = "Command that launches the desktop app (electron)"
+        )]
         app_cmd: Option<String>,
 
         /// Path to a built desktop app, e.g. /Applications/Foo.app.
         ///
         /// Alternative to `--app-cmd`; the two are mutually exclusive.
         // @g.comment -- "operator-supplied path to a packaged application, executed directly instead of via a launch command"
-        #[arg(long, conflicts_with = "app_cmd")]
+        #[arg(
+            long,
+            conflicts_with = "app_cmd",
+            help_heading = "Target",
+            display_order = 5,
+            help = "Path to a built desktop app (electron)"
+        )]
         app_binary: Option<String>,
 
         /// Additionally scan a real installation directory for data at rest.
@@ -762,7 +908,12 @@ pub enum PentestAction {
         /// By default host probes read only the isolated user-data directories cxg
         /// created itself. Pass this to opt in to scanning an existing install.
         // @g.comment -- "opt-in expansion of host-probe scan scope beyond cxg-created directories, since reading an operator's real install is host-level access"
-        #[arg(long)]
+        #[arg(
+            long,
+            help_heading = "Target",
+            display_order = 6,
+            help = "Also scan a real install dir for data at rest (electron)"
+        )]
         host_scan_path: Option<String>,
 
         /// Absolute ceiling on one template's dispatch before it is abandoned and
@@ -770,7 +921,12 @@ pub enum PentestAction {
         /// `--stall-timeout` is what actually catches a frozen app. 0 disables it,
         /// which lets a wedged app hang the scan indefinitely.
         // @g.comment -- "forwards the per-template ceiling to the orchestrator; without this the flag existed in Python only and was unreachable from the cxg binary, so an operator could not raise or disable the backstop at all"
-        #[arg(long)]
+        #[arg(
+            long,
+            help_heading = "Execution",
+            display_order = 44,
+            help = "Per-template dispatch ceiling, seconds (backstop; default 900)"
+        )]
         template_timeout: Option<f64>,
 
         /// How long the run may go with NO completed dispatch before the surface is
@@ -779,7 +935,12 @@ pub enum PentestAction {
         /// keeps getting answers is never killed however long it runs. Default 90s,
         /// 0 disables. Applies to `--target-type electron` only.
         // @g.comment -- "forwards the stall threshold to the orchestrator; the measured freeze (a native modal blocking Electron's main process) produces no exception at all, so this is the only bound that ends such a run, and it was unreachable from the binary until now"
-        #[arg(long)]
+        #[arg(
+            long,
+            help_heading = "Execution",
+            display_order = 45,
+            help = "Idle-time stall timeout, seconds (electron only; default 90)"
+        )]
         stall_timeout: Option<f64>,
 
         /// Do NOT relaunch a desktop target that dies mid-scan.
@@ -789,7 +950,12 @@ pub enum PentestAction {
         /// and then quarantine it. With this flag a dead target ends the scan with a
         /// truncation caveat and exit 3 — the pre-recovery behaviour.
         // @g.comment -- "operator opt-out of crash recovery, because recovery lets cxg's own probes restart the application under test repeatedly and that side effect is an availability decision the operator owns, not cxg"
-        #[arg(long)]
+        #[arg(
+            long,
+            help_heading = "Execution",
+            display_order = 46,
+            help = "Do not relaunch a desktop target that dies mid-scan"
+        )]
         no_restart: bool,
 
         /// Read auth profiles from this directory instead of ~/.cert-x-gen/auth.
@@ -800,7 +966,12 @@ pub enum PentestAction {
         /// the health monitor all read the restored bundle rather than the operator's
         /// home store.
         // @g.comment -- "forwards the auth-store redirect to the orchestrator, which reassigns auth.AUTH_DIR before any profile is loaded; every profile consumer reaches the store only through auth.load_profile, so this one flag moves all of them. Forwarded only when set, so an unset flag leaves the orchestrator's ~/.cert-x-gen/auth default in force — one default, in one place the two CLIs cannot drift apart on."
-        #[arg(long)]
+        #[arg(
+            long,
+            help_heading = "Authentication",
+            display_order = 18,
+            help = "Read auth profiles from this dir (CI profile bundle)"
+        )]
         auth_dir: Option<PathBuf>,
 
         /// Non-interactive CI mode: fail loud instead of warning.
@@ -815,8 +986,37 @@ pub enum PentestAction {
         /// Also enabled by the environment variable CXG_CI=1, for pipelines that
         /// cannot add the flag to the invocation.
         // @g.comment -- "forwards the CI-mode selector as a flag when set; the hard-fail-on-dead-session and world-readable-auth-dir refusal both live in the Python orchestrator (cxg_pentest.py, auth.py), which also honours CXG_CI=1 on its own, so leaving the flag off here still lets the env var reach the orchestrator through the inherited environment"
-        #[arg(long)]
+        #[arg(
+            long,
+            help_heading = "Authentication",
+            display_order = 19,
+            help = "CI mode: dead session → hard fail (exit 5). Also CXG_CI=1"
+        )]
         ci: bool,
+
+        /// Session directory where this scan's artifacts (audit.jsonl, report.json,
+        /// any captured screenshots) are written.
+        /// Default: ~/.cert-x-gen/sessions/pentest-<YYYYMMDD-HHMMSS>/
+        #[arg(
+            long,
+            help_heading = "Output",
+            display_order = 52,
+            help = "Session artifacts directory (audit.jsonl, report.json)"
+        )]
+        session_dir: Option<PathBuf>,
+
+        /// JSON report output path. Default: `report.json` under --session-dir.
+        /// The report contains: target, codebase, auth_profiles, goal, scope_stats,
+        /// confirmed_findings, ambiguous, mitigation_verifications, dead_profiles,
+        /// rejected_templates, retried_then_resolved.
+        #[arg(
+            long,
+            short,
+            help_heading = "Output",
+            display_order = 51,
+            help = "JSON report output path (default report.json in session dir)"
+        )]
+        output: Option<PathBuf>,
     },
 }
 
@@ -942,7 +1142,9 @@ pub enum AuthSubcommand {
                   The scan command orchestrates template execution across targets, manages concurrency, \
                   filtered by language, severity, tags, and custom criteria to focus on specific \
                   vulnerability classes or compliance requirements.",
-    after_help = "DETAILED USAGE GUIDE:
+    after_help = "Run 'cxg scan --help' for the full flag reference, worked examples, and common scenarios.\n\
+                  Docs: https://github.com/Bugb-Technologies/cert-x-gen/tree/main/docs",
+    after_long_help = "DETAILED USAGE GUIDE:
 
 TARGET SPECIFICATION:
   Define scope once and let the engine figure out the rest.
@@ -1208,8 +1410,7 @@ COMMON SCANNING SCENARIOS:
 For more information, visit: https://cert-x-gen.io/docs"
 )]
 pub struct ScanArgs {
-    // Target specification
-    /// Unified scope definition (IP, domain, URL, lists, CIDR, files)
+    // ===== Target Selection =====
     #[arg(
         long = "scope",
         short = 's',
@@ -1225,309 +1426,433 @@ pub struct ScanArgs {
         ],
         value_name = "SCOPE",
         value_delimiter = ',',
-        help = "Smart target selector. Accepts single host, comma lists, files (@file.txt), CIDR blocks (192.168.1.0/24), domains, URLs, or mixed entries"
+        help_heading = "Target Selection",
+        display_order = 1,
+        help = "Targets: hosts, CIDRs, URLs, or @files (comma-separated)",
+        long_help = "Smart target selector. Accepts single host, comma lists, files (@file.txt), \
+                     CIDR blocks (192.168.1.0/24), domains, URLs, or mixed entries. Legacy flags \
+                     (--target, --targets, --target-file, --domain, --domains, --domain-file, \
+                     --cidr) remain as aliases."
     )]
     pub scope: Vec<String>,
 
-    // Port specification
-    /// Smart port selector that adds to template defaults
     #[arg(
         long = "ports",
         short = 'p',
         aliases = ["port", "port-file", "add-ports"],
         value_name = "PORT",
         value_delimiter = ',',
-        help = "Smart port selector. Accepts single ports, ranges (80-90), comma lists, files (@ports.txt), or mixed entries. Adds to template defaults"
+        help_heading = "Target Selection",
+        display_order = 2,
+        help = "Extra ports to add: single, ranges, comma lists, @files",
+        long_help = "Smart port selector. Accepts single ports, ranges (80-90), comma lists, \
+                     files (@ports.txt), or mixed entries. These are ADDED to each template's \
+                     default ports; use --override-ports to replace them instead."
     )]
     pub ports: Vec<String>,
 
-    /// Scan top N most common ports (based on frequency data)
-    #[arg(long, help = "Scan most common ports. Example: --top-ports 1000")]
-    pub top_ports: Option<u16>,
-
-    /// Override template default ports completely (comma-separated)
     #[arg(
         long,
-        help = "Replace template ports entirely. Use for complete control over port selection"
+        help_heading = "Target Selection",
+        display_order = 3,
+        help = "Scan the top N most common ports",
+        long_help = "Add the top N most common ports (based on curated frequency data). \
+                     Example: --top-ports 1000"
+    )]
+    pub top_ports: Option<u16>,
+
+    #[arg(
+        long,
+        help_heading = "Target Selection",
+        display_order = 4,
+        help = "Replace template default ports entirely",
+        long_help = "Replace template default ports entirely with your own list (same formats \
+                     as --ports). Use for complete control over port selection."
     )]
     pub override_ports: Option<String>,
 
-    // Protocol specification
-    /// Protocol to use for scanning
-    #[arg(
-        long,
-        help = "Specify protocol: http, https, tcp, udp, etc. [NOT IMPLEMENTED — accepted and ignored]"
-    )]
-    pub protocol: Option<String>,
-
-    /// Multiple protocols to test (comma-separated)
-    #[arg(
-        long,
-        help = "Test multiple protocols. Example: http,https [NOT IMPLEMENTED — accepted and ignored]"
-    )]
-    pub protocols: Option<String>,
-
-    // Template selection
-    /// Smart template selector (IDs, file paths, or @file)
+    // ===== Template Selection =====
     #[arg(
         long = "templates",
         value_name = "TEMPLATE",
         value_delimiter = ',',
         aliases = ["template", "template-file"],
-        help = "Smart template selector. Accepts template IDs, file names/paths, or @file references (one per line). Supports mixed entries"
+        help_heading = "Template Selection",
+        display_order = 11,
+        help = "Templates: IDs, file names/paths, or @files",
+        long_help = "Smart template selector. Accepts template IDs, file names/paths, or @file \
+                     references (one per line). Supports mixed entries. Legacy flags (--template, \
+                     --template-file) remain as aliases."
     )]
     pub templates: Vec<String>,
 
-    /// Custom template directory path
-    #[arg(
-        long,
-        help = "Use templates from custom directory instead of default location"
-    )]
-    pub template_dir: Option<PathBuf>,
-
-    /// Filter by vulnerability tags (comma-separated)
-    #[arg(
-        long,
-        help = "Filter by tags. Common: database,injection,xss,rce,lfi,ssrf,auth"
-    )]
-    pub tags: Option<String>,
-
-    /// Filter by severity level (critical, high, medium, low, info)
-    #[arg(
-        long,
-        value_enum,
-        help = "Filter by severity. Example: critical,high for quick assessment"
-    )]
-    pub severity: Option<Vec<SeverityArg>>,
-
-    /// Exclude templates matching pattern (supports wildcards)
-    #[arg(long, help = "Exclude templates. Example: test-*,experimental-*")]
-    pub exclude_templates: Option<String>,
-
-    /// Filter templates by programming language
     #[arg(
         long,
         value_enum,
         value_name = "LANG",
-        help = "Filter by language (e.g., python,rust,c)"
+        help_heading = "Template Selection",
+        display_order = 12,
+        help = "Filter templates by language (e.g. python,rust,c)",
+        long_help = "Filter templates by programming language. Available: yaml, python, rust, \
+                     shell, javascript, c, cpp, java, go, ruby, perl, php."
     )]
     pub template_language: Option<Vec<LanguageArg>>,
 
-    // Execution options
-    /// Number of worker threads (default: CPU cores)
-    ///
-    /// Note: In async/await context, this is informational and doesn't directly control
-    /// thread count. The actual concurrency is controlled by --parallel-targets and
-    /// --parallel-templates. This option is kept for compatibility and may be used
-    /// for future thread pool configuration.
-    #[arg(long, default_value_t = num_cpus::get(), help = "Worker threads for parallel execution. Concurrency is actually controlled by --parallel-targets and --parallel-templates. [NOT IMPLEMENTED — accepted and ignored]")]
-    pub threads: usize,
+    #[arg(
+        long,
+        value_enum,
+        help_heading = "Template Selection",
+        display_order = 13,
+        help = "Filter by severity (critical,high,medium,low,info)",
+        long_help = "Filter templates by severity level. Example: --severity critical,high for \
+                     a quick, high-signal assessment."
+    )]
+    pub severity: Option<Vec<SeverityArg>>,
 
-    /// Number of targets to scan simultaneously
+    #[arg(
+        long,
+        help_heading = "Template Selection",
+        display_order = 14,
+        help = "Filter by tags (database,injection,xss,rce,…)",
+        long_help = "Filter templates by tags (comma-separated). Common tags: database, \
+                     injection, xss, rce, lfi, ssrf, auth."
+    )]
+    pub tags: Option<String>,
+
+    #[arg(
+        long,
+        help_heading = "Template Selection",
+        display_order = 15,
+        help = "Exclude templates matching a pattern (wildcards)",
+        long_help = "Exclude templates matching a pattern. Supports wildcards. \
+                     Example: --exclude-templates test-*,experimental-*"
+    )]
+    pub exclude_templates: Option<String>,
+
+    #[arg(
+        long,
+        help_heading = "Template Selection",
+        display_order = 16,
+        help = "Use templates from a custom directory",
+        long_help = "Use templates from a custom directory instead of the default discovery \
+                     locations."
+    )]
+    pub template_dir: Option<PathBuf>,
+
+    #[arg(
+        long,
+        value_name = "JSON",
+        help_heading = "Template Selection",
+        display_order = 17,
+        help = "JSON context passed to templates (CERT_X_GEN_CONTEXT)",
+        long_help = "JSON context passed to templates via the CERT_X_GEN_CONTEXT environment \
+                     variable. Templates read this to receive parameterized input (target URLs, \
+                     parameter names, HTTP methods, baselines, etc.) without hardcoding values. \
+                     Example: '{\"param_name\":\"username\",\"method\":\"POST\"}'"
+    )]
+    pub context: Option<String>,
+
+    #[arg(
+        long,
+        value_name = "GROUP",
+        help_heading = "Template Selection",
+        display_order = 18,
+        help = "Run only templates in this batch group",
+        long_help = "Run only templates belonging to this batch group. Batch groups let you \
+                     execute a cohort of templates that share the same context shape in a single \
+                     invocation. Common groups: auth-context, endpoint-params, service-ports, \
+                     full-surface."
+    )]
+    pub batch_group: Option<String>,
+
+    // ===== Execution =====
     #[arg(
         long,
         default_value_t = 50,
-        help = "Concurrent target scans. Lower for production (10-25), higher for internal (50-100)"
+        help_heading = "Execution",
+        display_order = 21,
+        help = "Concurrent targets scanned at once",
+        long_help = "How many targets to scan simultaneously. Lower for production systems \
+                     (10-25), higher for internal scans (50-100)."
     )]
     pub parallel_targets: usize,
 
-    /// Number of templates to run concurrently per target
     #[arg(
         long,
         default_value_t = 10,
-        help = "Concurrent templates per target. Balance between speed and target load"
+        help_heading = "Execution",
+        display_order = 22,
+        help = "Concurrent templates per target",
+        long_help = "How many templates to run concurrently per target. Balances speed against \
+                     load on the target. Lower for fragile targets, higher for robust ones."
     )]
     pub parallel_templates: usize,
 
-    /// Timeout duration (supports: s=seconds, m=minutes, h=hours)
     #[arg(
         long,
         default_value = "30s",
-        help = "Max wait time for responses. Examples: 30s, 2m, 1h. Increase for slow networks"
+        help_heading = "Execution",
+        display_order = 23,
+        help = "Response timeout (e.g. 30s, 2m, 1h)",
+        long_help = "Maximum time to wait for a response. Supports s (seconds), m (minutes), \
+                     h (hours). Increase for slow networks or complex checks."
     )]
     pub timeout: String,
 
-    /// Number of retry attempts for failed requests
     #[arg(
         long,
         default_value_t = 1,
-        help = "Retry attempts for transient failures. Higher for unreliable networks"
+        help_heading = "Execution",
+        display_order = 24,
+        help = "Retry attempts for transient failures",
+        long_help = "Number of retry attempts for failed requests. Higher for unreliable \
+                     networks, lower for fast scans."
     )]
     pub retry: u32,
 
-    /// Rate limit in requests per second (prevents overwhelming targets)
     #[arg(
         long,
-        help = "Max requests/sec. Use 10-50 for production, 100+ for internal. Prevents WAF/IPS triggers"
+        help_heading = "Execution",
+        display_order = 25,
+        help = "Max requests per second (prevents WAF/IPS triggers)",
+        long_help = "Maximum requests per second. Use 10-50 for production, 100+ for internal \
+                     testing. Prevents overwhelming targets and triggering WAF/IPS."
     )]
     pub rate_limit: Option<u32>,
 
-    // Scanning modes
-    /// Enable aggressive mode (WARNING: intrusive, may cause disruption)
     #[arg(
         long,
-        help = "Aggressive scanning with intrusive checks. Use only with permission on controlled systems"
+        help_heading = "Execution",
+        display_order = 26,
+        help = "Aggressive mode: intrusive checks, higher concurrency",
+        long_help = "Aggressive scanning with intrusive checks and higher concurrency. \
+                     WARNING: may trigger security alerts or cause disruption. Use only with \
+                     explicit permission on systems you control."
     )]
     pub aggressive: bool,
 
-    /// Enable stealth mode (slower, harder to detect)
     #[arg(
         long,
-        help = "Stealth mode: randomized timing, reduced footprint. Evades IDS/IPS/WAF detection"
+        help_heading = "Execution",
+        display_order = 27,
+        help = "Stealth mode: randomized timing, reduced footprint",
+        long_help = "Stealth mode: randomized timing and reduced footprint to evade IDS/IPS/WAF \
+                     detection. Slower, but less likely to be flagged."
     )]
     pub stealth: bool,
 
-    /// Passive mode (no active probing, safest option)
     #[arg(
         long,
-        help = "Passive scanning: analyze responses only, no active probes. Limited detection but safest"
+        help_heading = "Execution",
+        display_order = 28,
+        help = "Passive mode: analyze responses only, no active probes",
+        long_help = "Passive scanning: analyze responses from normal requests only, with no \
+                     active probing. Safest option, but limited detection capability."
     )]
     pub passive: bool,
 
-    /// Safe mode (excludes potentially harmful checks like DoS)
     #[arg(
         long,
-        help = "Safe mode: no DoS or resource exhaustion checks. Recommended for production systems"
+        help_heading = "Execution",
+        display_order = 29,
+        help = "Safe mode: skip DoS / resource-exhaustion checks",
+        long_help = "Safe mode: excludes potentially harmful checks (DoS, resource exhaustion). \
+                     Recommended for production systems where availability is critical."
     )]
     pub safe: bool,
 
-    // Network options
-    /// Proxy URL (supports HTTP, HTTPS, SOCKS5)
+    // ===== Network =====
     #[arg(
         long,
-        help = "Route traffic through proxy. Examples: http://proxy:8080, socks5://127.0.0.1:1080"
+        help_heading = "Network",
+        display_order = 31,
+        help = "Route traffic through a proxy (http/https/socks5)",
+        long_help = "Route all traffic through a proxy. Supports HTTP, HTTPS, and SOCKS5. \
+                     Examples: http://proxy:8080, socks5://127.0.0.1:1080"
     )]
     pub proxy: Option<String>,
 
-    /// Custom User-Agent header (default: cert-x-gen/<version>)
     #[arg(
         long,
-        help = "Custom User-Agent for mimicking browsers/tools. Example: \"Mozilla/5.0...\""
+        help_heading = "Network",
+        display_order = 32,
+        help = "Custom User-Agent header",
+        long_help = "Custom User-Agent header, for mimicking specific browsers or tools. \
+                     Default: cert-x-gen/<version>. Example: \"Mozilla/5.0 ...\""
     )]
     pub user_agent: Option<String>,
 
-    /// Custom HTTP headers (key:value, repeatable for multiple headers)
     #[arg(
         long,
-        help = "Add custom headers. Example: \"Authorization: Bearer token\". Use multiple times for multiple headers"
+        help_heading = "Network",
+        display_order = 33,
+        help = "Add a custom header (repeatable)",
+        long_help = "Add a custom HTTP header. Repeatable for multiple headers. Useful for \
+                     authentication, API keys, or custom application headers. \
+                     Example: --header \"Authorization: Bearer token\""
     )]
     pub header: Option<Vec<String>>,
 
-    /// Cookies (key=value, repeatable for multiple cookies)
     #[arg(
         long,
-        help = "Add cookies for authenticated scans. Example: \"session=abc123\". Use multiple times"
+        help_heading = "Network",
+        display_order = 34,
+        help = "Add a cookie (repeatable)",
+        long_help = "Add a cookie to requests. Repeatable. Useful for authenticated scans. \
+                     Example: --cookie \"session=abc123\""
     )]
     pub cookie: Option<Vec<String>>,
 
-    /// Follow HTTP redirects automatically (enabled by default)
     #[arg(
         long,
-        help = "Follow HTTP redirects. Useful for discovering redirect chains and final destinations"
+        help_heading = "Network",
+        display_order = 35,
+        help = "Follow HTTP redirects (Default: Disabled)",
+        long_help = "Follow HTTP redirects automatically, for discovering redirect chains and \
+                     final destinations. Default: Disabled — redirects are not followed unless \
+                     this flag is passed."
     )]
     pub follow_redirects: bool,
 
-    /// Maximum number of redirects to follow (prevents infinite loops)
     #[arg(
         long,
         default_value_t = 5,
-        help = "Max redirect hops. Prevents infinite redirect loops"
+        help_heading = "Network",
+        display_order = 36,
+        help = "Max redirect hops to follow",
+        long_help = "Maximum number of redirects to follow (when --follow-redirects is set). \
+                     Prevents infinite redirect loops."
     )]
     pub max_redirects: usize,
 
-    // Output options
-    /// Output file basename (extensions added automatically)
+    // ===== Output =====
     #[arg(
         short,
         long,
         default_value = "scan-results",
-        help = "Output basename. Creates: <basename>.json, <basename>.csv, etc."
+        help_heading = "Output",
+        display_order = 41,
+        help = "Output basename (extension set by --output-format)",
+        long_help = "Output file basename. The trailing extension (if any) is REPLACED by the \
+                     chosen format's extension — e.g. `--output report.txt --output-format json` \
+                     writes report.json."
     )]
     pub output: String,
 
-    /// Output formats (comma-separated: json,csv,sarif,html,markdown)
     #[arg(
         long,
         default_value = "json",
-        help = "Output formats. json=automation, csv=spreadsheet, sarif=CI/CD, html=visual, markdown=docs"
+        help_heading = "Output",
+        display_order = 42,
+        help = "Output formats: json,csv,sarif,html,markdown",
+        long_help = "Output formats (comma-separated); several can be generated at once. \
+                     Available: json (automation), csv (spreadsheet), sarif (CI/CD), \
+                     html (visual report), markdown (docs)."
     )]
     pub output_format: String,
 
-    /// Enable real-time streaming output (results shown as found)
-    #[arg(
-        long,
-        help = "Stream results in real-time. [NOT IMPLEMENTED — accepted and ignored]"
-    )]
-    pub stream: bool,
-
-    /// Quiet mode (suppress the startup banner)
     #[arg(
         short,
         long,
-        help = "Suppress the ASCII startup banner. Scan output itself is unchanged"
+        help_heading = "Output",
+        display_order = 43,
+        help = "Suppress the ASCII startup banner",
+        long_help = "Suppress the ASCII startup banner. Scan output itself is unchanged."
     )]
     pub quiet: bool,
 
-    // Advanced options
-    /// Resume previously interrupted scan by scan ID
+    // ===== Not Implemented (accepted and ignored) =====
     #[arg(
         long,
-        help = "Resume scan from where it stopped. [NOT IMPLEMENTED — accepted and ignored]"
+        help_heading = "Not Implemented",
+        display_order = 91,
+        help = "Protocol to use [NOT IMPLEMENTED — accepted and ignored]",
+        long_help = "Specify protocol: http, https, tcp, udp, etc. \
+                     [NOT IMPLEMENTED — accepted and ignored]"
+    )]
+    pub protocol: Option<String>,
+
+    #[arg(
+        long,
+        help_heading = "Not Implemented",
+        display_order = 92,
+        help = "Multiple protocols [NOT IMPLEMENTED — accepted and ignored]",
+        long_help = "Test multiple protocols (comma-separated). Example: http,https \
+                     [NOT IMPLEMENTED — accepted and ignored]"
+    )]
+    pub protocols: Option<String>,
+
+    #[arg(
+        long,
+        default_value_t = num_cpus::get(),
+        help_heading = "Not Implemented",
+        display_order = 93,
+        help = "Worker threads [NOT IMPLEMENTED — accepted and ignored]",
+        long_help = "Worker threads for parallel execution. Concurrency is actually controlled \
+                     by --parallel-targets and --parallel-templates. \
+                     [NOT IMPLEMENTED — accepted and ignored]"
+    )]
+    pub threads: usize,
+
+    #[arg(
+        long,
+        help_heading = "Not Implemented",
+        display_order = 94,
+        help = "Stream results in real-time [NOT IMPLEMENTED — accepted and ignored]",
+        long_help = "Stream results in real-time as they are found. \
+                     [NOT IMPLEMENTED — accepted and ignored]"
+    )]
+    pub stream: bool,
+
+    #[arg(
+        long,
+        help_heading = "Not Implemented",
+        display_order = 95,
+        help = "Resume an interrupted scan [NOT IMPLEMENTED — accepted and ignored]",
+        long_help = "Resume a scan from where it stopped. \
+                     [NOT IMPLEMENTED — accepted and ignored]"
     )]
     pub resume: Option<String>,
 
-    /// Enable distributed scanning mode (horizontal scaling)
     #[arg(
         long,
-        help = "Distributed mode: coordinate with other scanners for massive scans. [NOT IMPLEMENTED — accepted and ignored]"
+        help_heading = "Not Implemented",
+        display_order = 96,
+        help = "Distributed mode [NOT IMPLEMENTED — accepted and ignored]",
+        long_help = "Distributed mode: coordinate with other scanners for massive scans. \
+                     [NOT IMPLEMENTED — accepted and ignored]"
     )]
     pub distributed: bool,
 
-    /// Coordinator URL for distributed scanning (required with --distributed)
     #[arg(
         long,
-        help = "Coordinator URL for distributed mode. [NOT IMPLEMENTED — accepted and ignored]"
+        help_heading = "Not Implemented",
+        display_order = 97,
+        help = "Coordinator URL [NOT IMPLEMENTED — accepted and ignored]",
+        long_help = "Coordinator URL for distributed mode. \
+                     [NOT IMPLEMENTED — accepted and ignored]"
     )]
     pub coordinator: Option<String>,
 
-    /// Unique worker ID for distributed scanning (auto-generated if not set)
     #[arg(
         long,
-        help = "Worker identifier in distributed mode. [NOT IMPLEMENTED — accepted and ignored]"
+        help_heading = "Not Implemented",
+        display_order = 98,
+        help = "Worker identifier [NOT IMPLEMENTED — accepted and ignored]",
+        long_help = "Worker identifier in distributed mode. \
+                     [NOT IMPLEMENTED — accepted and ignored]"
     )]
     pub worker_id: Option<String>,
 
-    /// Configuration profile name from config file
     #[arg(
         long,
-        help = "Use named profile from config. [NOT IMPLEMENTED — accepted and ignored]"
+        help_heading = "Not Implemented",
+        display_order = 99,
+        help = "Named config profile [NOT IMPLEMENTED — accepted and ignored]",
+        long_help = "Use a named profile from the config file. \
+                     [NOT IMPLEMENTED — accepted and ignored]"
     )]
     pub profile: Option<String>,
-
-    /// JSON context passed to templates via CERT_X_GEN_CONTEXT environment variable.
-    ///
-    /// Templates read this context to receive parameterized input (target URLs,
-    /// parameter names, HTTP methods, baselines, etc.) without hardcoding values.
-    /// This enables reusable parameterized templates driven by external automation.
-    #[arg(
-        long,
-        value_name = "JSON",
-        help = "JSON context for parameterized templates. Passed as CERT_X_GEN_CONTEXT env var. Example: '{\"param_name\":\"username\",\"method\":\"POST\"}'"
-    )]
-    pub context: Option<String>,
-
-    /// Run only templates belonging to this batch group.
-    ///
-    /// Batch groups let you execute a cohort of templates that share the same
-    /// context shape in a single invocation.
-    ///
-    /// Common groups: auth-context, endpoint-params, service-ports, full-surface
-    #[arg(
-        long,
-        value_name = "GROUP",
-        help = "Run templates in batch group. Example: --batch-group auth-context"
-    )]
-    pub batch_group: Option<String>,
 }
 
 #[derive(Parser, Debug)]
