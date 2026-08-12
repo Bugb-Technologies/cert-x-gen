@@ -7,13 +7,17 @@ use std::path::{Path, PathBuf};
 /// Main configuration structure
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Config {
-    /// Template configuration
+    /// Template configuration. Omitted → `TemplateConfig::default()`.
+    #[serde(default)]
     pub templates: TemplateConfig,
-    /// Network configuration
+    /// Network configuration. Omitted → `NetworkConfig::default()`.
+    #[serde(default)]
     pub network: NetworkConfig,
-    /// Execution configuration
+    /// Execution configuration. Omitted → `ExecutionConfig::default()`.
+    #[serde(default)]
     pub execution: ExecutionConfig,
-    /// Sandbox configuration
+    /// Sandbox configuration. Omitted → `SandboxConfig::default()`.
+    #[serde(default)]
     pub sandbox: SandboxConfig,
 }
 
@@ -70,6 +74,7 @@ impl Config {
 
 /// Template configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct TemplateConfig {
     /// Template directories (for backward compatibility)
     pub directories: Vec<PathBuf>,
@@ -88,6 +93,7 @@ impl Default for TemplateConfig {
 
 /// Network configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct NetworkConfig {
     /// Request timeout (seconds)
     pub timeout_secs: u64,
@@ -134,6 +140,7 @@ impl Default for NetworkConfig {
 
 /// Execution configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct ExecutionConfig {
     /// Parallel target scanning
     pub parallel_targets: usize,
@@ -164,6 +171,7 @@ impl Default for ExecutionConfig {
 
 /// Sandbox configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct SandboxConfig {
     /// Enable sandbox
     pub enabled: bool,
@@ -231,5 +239,46 @@ mod tests {
 
         config.execution.parallel_targets = 0;
         assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_partial_config_uses_defaults_for_omitted_sections() {
+        // Only `network` is present, and only one of its keys. Every other
+        // section — and every unspecified network key — must fall back to its
+        // compiled-in default rather than erroring.
+        let yaml = "network:\n  timeout_secs: 20\n";
+        let config: Config = serde_yaml::from_str(yaml).expect("partial config should load");
+
+        // Specified value wins.
+        assert_eq!(config.network.timeout_secs, 20);
+        // Unspecified network key falls back to NetworkConfig::default().
+        assert_eq!(
+            config.network.connection_pool_size,
+            NetworkConfig::default().connection_pool_size
+        );
+        // Omitted sections equal their Default impls.
+        assert_eq!(
+            config.templates.timeout_secs,
+            TemplateConfig::default().timeout_secs
+        );
+        assert_eq!(
+            config.execution.parallel_targets,
+            ExecutionConfig::default().parallel_targets
+        );
+        assert_eq!(config.sandbox.enabled, SandboxConfig::default().enabled);
+
+        // A partial config still validates.
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_empty_config_is_all_defaults() {
+        // An empty document is a valid config equal to Config::default().
+        let config: Config = serde_yaml::from_str("{}").expect("empty config should load");
+        assert_eq!(
+            config.execution.parallel_targets,
+            Config::default().execution.parallel_targets
+        );
+        assert!(config.validate().is_ok());
     }
 }
