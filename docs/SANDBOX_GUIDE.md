@@ -2,10 +2,17 @@
 
 ## Overview
 
-CERT-X-GEN features a **unified sandboxed environment** that isolates all language runtimes and their dependencies from the host system. This provides:
+> **What this is — and is not.** `cxg sandbox` is a **dependency environment manager**, not
+> a security sandbox. It gives each language runtime its own package directory (a venv, an
+> `npm` prefix, a `GEM_HOME`, or a Docker dev container you `enter`) so template dependencies
+> stay off the system package managers. It does **not** confine, isolate, or resource-limit
+> template execution. Templates run as ordinary child processes with the invoking user's full
+> privileges and unrestricted network and filesystem access. If you need real isolation, run
+> cxg itself inside a container or VM (see [Security Considerations](#security-considerations)).
+
+`cxg sandbox` manages per-language **dependency environments** for the templates you run. This provides:
 
 - **Dependency Isolation**: Each language runtime has its own package directory
-- **Security**: Templates execute in a controlled environment
 - **Reproducibility**: Consistent package versions across installations
 - **Cleanliness**: No pollution of system-wide package managers
 - **Flexibility**: Easy to add, remove, or update packages
@@ -580,18 +587,21 @@ cxg sandbox init --languages python,javascript
 
 ## Security Considerations
 
-### Isolation
+### No execution isolation
 
-The sandbox provides **process-level isolation** but not complete system-level isolation. For maximum security:
+`cxg sandbox` does **not** isolate or resource-limit template execution. Templates run as
+ordinary child processes with the invoking user's privileges and full network and filesystem
+access — the "sandbox" only decides which per-language dependency directory is on the path.
+All isolation must therefore come from outside cxg:
 
-1. **Run in containers**: Use Docker/Podman for additional isolation
+1. **Run cxg in containers**: Use Docker/Podman to isolate the whole tool
 2. **Limit permissions**: Run cxg as a non-privileged user
 3. **Network isolation**: Use firewall rules or network namespaces
 4. **Resource limits**: Use cgroups to limit CPU/memory usage
 
 ### Template Security
 
-Templates execute with full sandbox access. Only use trusted templates:
+Templates execute with the full privileges of the user running cxg. Only use trusted templates:
 
 1. **Review templates**: Check template code before execution
 2. **Use official templates**: Prefer templates from trusted sources
