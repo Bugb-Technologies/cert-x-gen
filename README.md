@@ -50,11 +50,13 @@ cxg scan --scope targets.txt --templates redis*.py,docker*.go,system*.sh
 - A **bridge** between research scripts and production scanners
 - A scanner **designed for CI, automation, and agentic systems**
 
-> **A note on execution privileges.** Templates run as ordinary child processes with the
-> privileges of the user invoking cxg, with full network and filesystem access. There is no
-> execution sandbox or resource limiting — run cxg inside a container or VM, and as a
-> non-privileged user, if you need isolation. See the [Sandbox Guide](docs/SANDBOX_GUIDE.md),
-> whose `cxg sandbox` command manages per-language *dependency* environments (not isolation).
+> **A note on execution privileges.** Templates execute as ordinary child processes with the
+> invoking user's privileges and full network and filesystem access. Review templates before
+> running them. There is no execution sandbox or resource limiting anywhere in cxg — no flag,
+> no configuration key, no default. Run cxg inside a container or VM, and as a non-privileged
+> user, if you need isolation. See the
+> [Dependency Environment Guide](docs/DEPENDENCY_ENVIRONMENTS.md), whose `cxg sandbox` command
+> manages per-language *dependency* environments (not isolation).
 
 
 ---
@@ -392,7 +394,7 @@ guardlink hypothesis (`null` for AI/mutation-synthesised probes).
 | [Usage Guide](docs/USAGE_GUIDE.md) | Comprehensive CLI usage and examples |
 | [Architecture](docs/ARCHITECTURE.md) | System design and internals |
 | [Engine Guide](docs/ENGINES.md) | Language-specific execution details |
-| [Sandbox Guide](docs/SANDBOX_GUIDE.md) | `cxg sandbox` dependency-environment management |
+| [Dependency Environments](docs/DEPENDENCY_ENVIRONMENTS.md) | `cxg sandbox` dependency-environment management |
 | [Contributing](CONTRIBUTING.md) | How to contribute code and templates |
 
 **Whitebox pentest (`cxg pentest`):**

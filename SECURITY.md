@@ -55,7 +55,10 @@ We will not pursue legal action against researchers who:
 When using CERT-X-GEN:
 
 1. **Template Sources**: Only use templates from trusted sources
-2. **Sandboxing**: Enable sandbox mode when running untrusted templates
+2. **Isolation**: cxg has no sandbox mode to enable. Templates execute as ordinary child
+   processes with the invoking user's privileges and full network and filesystem access.
+   Review templates before running them. To confine them, run cxg itself inside a container
+   or VM, as a non-privileged user.
 3. **API Keys**: Store API keys in environment variables, not in config files
 4. **Network**: Use proxies when scanning sensitive targets
 5. **Updates**: Keep CERT-X-GEN and templates updated

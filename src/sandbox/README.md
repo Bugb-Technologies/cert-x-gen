@@ -2,7 +2,9 @@
 
 ## Overview
 
-The sandbox module provides isolated runtime environments for all supported programming languages in CERT-X-GEN. This ensures dependency isolation, security, and reproducibility across different systems.
+The sandbox module provides per-language **dependency environments** for all supported programming languages in CERT-X-GEN — a separate package directory per runtime, for reproducibility and to keep template dependencies off the system package managers.
+
+It is not a security boundary. Templates execute as ordinary child processes with the invoking user's privileges and full network and filesystem access. Review templates before running them. See [Security](#security) below.
 
 ## Architecture
 
@@ -385,24 +387,30 @@ if status.python_ready {
 
 - **Overhead**: ~10ms per execution
 - **No caching**: Scripts execute each time
-- **Isolation**: Each execution is isolated
 
 ## Security
 
-### Isolation Level
+### This module confines nothing
 
-- ✅ **Process isolation**: Separate processes
-- ✅ **Environment isolation**: Separate env vars
-- ✅ **Package isolation**: Separate dependencies
-- ⚠️ **Network access**: Not restricted
-- ⚠️ **File system**: Host file system access
+**Templates execute as ordinary child processes with the invoking user's privileges and full network and filesystem access. Review templates before running them.**
+
+What this module separates is *packages*, not privileges:
+
+- ✅ **Package separation**: Separate dependency directories per language
+- ✅ **Environment variables**: Per-language `VIRTUAL_ENV`, `GEM_HOME`, `GOPATH`, …
+- ❌ **Privileges**: Child processes inherit the invoking user's, unrestricted
+- ❌ **Network access**: Not restricted
+- ❌ **File system**: Full host file system access
+- ❌ **CPU / memory**: Not limited
 
 ### Recommendations
 
-1. **Use containers** for maximum isolation
+All confinement must come from outside cxg:
+
+1. **Use containers or VMs** for actual isolation
 2. **Run as unprivileged user**
-3. **Apply resource limits** (cgroups)
-4. **Restrict network access** (firewall)
+3. **Apply resource limits** (cgroups — cxg applies none of its own)
+4. **Restrict network access** (firewall / network namespaces)
 5. **Monitor execution** (logging)
 
 ## Troubleshooting
@@ -468,6 +476,4 @@ if has_python {
 
 ## Documentation
 
-- [User Guide](../../SANDBOX_GUIDE.md)
-- [Implementation Details](../../SANDBOX_IMPLEMENTATION.md)
-- [CLI Reference](../../CLI_REFERENCE.md)
+- [Dependency Environment Guide](../../docs/DEPENDENCY_ENVIRONMENTS.md)

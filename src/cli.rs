@@ -150,7 +150,7 @@ pub enum Commands {
     /// Generate configuration file
     Config(ConfigCommand),
 
-    /// Manage sandbox environment
+    /// Manage per-language dependency environments (does not confine execution)
     Sandbox(SandboxCommand),
 
     /// MCP (Model Context Protocol) server for AI agent integration
@@ -2284,10 +2284,15 @@ pub enum ConfigAction {
 /// Sandbox management commands
 #[derive(Parser, Debug)]
 #[command(
-    about = "Manage sandboxed language environments",
-    long_about = "Initialize, manage, and configure isolated runtime environments for all supported \
-                  programming languages. The sandbox provides dependency isolation and security for \
-                  template execution across Python, JavaScript, Ruby, Perl, PHP, Rust, Go, and Java.",
+    about = "Manage per-language dependency environments",
+    long_about = "Initialize, manage, and configure per-language dependency environments for all \
+                  supported programming languages: Python, JavaScript, Ruby, Perl, PHP, Rust, Go, \
+                  and Java. This gives each runtime its own package directory, keeping template \
+                  dependencies off the system package managers.\n\n\
+                  This does NOT confine template execution. Templates execute as ordinary child \
+                  processes with the invoking user's privileges and full network and filesystem \
+                  access. Review templates before running them. For isolation, run cxg itself \
+                  inside a container or VM, as a non-privileged user.",
     after_help = "EXAMPLES:
   # Initialize sandbox with all languages
   cxg sandbox init
@@ -2316,35 +2321,38 @@ pub struct SandboxCommand {
     pub action: SandboxAction,
 }
 
-/// Sandbox environment management
+/// Dependency environment management
 ///
-/// CERT-X-GEN supports two types of sandboxes:
+/// Neither kind of environment below confines template execution. Templates execute as
+/// ordinary child processes with the invoking user's privileges and full network and
+/// filesystem access. Review templates before running them.
 ///
-/// 1. Docker Sandbox (RECOMMENDED - True Isolation):
-///    - Complete OS-level isolation using Docker containers
-///    - Fresh Python, Ruby, Node, Go, Java, etc. inside container
+/// CERT-X-GEN supports two kinds of dependency environment:
+///
+/// 1. Docker environment:
+///    - A container holding fresh Python, Ruby, Node, Go, Java, etc.
 ///    - Named environments (dev, test, prod)
-///    - Auto-enter on CLI start
-///    - Access to local network and files
+///    - An interactive shell inside the container via 'enter' — work done in that
+///      shell is contained by Docker in the ordinary way
+///    - Scans launched from your host still run on your host, not in the container
 ///    - Commands: create, enter, delete, set-default, info
 ///
-/// 2. Package Sandbox (Legacy - Package-Level Isolation):
-///    - Python venv, npm node_modules, gem isolation
+/// 2. Package environment:
+///    - Python venv, npm node_modules, gem directories
 ///    - Uses host system's language runtimes
-///    - Simple directory-based isolation
 ///    - Commands: init, status, install, clean
 ///
 /// Use 'cxg sandbox info' to check Docker availability.
-/// Use 'cxg sandbox create <name>' to create a Docker sandbox.
+/// Use 'cxg sandbox create <name>' to create a Docker environment.
 #[derive(Debug, Clone, Subcommand)]
 pub enum SandboxAction {
-    /// Initialize package-level sandbox (legacy mode)
+    /// Initialize package-level dependency environment
     ///
-    /// Creates isolated package directories for Python (venv), JavaScript (node_modules),
+    /// Creates separate package directories for Python (venv), JavaScript (node_modules),
     /// Ruby (gems), etc. This mode uses your host system's language runtimes.
     ///
-    /// Note: This is a lightweight alternative to Docker sandboxes. For true isolation,
-    /// use 'cxg sandbox create <name>' to create a Docker-based sandbox.
+    /// Note: this separates packages, not privileges. Templates still execute as ordinary
+    /// child processes with your privileges and full network and filesystem access.
     ///
     /// The init command is smart:
     /// - First run: Sets up all language environments and installs packages

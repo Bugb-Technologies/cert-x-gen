@@ -109,17 +109,6 @@ pub enum Error {
     #[error("Scheduler error: {0}")]
     Scheduler(String),
 
-    /// Resource limit exceeded
-    #[error("Resource limit exceeded: {resource} (limit: {limit}, current: {current})")]
-    ResourceLimitExceeded {
-        /// Resource type
-        resource: String,
-        /// Limit value
-        limit: String,
-        /// Current value
-        current: String,
-    },
-
     /// Timeout error
     #[error("Operation timed out after {duration}")]
     Timeout {
@@ -134,10 +123,6 @@ pub enum Error {
     /// Command execution error
     #[error("Command execution error: {0}")]
     Command(String),
-
-    /// Sandbox violation
-    #[error("Sandbox violation: {0}")]
-    SandboxViolation(String),
 
     /// Rate limit exceeded
     #[error("Rate limit exceeded: {0}")]
@@ -294,20 +279,6 @@ impl Error {
         }
     }
 
-    /// Create a resource limit exceeded error
-    pub fn resource_limit<R, L, C>(resource: R, limit: L, current: C) -> Self
-    where
-        R: Into<String>,
-        L: Into<String>,
-        C: Into<String>,
-    {
-        Error::ResourceLimitExceeded {
-            resource: resource.into(),
-            limit: limit.into(),
-            current: current.into(),
-        }
-    }
-
     /// Create a command execution error
     pub fn command<S: Into<String>>(message: S) -> Self {
         Error::Command(message.into())
@@ -315,13 +286,7 @@ impl Error {
 
     /// Check if error is fatal (should stop execution)
     pub fn is_fatal(&self) -> bool {
-        matches!(
-            self,
-            Error::Internal(_)
-                | Error::SandboxViolation(_)
-                | Error::ResourceLimitExceeded { .. }
-                | Error::Coordinator(_)
-        )
+        matches!(self, Error::Internal(_) | Error::Coordinator(_))
     }
 
     /// Check if error is retryable
