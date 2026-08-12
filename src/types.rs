@@ -254,10 +254,6 @@ pub struct Context {
     pub aggressive_mode: bool,
     /// Stealth mode enabled
     pub stealth_mode: bool,
-    /// Passive mode enabled (no active probes)
-    pub passive_mode: bool,
-    /// Safe mode enabled (exclude dangerous checks)
-    pub safe_mode: bool,
     /// Maximum retries
     pub max_retries: u32,
     /// Timeout duration
@@ -284,8 +280,6 @@ impl Default for Context {
             scan_id: Uuid::new_v4(),
             aggressive_mode: false,
             stealth_mode: false,
-            passive_mode: false,
-            safe_mode: false,
             max_retries: 1,
             timeout: Duration::from_secs(30),
             variables: HashMap::new(),

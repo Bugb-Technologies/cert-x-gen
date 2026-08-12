@@ -240,8 +240,6 @@ impl ScanJob {
         let mut context = Context::default();
         context.aggressive_mode = config.execution.aggressive_mode;
         context.stealth_mode = config.execution.stealth_mode;
-        context.passive_mode = config.execution.passive_mode;
-        context.safe_mode = config.execution.safe_mode;
         context.max_retries = config.execution.max_retries;
         context.headers = config.network.headers.clone();
         context.cookies = config.network.cookies.clone();

@@ -1280,14 +1280,11 @@ async fn run_scan(args: cli::ScanArgs, config_path: Option<PathBuf>) -> Result<(
 
 /// Apply scan arguments to configuration
 fn apply_scan_args_to_config(config: &mut Config, args: &cli::ScanArgs) {
-    config.execution.threads = args.threads;
     config.execution.parallel_targets = args.parallel_targets;
     config.execution.parallel_templates = args.parallel_templates;
     config.execution.max_retries = args.retry;
     config.execution.aggressive_mode = args.aggressive;
     config.execution.stealth_mode = args.stealth;
-    config.execution.passive_mode = args.passive;
-    config.execution.safe_mode = args.safe;
 
     // Apply mode-specific optimizations
     if args.aggressive {
@@ -1369,8 +1366,6 @@ fn apply_scan_args_to_config(config: &mut Config, args: &cli::ScanArgs) {
     if let Some(rate_limit) = args.rate_limit {
         config.network.rate_limit = Some(rate_limit);
     }
-
-    config.output.stream = args.stream;
 
     // Apply template directory if specified
     if let Some(template_dir) = &args.template_dir {

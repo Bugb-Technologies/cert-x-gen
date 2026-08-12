@@ -1,152 +1,63 @@
 # CERT-X-GEN Example Configuration
 #
-# NOTE: This file does NOT currently load — the config parser rejects it, and many of the
-# keys below are parsed but have no effect. It is being revised. Do not rely on it yet.
+# Copy this file to cert-x-gen.yaml and pass it with `--config cert-x-gen.yaml`.
+# Generate a fresh copy any time with: cxg config generate --output cert-x-gen.yaml
 #
-# Copy this file to cert-x-gen.yaml and customize for your environment
+# Every key below has a runtime effect. (Dead configuration keys were removed in
+# v1.3.0 — old config files that still set them continue to load; the extra keys
+# are simply ignored.)
 
-global:
-  # Verbosity level (0-3)
-  verbosity: 1
-  
-  # Enable colored output
-  color: true
-  
-  # Log level: trace, debug, info, warn, error
-  log_level: info
-  
-  # Log file path (optional)
-  log_file: null
-  
-  # Enable debug mode
-  debug: false
-
+# Template discovery and execution
 templates:
-  # Template directories to search
-  directories:
-    - ./templates
-    - ~/.cert-x-gen/templates
-  
-  # Auto-update templates from remote repository
-  auto_update: false
-  
-  # Template cache directory
-  cache_dir: .cache/templates
-  
-  # Enabled template languages
-  enabled_languages:
-    - yaml
-    - python
-    - rust
-    - shell
-  
-  # Template execution timeout (seconds)
+  # Extra template directories to search (in addition to the built-in discovery
+  # roots). Empty = discovery only.
+  directories: []
+  # Per-template execution timeout, in seconds.
   timeout_secs: 30
 
+# HTTP client behaviour
 network:
-  # Request timeout (seconds)
+  # Request timeout, in seconds.
   timeout_secs: 10
-  
-  # User agent string
-  user_agent: "cert-x-gen/1.0"
-  
-  # Follow HTTP redirects
-  follow_redirects: true
-  
-  # Maximum number of redirects
+  # User-Agent header sent with every request.
+  user_agent: cert-x-gen/1.2.0
+  # Maximum redirect hops (only relevant when redirect-following is enabled).
+  # NOTE: whether redirects are followed is controlled by the --follow-redirects
+  # CLI flag, not this file.
   max_redirects: 5
-  
-  # Connection pool size
+  # HTTP connection pool size.
   connection_pool_size: 100
-  
-  # Enable HTTP/2
-  http2: true
-  
-  # Proxy URL (optional)
-  # Examples: http://proxy:8080, socks5://proxy:1080
+  # Proxy URL (http/https/socks5), or null for none.
   proxy: null
-  
-  # Custom DNS servers (optional)
-  dns_servers: []
-  
-  # Rate limit (requests per second)
+  # Requests per second, or null for unlimited.
   rate_limit: 100
+  # Extra request headers, as [name, value] pairs.
+  headers: []
+  # Cookies for authenticated scans, as [name, value] pairs.
+  cookies: []
 
+# Concurrency and retries
 execution:
-  # Number of worker threads (0 = auto-detect)
-  threads: 0
-  
-  # Parallel target scanning
+  # Concurrent targets scanned at once.
   parallel_targets: 50
-  
-  # Parallel template execution per target
+  # Concurrent templates run per target.
   parallel_templates: 10
-  
-  # Maximum retries on failure
-  max_retries: 3
-  
-  # Retry delay (seconds)
+  # Retry attempts for transient failures.
+  max_retries: 1
+  # Delay between retries, in seconds.
   retry_delay_secs: 1
-  
-  # Aggressive mode (more invasive checks)
+  # Aggressive mode: higher concurrency, drops rate limiting.
   aggressive_mode: false
-  
-  # Stealth mode (slower, less detectable)
+  # Stealth mode: adds request jitter/delay.
   stealth_mode: false
-  
-  # Enable result caching
-  cache_enabled: true
 
-output:
-  # Output formats: json, csv, markdown, sarif, html, xml
-  formats:
-    - json
-  
-  # Output directory
-  output_dir: ./results
-  
-  # Output file basename
-  output_file: scan-results
-  
-  # Stream output in real-time
-  stream: false
-  
-  # Minimum severity to report
-  min_severity: info
-
+# Sandbox dependency-environment settings.
+# NOTE: these keys do NOT confine template execution (templates run as ordinary
+# child processes with your privileges). They are retained pending a separate
+# sandbox workstream; see docs/SANDBOX_GUIDE.md.
 sandbox:
-  # Enable sandbox for template execution
   enabled: true
-  
-  # Memory limit per template (MB)
   memory_limit_mb: 512
-  
-  # CPU limit (percentage)
   cpu_limit_percent: 80
-  
-  # Network access control: none, controlled, full
   network_access: controlled
-  
-  # Filesystem access: none, readonly, full
   filesystem_access: readonly
-
-metrics:
-  # Enable metrics collection
-  enabled: true
-  
-  # Metrics export port (Prometheus)
-  export_port: 9090
-  
-  # Metrics export format: prometheus, json
-  export_format: prometheus
-
-plugins:
-  # Enable plugin system
-  enabled: false
-  
-  # Plugin directories
-  directories:
-    - ./plugins
-  
-  # Loaded plugins
-  plugins: []
