@@ -85,6 +85,10 @@ jobs:
           node-version: '20'
       - run: python -m pip install --upgrade pip
       - run: pip install -r pentest/requirements.txt
+      # Track B's `auth verify` liveness tests drive a real headless Chromium;
+      # the pip package ships no browser binary. Install it (with OS deps) so
+      # those tests run against the same substrate a real `auth verify --ci` does.
+      - run: python -m playwright install --with-deps chromium
       - run: python -m pytest -v
         working-directory: pentest
 
