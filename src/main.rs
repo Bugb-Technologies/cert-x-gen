@@ -33,6 +33,9 @@ async fn main() {
     // stdout. The default rule is a TTY check: suppress the banner whenever stdout is
     // not a terminal (pipes, redirects, CI, JSON-RPC over stdio for `mcp`, etc.).
     // Explicit escapes still force suppression even on a terminal.
+    //
+    // Related opt-out: CXG_NO_NAG silences the post-scan star request
+    // (see `maybe_print_star_nag`); CXG_NO_BANNER silences both.
     let args: Vec<String> = std::env::args().collect();
     let suppress_banner = std::env::var("CXG_NO_BANNER").is_ok()
         || args.iter().any(|arg| arg == "--quiet" || arg == "-q")
@@ -1278,6 +1281,9 @@ async fn run_scan(args: cli::ScanArgs, config_path: Option<PathBuf>) -> Result<(
 
     // Print summary
     print_scan_summary(&results);
+
+    // A quiet, infrequent nudge — only after a completed scan on an interactive terminal.
+    maybe_print_star_nag(args.quiet);
 
     Ok(())
 }
@@ -4058,6 +4064,68 @@ fn print_version() {
     println!("  Repository:    https://github.com/Bugb-Technologies/cert-x-gen");
     println!("  Documentation: https://github.com/Bugb-Technologies/cert-x-gen/tree/main/docs");
     println!("  Issues:        https://github.com/Bugb-Technologies/cert-x-gen/issues");
+}
+
+/// Print a one-line GitHub star request at the end of a completed scan.
+///
+/// Deliberately unobtrusive. It prints only when the user just received findings
+/// on an interactive terminal, and at most once a week — a nag on every scan is
+/// worse than no nag. Gating (all must hold):
+///   - stdout is a terminal (same `IsTerminal` check the banner uses)
+///   - `CXG_NO_BANNER` is unset, `CXG_NO_NAG` is unset
+///   - `--quiet`/`-q` was not passed
+///   - (call site) the scan completed without error
+///
+/// Frequency is tracked by a timestamp file at `~/.cert-x-gen/.star-nag`. Weekly
+/// is chosen so it reaches active users at most a handful of times a year while
+/// never competing with day-to-day scan output. If the timestamp cannot be read
+/// or written, the nag is skipped rather than shown — better silent than repeated.
+fn maybe_print_star_nag(quiet: bool) {
+    // At most once per this interval.
+    const NAG_INTERVAL_SECS: u64 = 7 * 24 * 60 * 60; // one week
+
+    if quiet
+        || std::env::var("CXG_NO_BANNER").is_ok()
+        || std::env::var("CXG_NO_NAG").is_ok()
+        || !std::io::stdout().is_terminal()
+    {
+        return;
+    }
+
+    let Some(stamp) = dirs::home_dir().map(|h| h.join(".cert-x-gen").join(".star-nag")) else {
+        return;
+    };
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    // Shown recently? Stay quiet.
+    if let Ok(contents) = std::fs::read_to_string(&stamp) {
+        if let Ok(last) = contents.trim().parse::<u64>() {
+            if now.saturating_sub(last) < NAG_INTERVAL_SECS {
+                return;
+            }
+        }
+    }
+
+    // Record the timestamp before printing; if we can't persist it, skip the nag so
+    // an un-writable home dir doesn't turn into a nag on every single run.
+    if let Some(parent) = stamp.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if std::fs::write(&stamp, now.to_string()).is_err() {
+        return;
+    }
+
+    println!(
+        "{}",
+        console::style(
+            "★ Enjoying cxg? A star helps others find it: https://github.com/Bugb-Technologies/cert-x-gen"
+        )
+        .dim()
+    );
 }
 
 /// Print scan summary
