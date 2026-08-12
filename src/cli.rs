@@ -3095,27 +3095,52 @@ mod track_b_auth_tests {
     #[test]
     fn auth_import_parses_full_surface() {
         let a = action(&[
-            "cxg", "pentest", "auth", "import",
-            "--profile", "pentest",
-            "--target", "https://staging.app",
-            "--storage-state", "./s.json",
-            "--label", "admin",
-            "--tier", "high",
-            "--persona", "billing",
-            "--cohort", "team-a",
-            "--tag", "k1=v1",
-            "--tag", "k2=v2",
-            "--header", "x-a:1",
-            "--header", "x-b:2",
-            "--auth-dir", "./ci-auth",
+            "cxg",
+            "pentest",
+            "auth",
+            "import",
+            "--profile",
+            "pentest",
+            "--target",
+            "https://staging.app",
+            "--storage-state",
+            "./s.json",
+            "--label",
+            "admin",
+            "--tier",
+            "high",
+            "--persona",
+            "billing",
+            "--cohort",
+            "team-a",
+            "--tag",
+            "k1=v1",
+            "--tag",
+            "k2=v2",
+            "--header",
+            "x-a:1",
+            "--header",
+            "x-b:2",
+            "--auth-dir",
+            "./ci-auth",
             "--ci",
         ]);
         match a {
             PentestAction::Auth {
-                auth_sub: Some(AuthSubcommand::Import {
-                    profile, target, storage_state, label, tier, persona, cohort,
-                    tags, headers, auth_dir, ci,
-                }),
+                auth_sub:
+                    Some(AuthSubcommand::Import {
+                        profile,
+                        target,
+                        storage_state,
+                        label,
+                        tier,
+                        persona,
+                        cohort,
+                        tags,
+                        headers,
+                        auth_dir,
+                        ci,
+                    }),
                 ..
             } => {
                 assert_eq!(profile, "pentest");
@@ -3140,13 +3165,23 @@ mod track_b_auth_tests {
     fn auth_import_does_not_require_parent_target_or_profile() {
         // import supplies its own --profile/--target and nothing at the parent level.
         let a = action(&[
-            "cxg", "pentest", "auth", "import",
-            "--profile", "p", "--target", "https://x",
+            "cxg",
+            "pentest",
+            "auth",
+            "import",
+            "--profile",
+            "p",
+            "--target",
+            "https://x",
         ]);
         match a {
             PentestAction::Auth {
-                target, profile,
-                auth_sub: Some(AuthSubcommand::Import { storage_state, ci, .. }),
+                target,
+                profile,
+                auth_sub:
+                    Some(AuthSubcommand::Import {
+                        storage_state, ci, ..
+                    }),
                 ..
             } => {
                 // parent capture fields stay unset
@@ -3163,8 +3198,16 @@ mod track_b_auth_tests {
     #[test]
     fn auth_import_stdin_marker_is_a_value() {
         let a = action(&[
-            "cxg", "pentest", "auth", "import",
-            "--profile", "p", "--target", "https://x", "--storage-state", "-",
+            "cxg",
+            "pentest",
+            "auth",
+            "import",
+            "--profile",
+            "p",
+            "--target",
+            "https://x",
+            "--storage-state",
+            "-",
         ]);
         match a {
             PentestAction::Auth {
@@ -3177,10 +3220,14 @@ mod track_b_auth_tests {
 
     #[test]
     fn auth_import_requires_profile_and_target() {
-        assert!(err(&["cxg", "pentest", "auth", "import", "--target", "https://x"]),
-            "import without --profile must fail");
-        assert!(err(&["cxg", "pentest", "auth", "import", "--profile", "p"]),
-            "import without --target must fail");
+        assert!(
+            err(&["cxg", "pentest", "auth", "import", "--target", "https://x"]),
+            "import without --profile must fail"
+        );
+        assert!(
+            err(&["cxg", "pentest", "auth", "import", "--profile", "p"]),
+            "import without --target must fail"
+        );
     }
 
     // ---- auth verify ----
@@ -3190,7 +3237,13 @@ mod track_b_auth_tests {
         let a = action(&["cxg", "pentest", "auth", "verify", "--profile", "pentest"]);
         match a {
             PentestAction::Auth {
-                auth_sub: Some(AuthSubcommand::Verify { profile, target, me_path, auth_dir }),
+                auth_sub:
+                    Some(AuthSubcommand::Verify {
+                        profile,
+                        target,
+                        me_path,
+                        auth_dir,
+                    }),
                 ..
             } => {
                 assert_eq!(profile, "pentest");
@@ -3205,13 +3258,28 @@ mod track_b_auth_tests {
     #[test]
     fn auth_verify_accepts_overrides() {
         let a = action(&[
-            "cxg", "pentest", "auth", "verify",
-            "--profile", "p", "--target", "https://y", "--me-path", "/whoami",
-            "--auth-dir", "./ci-auth",
+            "cxg",
+            "pentest",
+            "auth",
+            "verify",
+            "--profile",
+            "p",
+            "--target",
+            "https://y",
+            "--me-path",
+            "/whoami",
+            "--auth-dir",
+            "./ci-auth",
         ]);
         match a {
             PentestAction::Auth {
-                auth_sub: Some(AuthSubcommand::Verify { target, me_path, auth_dir, .. }),
+                auth_sub:
+                    Some(AuthSubcommand::Verify {
+                        target,
+                        me_path,
+                        auth_dir,
+                        ..
+                    }),
                 ..
             } => {
                 assert_eq!(target.as_deref(), Some("https://y"));
@@ -3224,8 +3292,10 @@ mod track_b_auth_tests {
 
     #[test]
     fn auth_verify_requires_profile() {
-        assert!(err(&["cxg", "pentest", "auth", "verify"]),
-            "verify without --profile must fail");
+        assert!(
+            err(&["cxg", "pentest", "auth", "verify"]),
+            "verify without --profile must fail"
+        );
     }
 
     // ---- interactive capture path is unchanged (no subcommand) ----
@@ -3233,10 +3303,21 @@ mod track_b_auth_tests {
     #[test]
     fn bare_auth_capture_still_parses_and_leaves_sub_none() {
         let a = action(&[
-            "cxg", "pentest", "auth", "--target", "https://x", "--profile", "p",
+            "cxg",
+            "pentest",
+            "auth",
+            "--target",
+            "https://x",
+            "--profile",
+            "p",
         ]);
         match a {
-            PentestAction::Auth { target, profile, auth_sub, .. } => {
+            PentestAction::Auth {
+                target,
+                profile,
+                auth_sub,
+                ..
+            } => {
                 assert_eq!(target.as_deref(), Some("https://x"));
                 assert_eq!(profile.as_deref(), Some("p"));
                 assert!(auth_sub.is_none(), "no subcommand => interactive capture");
@@ -3249,10 +3330,21 @@ mod track_b_auth_tests {
     // (args_conflicts_with_subcommands): you either capture, or import/verify.
     #[test]
     fn capture_args_conflict_with_subcommand() {
-        assert!(err(&[
-            "cxg", "pentest", "auth", "--target", "https://x", "import",
-            "--profile", "p", "--target", "https://x",
-        ]), "parent capture args must conflict with a subcommand");
+        assert!(
+            err(&[
+                "cxg",
+                "pentest",
+                "auth",
+                "--target",
+                "https://x",
+                "import",
+                "--profile",
+                "p",
+                "--target",
+                "https://x",
+            ]),
+            "parent capture args must conflict with a subcommand"
+        );
     }
 
     // ---- run --ci / --auth-dir ----
@@ -3260,8 +3352,16 @@ mod track_b_auth_tests {
     #[test]
     fn run_ci_and_auth_dir_parse() {
         let a = action(&[
-            "cxg", "pentest", "run", "--codebase", ".", "--target", "https://x",
-            "--ci", "--auth-dir", "./ci-auth",
+            "cxg",
+            "pentest",
+            "run",
+            "--codebase",
+            ".",
+            "--target",
+            "https://x",
+            "--ci",
+            "--auth-dir",
+            "./ci-auth",
         ]);
         match a {
             PentestAction::Run { ci, auth_dir, .. } => {
@@ -3275,7 +3375,13 @@ mod track_b_auth_tests {
     #[test]
     fn run_defaults_leave_ci_false_and_auth_dir_none() {
         let a = action(&[
-            "cxg", "pentest", "run", "--codebase", ".", "--target", "https://x",
+            "cxg",
+            "pentest",
+            "run",
+            "--codebase",
+            ".",
+            "--target",
+            "https://x",
         ]);
         match a {
             PentestAction::Run { ci, auth_dir, .. } => {
