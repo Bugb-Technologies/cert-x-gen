@@ -4,8 +4,9 @@
 # Generate a fresh copy any time with: cxg config generate --output cert-x-gen.yaml
 #
 # Every key below has a runtime effect. (Dead configuration keys were removed in
-# v1.3.0 — old config files that still set them continue to load; the extra keys
-# are simply ignored.)
+# v1.3.0 and later — old config files that still set them continue to load; the
+# extra keys are ignored, and removed sections that implied a security guarantee
+# are warned about on load.)
 
 # Template discovery and execution
 templates:
@@ -51,13 +52,12 @@ execution:
   # Stealth mode: adds request jitter/delay.
   stealth_mode: false
 
-# Sandbox dependency-environment settings.
-# NOTE: these keys do NOT confine template execution (templates run as ordinary
-# child processes with your privileges). They are retained pending a separate
-# sandbox workstream; see docs/SANDBOX_GUIDE.md.
-sandbox:
-  enabled: true
-  memory_limit_mb: 512
-  cpu_limit_percent: 80
-  network_access: controlled
-  filesystem_access: readonly
+# There is no sandbox/confinement section. Templates execute as ordinary child
+# processes with the invoking user's privileges and full network and filesystem
+# access. Review templates before running them. For isolation, run cxg itself
+# inside a container or VM, as a non-privileged user.
+#
+# The removed `sandbox:` section never took effect. A file that still
+# sets it loads, but cxg warns about it. (Unrelated to the `cxg sandbox`
+# command, which manages per-language dependency environments — see
+# docs/DEPENDENCY_ENVIRONMENTS.md.)

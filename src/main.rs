@@ -2954,9 +2954,21 @@ fn run_config_command(cmd: cli::ConfigCommand) -> Result<()> {
             Ok(())
         }
         ConfigAction::Validate { config } => {
-            let cfg = Config::from_file(&config)?;
+            // `from_file_reporting_obsolete` prints the detail for each obsolete
+            // section; a file carrying one must not come back as simply valid.
+            let (cfg, obsolete) = Config::from_file_reporting_obsolete(&config)?;
             cfg.validate()?;
-            println!("Configuration is valid");
+
+            if obsolete.is_empty() {
+                println!("Configuration is valid");
+            } else {
+                println!(
+                    "Configuration is loadable, but contains {} obsolete section(s) with no \
+                     effect: {}. See the warning above; remove them.",
+                    obsolete.len(),
+                    obsolete.join(", ")
+                );
+            }
             Ok(())
         }
         ConfigAction::Show => {
@@ -3034,7 +3046,7 @@ async fn run_sandbox_command(cmd: cli::SandboxCommand) -> Result<()> {
                 {
                     term.write_line(&format!("\n{} Docker detected!", style("ℹ").blue()))?;
                     term.write_line(
-                        &"  For true OS-level isolation, consider using Docker sandboxes instead:"
+                        &"  For fresh runtimes instead of your host's, consider a Docker environment:"
                             .to_string(),
                     )?;
                     term.write_line(&format!(
@@ -3046,8 +3058,10 @@ async fn run_sandbox_command(cmd: cli::SandboxCommand) -> Result<()> {
                         style("cxg sandbox set-default my-env").yellow()
                     ))?;
                     term.write_line("")?;
-                    term.write_line(&"  This command (init) creates a package-level sandbox using your host's language runtimes.".to_string())?;
-                    term.write_line(&"  Docker sandboxes provide complete isolation with fresh runtimes inside containers.".to_string())?;
+                    term.write_line(&"  This command (init) creates package directories using your host's language runtimes.".to_string())?;
+                    term.write_line(&"  A Docker environment gives you fresh runtimes inside a container you can 'enter'.".to_string())?;
+                    term.write_line(&"  Neither confines template execution: templates run as ordinary child processes".to_string())?;
+                    term.write_line(&"  with your privileges and full network and filesystem access. Review templates first.".to_string())?;
                     term.write_line("")?;
                     term.write_line(&format!(
                         "  Run {} for more info.",
@@ -4030,17 +4044,26 @@ async fn check_and_enter_sandbox(cli: &Cli) -> Result<()> {
                 }
             }
 
-            // Verify container is ready
+            // Verify container is ready.
             sandbox
                 .exec_cli(&std::env::args().collect::<Vec<_>>())
                 .await?;
 
-            // Mark that we're using Docker sandbox context
-            // The actual command will execute with container awareness
-            tracing::info!("Command will execute with Docker sandbox context");
-
-            // Don't exit - let the command run with container context
-            // The sandbox module will use docker exec for operations
+            // The container is started, but this command is NOT relocated into it —
+            // `exec_cli` only checks readiness, and nothing downstream routes execution
+            // through `docker exec`. Say so, rather than let the started container imply
+            // the scan about to run is contained by it.
+            tracing::info!(
+                "Started Docker environment '{}'; this command still runs on the host",
+                name
+            );
+            eprintln!(
+                "note: Docker environment '{}' is running, but this command executes on the \
+                 host, not inside it. Templates run as ordinary child processes with your \
+                 privileges and full network and filesystem access. To run inside the \
+                 container, use `cxg sandbox enter {}`.",
+                name, name
+            );
         }
     }
 

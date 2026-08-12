@@ -502,9 +502,14 @@ Generate a starting config, then edit it:
 cxg config generate --output config.yaml
 ```
 
-The schema is nested with four required top-level sections — `templates`, `network`,
-`execution`, and `sandbox`. Every key has a runtime effect; see the annotated
+The schema is nested with three top-level sections — `templates`, `network`, and
+`execution`. Every key has a runtime effect; see the annotated
 [`cert-x-gen.example.yaml`](../cert-x-gen.example.yaml) for the full reference.
+
+There is no confinement section. Templates execute as ordinary child processes with the
+invoking user's privileges and full network and filesystem access — review templates before
+running them. Configs that still carry the obsolete `sandbox:` section (removed; it never had
+any effect) still load, and cxg warns about them on load and on `cxg config validate`.
 
 Targets, ports, output format/file, and redirect-following are set on the command line
 (`--scope`, `--ports`, `--output-format`, `--output`, `--follow-redirects`), not in this file.

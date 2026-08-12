@@ -134,15 +134,15 @@ pub struct Executor {
 
 **Responsibilities:**
 - Execute templates with proper environment setup
-- Manage concurrent template execution
-- Handle timeouts and resource limits
+- Manage concurrent template execution (via `semaphore`)
+- Handle per-template timeouts
 - Collect and aggregate findings
 
 ### 4. Scheduler
 
 **Location**: `src/scheduler.rs`
 
-Manages resource allocation and execution scheduling:
+Orders templates for execution by severity priority:
 
 ```rust
 pub struct Scheduler {
@@ -152,9 +152,7 @@ pub struct Scheduler {
 ```
 
 **Responsibilities:**
-- Prioritize template execution
-- Manage resource constraints
-- Handle rate limiting
+- Prioritize template execution by severity
 - Optimize execution order
 
 ---
@@ -457,21 +455,28 @@ pub enum Error {
 
 ## 🔒 Security Considerations
 
+### Template execution is not confined
+
+Templates execute as ordinary child processes with the invoking user's privileges and full
+network and filesystem access. Review templates before running them.
+
+cxg implements no sandboxing, isolation, or resource limiting — there is no flag,
+configuration key, or default that provides any. Confinement, if you need it, must come from
+outside the process: run cxg in a container or VM, as a non-privileged user, with cgroup and
+network-namespace limits applied by the host.
+
 ### Security Measures
 
 1. **Input Validation** - Sanitize all inputs
-2. **Sandboxing** - Isolate template execution
-3. **Resource Limits** - Prevent resource exhaustion
-4. **Secure Defaults** - Safe configuration defaults
-5. **Error Handling** - Don't leak sensitive information
+2. **Secure Defaults** - Safe configuration defaults
+3. **Error Handling** - Don't leak sensitive information
 
 ### Template Security
 
 1. **Code Review** - Review all template code
 2. **Dependency Management** - Manage external dependencies
-3. **Execution Isolation** - Isolate template execution
-4. **Output Validation** - Validate template output
-5. **Access Control** - Control template access
+3. **Output Validation** - Validate template output
+4. **Access Control** - Control template access
 
 ---
 

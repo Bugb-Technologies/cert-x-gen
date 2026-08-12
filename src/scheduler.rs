@@ -1,8 +1,8 @@
-//! Scheduler for template execution prioritization and resource management
+//! Scheduler for template execution prioritization
 
 use crate::config::Config;
 use crate::core::ScanJob;
-use crate::error::{Error, Result};
+use crate::error::Result;
 use crate::template::Template;
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
@@ -122,77 +122,6 @@ impl Ord for PrioritizedTemplate {
     }
 }
 
-/// Resource manager for tracking and limiting resource usage
-#[derive(Debug)]
-pub struct ResourceManager {
-    /// Maximum memory limit (bytes)
-    max_memory_bytes: usize,
-    /// Current memory usage (bytes)
-    current_memory_bytes: usize,
-    /// Maximum CPU percentage
-    #[allow(dead_code)]
-    max_cpu_percent: usize,
-    /// Maximum concurrent operations
-    max_concurrent: usize,
-    /// Current concurrent operations
-    current_concurrent: usize,
-}
-
-impl ResourceManager {
-    /// Create a new resource manager
-    pub fn new(config: &Config) -> Self {
-        Self {
-            max_memory_bytes: config.sandbox.memory_limit_mb * 1024 * 1024,
-            current_memory_bytes: 0,
-            max_cpu_percent: config.sandbox.cpu_limit_percent,
-            max_concurrent: config.execution.parallel_templates,
-            current_concurrent: 0,
-        }
-    }
-
-    /// Check if resources are available
-    pub fn can_allocate(&self, memory_bytes: usize) -> bool {
-        self.current_memory_bytes + memory_bytes <= self.max_memory_bytes
-            && self.current_concurrent < self.max_concurrent
-    }
-
-    /// Allocate resources
-    pub fn allocate(&mut self, memory_bytes: usize) -> Result<()> {
-        if !self.can_allocate(memory_bytes) {
-            return Err(Error::resource_limit(
-                "memory or concurrency",
-                format!("{} MB", self.max_memory_bytes / 1024 / 1024),
-                format!("{} MB", self.current_memory_bytes / 1024 / 1024),
-            ));
-        }
-
-        self.current_memory_bytes += memory_bytes;
-        self.current_concurrent += 1;
-        Ok(())
-    }
-
-    /// Release resources
-    pub fn release(&mut self, memory_bytes: usize) {
-        self.current_memory_bytes = self.current_memory_bytes.saturating_sub(memory_bytes);
-        self.current_concurrent = self.current_concurrent.saturating_sub(1);
-    }
-
-    /// Get current memory usage
-    pub fn current_memory_mb(&self) -> usize {
-        self.current_memory_bytes / 1024 / 1024
-    }
-
-    /// Get maximum memory limit
-    pub fn max_memory_mb(&self) -> usize {
-        self.max_memory_bytes / 1024 / 1024
-    }
-
-    /// Get current concurrent operations
-    pub fn current_concurrent(&self) -> usize {
-        self.current_concurrent
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -259,18 +188,5 @@ mod tests {
 
         assert!(critical > high);
         assert!(high > medium);
-    }
-
-    #[test]
-    fn test_resource_manager() {
-        let config = Config::default();
-        let mut manager = ResourceManager::new(&config);
-
-        assert!(manager.can_allocate(100 * 1024 * 1024)); // 100 MB
-        assert!(manager.allocate(100 * 1024 * 1024).is_ok());
-        assert_eq!(manager.current_memory_mb(), 100);
-
-        manager.release(100 * 1024 * 1024);
-        assert_eq!(manager.current_memory_mb(), 0);
     }
 }

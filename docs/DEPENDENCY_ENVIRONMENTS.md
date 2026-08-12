@@ -1,4 +1,4 @@
-# Sandbox Environment Guide
+# Dependency Environment Guide (`cxg sandbox`)
 
 ## Overview
 
@@ -6,20 +6,28 @@
 > a security sandbox. It gives each language runtime its own package directory (a venv, an
 > `npm` prefix, a `GEM_HOME`, or a Docker dev container you `enter`) so template dependencies
 > stay off the system package managers. It does **not** confine, isolate, or resource-limit
-> template execution. Templates run as ordinary child processes with the invoking user's full
-> privileges and unrestricted network and filesystem access. If you need real isolation, run
-> cxg itself inside a container or VM (see [Security Considerations](#security-considerations)).
+> template execution.
+>
+> **Templates execute as ordinary child processes with the invoking user's privileges and
+> full network and filesystem access. Review templates before running them.**
+>
+> If you need real isolation, run cxg itself inside a container or VM (see
+> [Security Considerations](#security-considerations)).
+>
+> The command's name is historical. cxg has no execution-confinement feature of any kind:
+> the `sandbox:` config-file section that appeared to configure one never took effect and
+> has been removed.
 
 `cxg sandbox` manages per-language **dependency environments** for the templates you run. This provides:
 
-- **Dependency Isolation**: Each language runtime has its own package directory
+- **Dependency Separation**: Each language runtime has its own package directory
 - **Reproducibility**: Consistent package versions across installations
 - **Cleanliness**: No pollution of system-wide package managers
 - **Flexibility**: Easy to add, remove, or update packages
 
 ## Supported Languages
 
-The sandbox supports **8 programming languages**:
+`cxg sandbox` supports **8 programming languages**:
 
 | Language | Package Manager | Virtual Environment | Ready to Use |
 |----------|----------------|---------------------|--------------|
@@ -367,7 +375,9 @@ You can customize the sandbox by editing the configuration file:
 
 ## Usage in Templates
 
-Templates automatically execute in the sandbox environment. No code changes required!
+Templates automatically resolve their dependencies from these environments. No code changes
+required — only the package search path changes, not how or with what privileges the template
+runs.
 
 ### Python Template Example
 
@@ -378,7 +388,7 @@ name: Example Python Template
 severity: medium
 """
 
-# All imports use sandboxed packages
+# Imports resolve from the per-language dependency environment
 import requests
 from bs4 import BeautifulSoup
 
@@ -402,7 +412,7 @@ def execute(target, context):
  * severity: medium
  */
 
-// All requires use sandboxed packages
+// Requires resolve from the per-language dependency environment
 const axios = require('axios');
 const cheerio = require('cheerio');
 
@@ -589,9 +599,12 @@ cxg sandbox init --languages python,javascript
 
 ### No execution isolation
 
-`cxg sandbox` does **not** isolate or resource-limit template execution. Templates run as
-ordinary child processes with the invoking user's privileges and full network and filesystem
-access — the "sandbox" only decides which per-language dependency directory is on the path.
+cxg does **not** isolate or resource-limit template execution — not through `cxg sandbox`,
+not through configuration, not through any flag. **Templates execute as ordinary child
+processes with the invoking user's privileges and full network and filesystem access. Review
+templates before running them.** The "sandbox" only decides which per-language dependency
+directory is on the path.
+
 All isolation must therefore come from outside cxg:
 
 1. **Run cxg in containers**: Use Docker/Podman to isolate the whole tool
@@ -662,7 +675,7 @@ cxg sandbox path
 
 ### Q: Can I use my system packages?
 
-**A**: No, the sandbox intentionally isolates from system packages for consistency and security. However, you can install any package in the sandbox.
+**A**: No — the environments deliberately keep template dependencies separate from system packages for reproducibility. This is a packaging boundary, not a security boundary. You can install any package you need.
 
 ### Q: How much disk space does the sandbox use?
 
@@ -687,7 +700,7 @@ cp -r $(cxg sandbox path) ~/sandbox-backup
 
 ### Q: Can I share sandboxes between users?
 
-**A**: Not recommended. Each user should have their own sandbox for security and isolation.
+**A**: Not recommended. Package directories carry per-user paths and permissions; each user should have their own.
 
 ## Related Documentation
 

@@ -228,19 +228,25 @@ The `common.rs` file contains shared utilities used by multiple engines:
 
 ## Security Considerations
 
-### Sandboxing
+### No engine confines template execution
 
-- **YAML:** Safe (declarative, no code execution)
-- **Scripting engines:** Requires sandboxing for untrusted templates
-- **Compiled engines:** Requires code review before compilation
+Templates execute as ordinary child processes with the invoking user's privileges and full
+network and filesystem access. Review templates before running them.
 
-### Resource Limits
+- **YAML:** Declarative, no arbitrary code execution
+- **Scripting engines:** Run the interpreter directly — untrusted templates get your privileges
+- **Compiled engines:** Compile and run native code — review before compilation
 
-All engines should implement:
-- Timeout limits
-- Memory limits
+Isolation for untrusted templates must come from outside cxg: a container, a VM, or an
+unprivileged user with host-applied cgroup and network limits.
+
+### Limits engines do apply
+
+- Per-template timeouts
+- Concurrent execution limits (executor semaphore)
 - Network rate limiting
-- Concurrent execution limits
+
+No engine applies memory or CPU limits.
 
 ## Testing
 
@@ -248,7 +254,6 @@ Each engine should have:
 - Unit tests for core functionality
 - Integration tests with sample templates
 - Performance benchmarks
-- Security tests for sandboxing
 
 ## Future Enhancements
 
