@@ -99,6 +99,16 @@ CERT-X-GEN runs templates written in:
 
 ## Installation
 
+### Cargo (crates.io) — recommended
+
+The quickest cross-platform install if you have a Rust toolchain:
+
+```bash
+cargo install cert-x-gen
+```
+
+This builds and installs the `cxg` binary into `~/.cargo/bin`. Make sure that directory is on your `PATH`. To upgrade later, run `cargo install cert-x-gen --force` (or use the built-in `cxg update`).
+
 ### Homebrew (macOS/Linux)
 
 ```bash
@@ -129,10 +139,14 @@ cd cert-x-gen
 make install
 ```
 
-### Using Cargo
+### From Git (latest main or a specific tag)
+
+Build straight from the repository — useful for unreleased changes or pinning to a tag:
 
 ```bash
 cargo install --git https://github.com/Bugb-Technologies/cert-x-gen.git
+# or pin to a release:
+cargo install --git https://github.com/Bugb-Technologies/cert-x-gen.git --tag v1.2.0
 ```
 
 ### Download Binary

@@ -221,14 +221,15 @@ pub enum PentestAction {
         force: bool,
     },
 
-    /// Capture an authenticated browser session as a reusable profile
+    /// Capture — or, via a subcommand, import/verify — an authenticated session profile
     ///
-    /// Spawns a real headed Chromium window. You log in by ANY means — username/password,
-    /// SSO redirect, MFA prompt, hardware key, magic link, OAuth popup. When the app
-    /// dashboard is showing, press ENTER in the terminal (or close the browser) and
-    /// cxg snapshots cookies + localStorage + sessionStorage from every origin the
-    /// browser touched. The profile is saved at `~/.cert-x-gen/auth/<profile>.json`
-    /// plus metadata at `<profile>.meta.json`.
+    /// With no subcommand this captures interactively: it spawns a real headed Chromium
+    /// window. You log in by ANY means — username/password, SSO redirect, MFA prompt,
+    /// hardware key, magic link, OAuth popup. When the app dashboard is showing, press
+    /// ENTER in the terminal (or close the browser) and cxg snapshots cookies +
+    /// localStorage + sessionStorage from every origin the browser touched. The profile
+    /// is saved at `~/.cert-x-gen/auth/<profile>.json` plus metadata at
+    /// `<profile>.meta.json`.
     ///
     /// A post-capture landing-test verifies the session works: it re-opens a fresh
     /// browser context with the saved state, navigates to --target, and checks whether
@@ -237,8 +238,14 @@ pub enum PentestAction {
     /// Use `--auth-numbers N` for chained-auth scenarios (e.g. IDOR testing needs two
     /// different identities). cxg prompts for a human-readable label for each capture.
     ///
+    /// For CI, where no human can drive a browser, use the subcommands instead:
+    ///   `cxg pentest auth import` replays a session captured once and exported as a
+    ///   Playwright storage_state, with no browser; `cxg pentest auth verify` checks a
+    ///   saved session is still alive (exit 0 alive / non-zero dead) before a run spends
+    ///   any AI budget.
+    ///
     /// Examples:
-    ///     # Single interactive capture
+    ///     # Single interactive capture (no subcommand)
     ///     cxg pentest auth --target https://app.example.com --profile admin
     ///
     ///     # Two identities for chained-auth (e.g. IDOR victim + attacker)
@@ -251,18 +258,30 @@ pub enum PentestAction {
     ///     # Capture a profile that sends a WAF-bypass header on every request
     ///     cxg pentest auth --target https://app.example.com --profile pentest \
     ///       --header "x-test-automation:abc123xyz"
+    ///
+    ///     # CI: import a session captured once, then verify it before a run
+    ///     cxg pentest auth import --profile pentest --target https://staging.app \
+    ///       --storage-state ./pentest.storage.json
+    ///     cxg pentest auth verify --profile pentest
+    // @g.comment -- "auth carries the interactive-capture flags AND hosts the CI subcommands (import/verify). args_conflicts_with_subcommands keeps the two modes from being mixed on one line. This mirrors the Python surface, where cxg_pentest.py forwards `auth <rest>` verbatim to auth.py's own login|import|verify|list subparsers; bare `cxg pentest auth ...` maps to `auth login` exactly as before. --target/--profile are Option here rather than required-at-clap ONLY because clap's derive does not honour subcommand_negates_reqs (the builder method works, the #[command(...)] attribute is a no-op in clap 4.5), so a required --target would wrongly be demanded of `auth import`/`auth verify` too. Their required-ness for the capture path is enforced in main.rs's None branch, so the capture happy path and its errors are unchanged."
+    #[command(args_conflicts_with_subcommands = true)]
     Auth {
         /// Target URL where login happens (e.g. https://app.example.com).
         /// After capture, the landing-test verifier opens this URL with the saved
         /// cookies; if it doesn't bounce to a login page, the session is alive.
+        ///
+        /// Required for interactive capture (no subcommand). The `import`/`verify`
+        /// subcommands take their own `--target` instead.
         #[arg(long)]
-        target: String,
+        target: Option<String>,
 
         /// Profile name. If --auth-numbers > 1, this is the PREFIX and final profiles
         /// are named `<profile>-1`, `<profile>-2`, etc. Use a stable name so subsequent
         /// `cxg pentest run --auth <profile>` invocations can reload it.
+        ///
+        /// Required for interactive capture (no subcommand).
         #[arg(long)]
-        profile: String,
+        profile: Option<String>,
 
         /// Number of profiles to capture in sequence. Each capture opens its own
         /// Chromium window and prompts for a label (e.g. "victim", "attacker", "admin").
@@ -367,6 +386,12 @@ pub enum PentestAction {
         // @g.comment -- "operator-supplied path to a packaged application, executed directly instead of via a launch command"
         #[arg(long, conflicts_with = "app_cmd")]
         app_binary: Option<String>,
+
+        /// Non-interactive CI subcommand (`import` or `verify`). Absent = interactive
+        /// capture using the flags above.
+        // @g.comment -- "optional so bare `cxg pentest auth --target ... --profile ...` still means interactive capture; present it routes to the browser-free import/verify paths auth.py exposes for CI"
+        #[command(subcommand)]
+        auth_sub: Option<AuthSubcommand>,
     },
 
     /// List saved auth profiles under ~/.cert-x-gen/auth/
@@ -445,6 +470,9 @@ pub enum PentestAction {
     ///   1 → no templates available (guardlink output missing or empty)
     ///   2 → confirmed findings present
     ///   3 → scan was hard-killed (5xx streak, scope violation, etc.)
+    ///   5 → CI mode (`--ci` / CXG_CI=1): an auth session was dead/expired at
+    ///       pre-flight, so the run stopped before spending any AI calls rather
+    ///       than silently probing UNAUTHENTICATED
     Run {
         /// Source codebase root. MUST contain `whitebox/findings.sarif` produced by
         /// `guardlink sarif <codebase> -o whitebox/findings.sarif`. The codebase is also
@@ -757,6 +785,145 @@ pub enum PentestAction {
         // @g.comment -- "operator opt-out of crash recovery, because recovery lets cxg's own probes restart the application under test repeatedly and that side effect is an availability decision the operator owns, not cxg"
         #[arg(long)]
         no_restart: bool,
+
+        /// Read auth profiles from this directory instead of ~/.cert-x-gen/auth.
+        ///
+        /// A CI pipeline restores a bundle of profiles (imported via
+        /// `cxg pentest auth import --auth-dir <dir>`) into its own directory and
+        /// points the run at the same directory here, so pre-flight, the engine, and
+        /// the health monitor all read the restored bundle rather than the operator's
+        /// home store.
+        // @g.comment -- "forwards the auth-store redirect to the orchestrator, which reassigns auth.AUTH_DIR before any profile is loaded; every profile consumer reaches the store only through auth.load_profile, so this one flag moves all of them. Forwarded only when set, so an unset flag leaves the orchestrator's ~/.cert-x-gen/auth default in force — one default, in one place the two CLIs cannot drift apart on."
+        #[arg(long)]
+        auth_dir: Option<PathBuf>,
+
+        /// Non-interactive CI mode: fail loud instead of warning.
+        ///
+        /// A dead or expired auth session becomes a HARD FAIL (exit 5) at pre-flight
+        /// rather than today's warn-and-continue, so a pipeline never silently probes
+        /// UNAUTHENTICATED and refutes real findings; and a world-accessible
+        /// `--auth-dir` is refused rather than trusted. Without this flag the current
+        /// warn behaviour is unchanged. `--skip-health-check` remains the documented
+        /// escape hatch (it force-marks profiles alive, so the gate cannot trip).
+        ///
+        /// Also enabled by the environment variable CXG_CI=1, for pipelines that
+        /// cannot add the flag to the invocation.
+        // @g.comment -- "forwards the CI-mode selector as a flag when set; the hard-fail-on-dead-session and world-readable-auth-dir refusal both live in the Python orchestrator (cxg_pentest.py, auth.py), which also honours CXG_CI=1 on its own, so leaving the flag off here still lets the env var reach the orchestrator through the inherited environment"
+        #[arg(long)]
+        ci: bool,
+    },
+}
+
+/// Non-interactive auth subcommands for CI — mirrors `pentest/auth.py`'s
+/// `import`/`verify` subparsers exactly.
+// @g.comment -- "the CI-replay half of the auth surface: a human captures a session once (SSO/MFA and all) and exports its Playwright storage_state; import writes a profile from that state with no browser, and verify gates on whether the saved session is still alive. Both were reachable only via `python3 cxg_pentest.py auth ...` until this surface was wired into clap; the defaults here are copied from auth.py's argparse, which is the specification."
+#[derive(Subcommand, Debug, Clone)]
+pub enum AuthSubcommand {
+    /// Import a saved Playwright storage_state as a profile (no browser)
+    ///
+    /// The CI-replay primitive: a human captures a session once locally (SSO, MFA and
+    /// all), exports the Playwright storage_state, and every pipeline run injects it
+    /// here without a display or a human. The written profile is byte-for-byte what an
+    /// interactive capture produces, so a later `cxg pentest run --auth <profile>`
+    /// cannot tell an imported profile from a captured one.
+    ///
+    /// Examples:
+    ///     # From a file on disk
+    ///     cxg pentest auth import --profile pentest --target https://staging.app \
+    ///       --storage-state ./pentest.storage.json
+    ///
+    ///     # From stdin (a CI secret piped straight in, never written to disk in the clear)
+    ///     cat "$SESSION_SECRET" | cxg pentest auth import --profile pentest \
+    ///       --target https://staging.app --storage-state -
+    ///
+    ///     # From the base64 env var, into a restored bundle dir, CI-strict
+    ///     cxg pentest auth import --profile pentest --target https://staging.app \
+    ///       --auth-dir ./ci-auth --ci
+    Import {
+        /// Profile name. A subsequent `cxg pentest run --auth <profile>` loads it
+        /// exactly like a captured one.
+        #[arg(long)]
+        profile: String,
+
+        /// Target URL this session authenticates against. Recorded in the profile and
+        /// used by `auth verify` / run pre-flight as the landing-test URL.
+        #[arg(long)]
+        target: String,
+
+        /// Path to a Playwright storage_state JSON, or `-` to read it from stdin (a CI
+        /// secret pipes straight in, never touching disk in plaintext beyond the profile
+        /// dir). Omit to materialise it from the base64 env var CXG_AUTH_STATE_<NAME>
+        /// instead (NAME is the profile name uppercased with non-alphanumerics folded to
+        /// underscore — e.g. profile `pentest-alice` reads `CXG_AUTH_STATE_PENTEST_ALICE`).
+        // @g.source (#operator_storage_state) -- "storage_state source (path, '-' for stdin, or env fallback) supplied by the operator; forwarded verbatim to auth.py which resolves and redacts it — cxg never echoes its contents"
+        #[arg(long, value_name = "PATH|-")]
+        storage_state: Option<String>,
+
+        /// Human-readable label (e.g. 'admin'), shown in scan output.
+        #[arg(long)]
+        label: Option<String>,
+
+        /// Explicit privilege rank: an integer 0-100 or an alias high/medium/low. Same
+        /// meaning as on capture.
+        #[arg(long)]
+        tier: Option<String>,
+
+        /// Semantic role hint passed to the AI as extra context.
+        #[arg(long)]
+        persona: Option<String>,
+
+        /// Peer-group name for horizontal IDOR / cross-tenant tests.
+        #[arg(long)]
+        cohort: Option<String>,
+
+        /// Free-form `NAME=VALUE` context attached to the profile. Repeatable.
+        #[arg(long = "tag", value_name = "NAME=VALUE")]
+        tags: Vec<String>,
+
+        /// Custom HTTP header `NAME:VALUE` sent on every request from this profile
+        /// (e.g. a WAF-bypass token). Repeatable. Stored as a credential; values are
+        /// never echoed.
+        #[arg(long = "header", value_name = "NAME:VALUE")]
+        headers: Vec<String>,
+
+        /// Write into this auth directory instead of ~/.cert-x-gen/auth. A pipeline
+        /// restores a bundle of profiles into one dir and points the run at it with the
+        /// same flag.
+        #[arg(long)]
+        auth_dir: Option<PathBuf>,
+
+        /// Non-interactive CI mode: refuse a world-accessible `--auth-dir` rather than
+        /// write a credential a fellow user could read. Also enabled by CXG_CI=1.
+        // @g.comment -- "forwards CI-strictness to auth.py, which refuses a world-readable --auth-dir before persisting a session; the refusal lives in Python (assert_auth_dir_not_world_readable), honoured here and via CXG_CI=1 in the inherited environment"
+        #[arg(long)]
+        ci: bool,
+    },
+
+    /// Check a saved web session is still alive (exit 0 alive / non-zero dead)
+    ///
+    /// An out-of-band liveness gate for a saved session, reusing the same landing-page
+    /// test scan-time pre-flight uses. A pipeline runs this before spending a whole run,
+    /// and re-captures (or re-imports) when it fails.
+    ///
+    /// Example:
+    ///     cxg pentest auth verify --profile pentest || echo "session expired, re-import"
+    Verify {
+        /// Profile name to verify.
+        #[arg(long)]
+        profile: String,
+
+        /// Override the profile's saved target for the landing test.
+        #[arg(long)]
+        target: Option<String>,
+
+        /// Secondary identity endpoint probed for role/email; the landing test is the
+        /// source of truth. Default /api/me.
+        #[arg(long, default_value = "/api/me")]
+        me_path: String,
+
+        /// Read the profile from this auth directory instead of ~/.cert-x-gen/auth.
+        #[arg(long)]
+        auth_dir: Option<PathBuf>,
     },
 }
 
@@ -2902,5 +3069,326 @@ mod oast_flag_tests {
             return;
         }
         panic!("expected pentest run");
+    }
+}
+
+// @g.comment -- "unit tests for the Track B CI-auth surface (auth import / auth verify subcommands, and run's --ci/--auth-dir). Track B shipped to the Python orchestrator's argparse only; src/cli.rs was never updated, so the cxg binary rejected the whole surface with 'unexpected argument'. These pin that each subcommand and flag now parses, that the auth capture path is unchanged when no subcommand is given, that the import/verify subcommands do NOT demand the capture path's --target/--profile (the reason those two are Option at the parent), and that the mutually-exclusive capture-args-vs-subcommand constraint holds."
+#[cfg(test)]
+mod track_b_auth_tests {
+    use super::*;
+    use clap::Parser;
+
+    fn action(args: &[&str]) -> PentestAction {
+        let cli = Cli::try_parse_from(args).expect("should parse");
+        match cli.command {
+            Some(Commands::Pentest(p)) => p.action,
+            _ => panic!("expected pentest"),
+        }
+    }
+
+    fn err(args: &[&str]) -> bool {
+        Cli::try_parse_from(args).is_err()
+    }
+
+    // ---- auth import ----
+
+    #[test]
+    fn auth_import_parses_full_surface() {
+        let a = action(&[
+            "cxg",
+            "pentest",
+            "auth",
+            "import",
+            "--profile",
+            "pentest",
+            "--target",
+            "https://staging.app",
+            "--storage-state",
+            "./s.json",
+            "--label",
+            "admin",
+            "--tier",
+            "high",
+            "--persona",
+            "billing",
+            "--cohort",
+            "team-a",
+            "--tag",
+            "k1=v1",
+            "--tag",
+            "k2=v2",
+            "--header",
+            "x-a:1",
+            "--header",
+            "x-b:2",
+            "--auth-dir",
+            "./ci-auth",
+            "--ci",
+        ]);
+        match a {
+            PentestAction::Auth {
+                auth_sub:
+                    Some(AuthSubcommand::Import {
+                        profile,
+                        target,
+                        storage_state,
+                        label,
+                        tier,
+                        persona,
+                        cohort,
+                        tags,
+                        headers,
+                        auth_dir,
+                        ci,
+                    }),
+                ..
+            } => {
+                assert_eq!(profile, "pentest");
+                assert_eq!(target, "https://staging.app");
+                assert_eq!(storage_state.as_deref(), Some("./s.json"));
+                assert_eq!(label.as_deref(), Some("admin"));
+                assert_eq!(tier.as_deref(), Some("high"));
+                assert_eq!(persona.as_deref(), Some("billing"));
+                assert_eq!(cohort.as_deref(), Some("team-a"));
+                assert_eq!(tags, vec!["k1=v1", "k2=v2"]);
+                assert_eq!(headers, vec!["x-a:1", "x-b:2"]);
+                assert_eq!(auth_dir.as_deref(), Some(std::path::Path::new("./ci-auth")));
+                assert!(ci);
+            }
+            _ => panic!("expected auth import"),
+        }
+    }
+
+    // The whole point of Option-typed parent --target/--profile: `auth import`
+    // must NOT inherit the capture path's requirements, only its own.
+    #[test]
+    fn auth_import_does_not_require_parent_target_or_profile() {
+        // import supplies its own --profile/--target and nothing at the parent level.
+        let a = action(&[
+            "cxg",
+            "pentest",
+            "auth",
+            "import",
+            "--profile",
+            "p",
+            "--target",
+            "https://x",
+        ]);
+        match a {
+            PentestAction::Auth {
+                target,
+                profile,
+                auth_sub:
+                    Some(AuthSubcommand::Import {
+                        storage_state, ci, ..
+                    }),
+                ..
+            } => {
+                // parent capture fields stay unset
+                assert_eq!(target, None);
+                assert_eq!(profile, None);
+                // omitting --storage-state is valid (env-var fallback on the Python side)
+                assert_eq!(storage_state, None);
+                assert!(!ci);
+            }
+            _ => panic!("expected auth import"),
+        }
+    }
+
+    #[test]
+    fn auth_import_stdin_marker_is_a_value() {
+        let a = action(&[
+            "cxg",
+            "pentest",
+            "auth",
+            "import",
+            "--profile",
+            "p",
+            "--target",
+            "https://x",
+            "--storage-state",
+            "-",
+        ]);
+        match a {
+            PentestAction::Auth {
+                auth_sub: Some(AuthSubcommand::Import { storage_state, .. }),
+                ..
+            } => assert_eq!(storage_state.as_deref(), Some("-")),
+            _ => panic!("expected auth import"),
+        }
+    }
+
+    #[test]
+    fn auth_import_requires_profile_and_target() {
+        assert!(
+            err(&["cxg", "pentest", "auth", "import", "--target", "https://x"]),
+            "import without --profile must fail"
+        );
+        assert!(
+            err(&["cxg", "pentest", "auth", "import", "--profile", "p"]),
+            "import without --target must fail"
+        );
+    }
+
+    // ---- auth verify ----
+
+    #[test]
+    fn auth_verify_parses_with_defaults() {
+        let a = action(&["cxg", "pentest", "auth", "verify", "--profile", "pentest"]);
+        match a {
+            PentestAction::Auth {
+                auth_sub:
+                    Some(AuthSubcommand::Verify {
+                        profile,
+                        target,
+                        me_path,
+                        auth_dir,
+                    }),
+                ..
+            } => {
+                assert_eq!(profile, "pentest");
+                assert_eq!(target, None);
+                assert_eq!(me_path, "/api/me"); // mirrors auth.py's default
+                assert_eq!(auth_dir, None);
+            }
+            _ => panic!("expected auth verify"),
+        }
+    }
+
+    #[test]
+    fn auth_verify_accepts_overrides() {
+        let a = action(&[
+            "cxg",
+            "pentest",
+            "auth",
+            "verify",
+            "--profile",
+            "p",
+            "--target",
+            "https://y",
+            "--me-path",
+            "/whoami",
+            "--auth-dir",
+            "./ci-auth",
+        ]);
+        match a {
+            PentestAction::Auth {
+                auth_sub:
+                    Some(AuthSubcommand::Verify {
+                        target,
+                        me_path,
+                        auth_dir,
+                        ..
+                    }),
+                ..
+            } => {
+                assert_eq!(target.as_deref(), Some("https://y"));
+                assert_eq!(me_path, "/whoami");
+                assert_eq!(auth_dir.as_deref(), Some(std::path::Path::new("./ci-auth")));
+            }
+            _ => panic!("expected auth verify"),
+        }
+    }
+
+    #[test]
+    fn auth_verify_requires_profile() {
+        assert!(
+            err(&["cxg", "pentest", "auth", "verify"]),
+            "verify without --profile must fail"
+        );
+    }
+
+    // ---- interactive capture path is unchanged (no subcommand) ----
+
+    #[test]
+    fn bare_auth_capture_still_parses_and_leaves_sub_none() {
+        let a = action(&[
+            "cxg",
+            "pentest",
+            "auth",
+            "--target",
+            "https://x",
+            "--profile",
+            "p",
+        ]);
+        match a {
+            PentestAction::Auth {
+                target,
+                profile,
+                auth_sub,
+                ..
+            } => {
+                assert_eq!(target.as_deref(), Some("https://x"));
+                assert_eq!(profile.as_deref(), Some("p"));
+                assert!(auth_sub.is_none(), "no subcommand => interactive capture");
+            }
+            _ => panic!("expected auth capture"),
+        }
+    }
+
+    // Capture args and a subcommand are mutually exclusive on one invocation
+    // (args_conflicts_with_subcommands): you either capture, or import/verify.
+    #[test]
+    fn capture_args_conflict_with_subcommand() {
+        assert!(
+            err(&[
+                "cxg",
+                "pentest",
+                "auth",
+                "--target",
+                "https://x",
+                "import",
+                "--profile",
+                "p",
+                "--target",
+                "https://x",
+            ]),
+            "parent capture args must conflict with a subcommand"
+        );
+    }
+
+    // ---- run --ci / --auth-dir ----
+
+    #[test]
+    fn run_ci_and_auth_dir_parse() {
+        let a = action(&[
+            "cxg",
+            "pentest",
+            "run",
+            "--codebase",
+            ".",
+            "--target",
+            "https://x",
+            "--ci",
+            "--auth-dir",
+            "./ci-auth",
+        ]);
+        match a {
+            PentestAction::Run { ci, auth_dir, .. } => {
+                assert!(ci);
+                assert_eq!(auth_dir.as_deref(), Some(std::path::Path::new("./ci-auth")));
+            }
+            _ => panic!("expected pentest run"),
+        }
+    }
+
+    #[test]
+    fn run_defaults_leave_ci_false_and_auth_dir_none() {
+        let a = action(&[
+            "cxg",
+            "pentest",
+            "run",
+            "--codebase",
+            ".",
+            "--target",
+            "https://x",
+        ]);
+        match a {
+            PentestAction::Run { ci, auth_dir, .. } => {
+                assert!(!ci, "--ci defaults off, so main.rs forwards nothing");
+                assert_eq!(auth_dir, None);
+            }
+            _ => panic!("expected pentest run"),
+        }
     }
 }
