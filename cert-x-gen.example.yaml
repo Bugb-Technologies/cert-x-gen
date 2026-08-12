@@ -1,4 +1,8 @@
 # CERT-X-GEN Example Configuration
+#
+# NOTE: This file does NOT currently load — the config parser rejects it, and many of the
+# keys below are parsed but have no effect. It is being revised. Do not rely on it yet.
+#
 # Copy this file to cert-x-gen.yaml and customize for your environment
 
 global:

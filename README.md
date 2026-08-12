@@ -2,18 +2,18 @@
 <h4 align="center">A Polyglot Execution Engine for Vulnerability Detection</h4>
 
 <p align="center">
-Write security checks as real code — Python, Rust, Go, C, Shell, or YAML — and run them safely, reproducibly, and at scale.
+Write security checks as real code — Python, Rust, Go, C, Shell, or YAML — and run them reproducibly, at scale.
 </p>
 
 <p align="center">
 <a href="https://github.com/Bugb-Technologies/cert-x-gen/releases"><img src="https://img.shields.io/github/v/release/Bugb-Technologies/cert-x-gen?style=flat-square"></a>
 <a href="https://github.com/Bugb-Technologies/cert-x-gen/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square"></a>
 <a href="https://github.com/Bugb-Technologies/cert-x-gen/actions"><img src="https://img.shields.io/github/actions/workflow/status/Bugb-Technologies/cert-x-gen/ci.yml?style=flat-square"></a>
-<a href="https://github.com/Bugb-Technologies/cert-x-gen-templates"><img src="https://img.shields.io/badge/templates-147-orange?style=flat-square"></a>
 </p>
 
 <p align="center">
 <a href="#what-is-cert-x-gen">What is it</a> •
+<a href="#two-surfaces">Surfaces</a> •
 <a href="#installation">Install</a> •
 <a href="#quick-start">Quick Start</a> •
 <a href="#templates">Templates</a> •
@@ -28,7 +28,7 @@ Write security checks as real code — Python, Rust, Go, C, Shell, or YAML — a
 
 Modern security scanning has outgrown static templates. Today's vulnerability detection often requires real programming logic, protocol-level control, data processing, and reuse of existing scripts — yet most scanners force everything into YAML-only abstractions.
 
-CERT-X-GEN is a different kind of scanner. It is a **polyglot security execution engine** that treats vulnerability detection as code, not configuration. You write detection logic in the language that fits the problem — CERT-X-GEN handles orchestration, sandboxing, and output.
+CERT-X-GEN is a different kind of scanner. It is a **polyglot security execution engine** that treats vulnerability detection as code, not configuration. You write detection logic in the language that fits the problem — CERT-X-GEN handles orchestration, execution, and output.
 
 **What this means in practice:**
 
@@ -50,6 +50,42 @@ cxg scan --scope targets.txt --templates redis*.py,docker*.go,system*.sh
 - A **bridge** between research scripts and production scanners
 - A scanner **designed for CI, automation, and agentic systems**
 
+> **A note on execution privileges.** Templates run as ordinary child processes with the
+> privileges of the user invoking cxg, with full network and filesystem access. There is no
+> execution sandbox or resource limiting — run cxg inside a container or VM, and as a
+> non-privileged user, if you need isolation. See the [Sandbox Guide](docs/SANDBOX_GUIDE.md),
+> whose `cxg sandbox` command manages per-language *dependency* environments (not isolation).
+
+
+---
+
+
+## Two Surfaces
+
+CERT-X-GEN ships two distinct workflows:
+
+| Surface | Command | What it does |
+|---------|---------|--------------|
+| **Template scanning** | `cxg scan` | Runs polyglot detection templates against network/host targets (single host, file, CIDR, URL). This is the classic scanner. |
+| **AI-driven whitebox pentest** | `cxg pentest` | Ranks guardlink source-code hypotheses against an operator goal, has a local AI CLI write JavaScript probe templates that read the target's source, and executes them in parallel **authenticated** Chromium contexts against a running web app or Electron desktop app. |
+
+The full command set:
+
+| Command | Purpose |
+|---------|---------|
+| `cxg scan` | Run a polyglot template security scan |
+| `cxg pentest` | AI-driven whitebox pentest pipeline (web or Electron) |
+| `cxg template` | Manage templates (list, search, info, validate, update) |
+| `cxg search` | Search templates (full-text, regex, filters) |
+| `cxg ai` | AI-powered template generation |
+| `cxg mcp` | Run as an MCP (Model Context Protocol) server for AI agents |
+| `cxg sandbox` | Manage per-language dependency environments |
+| `cxg config` | Generate / validate / show configuration |
+| `cxg update` | Update cxg to the latest released build |
+| `cxg server` | REST API server — **not implemented** (returns an error) |
+| `cxg version` | Display version information |
+
+Run `cxg <command> --help` for the full reference on any of them.
 
 ---
 
@@ -162,14 +198,14 @@ Download pre-built binaries from [GitHub Releases](https://github.com/Bugb-Techn
 
 ```bash
 cxg --version
-cxg template update  # Downloads official templates
+cxg template update  # Clones the official template library into ~/.cert-x-gen/templates/
 ```
 
 ---
 
 ## Quick Start
 
-### Basic Scanning
+### Scanning (`cxg scan`)
 
 ```bash
 # Scan a single target
@@ -185,6 +221,37 @@ cxg scan --scope 192.168.1.0/24 --top-ports 100
 cxg scan --scope targets.txt --templates redis*.py
 ```
 
+### Whitebox Pentest (`cxg pentest`)
+
+The pentest pipeline drives an authenticated browser (or Electron app), so it needs a captured
+session and a guardlink source-code analysis (`whitebox/findings.sarif`) in the codebase.
+
+```bash
+# 1. Capture an authenticated session interactively (opens a real browser to log in)
+cxg pentest auth --target https://app.example.com --profile admin
+
+# 2. Run the pipeline: rank hypotheses, generate probes with your local AI CLI, execute them
+cxg pentest run --codebase ./repo --target https://app.example.com \
+  --auth admin --ai --ai-provider claude \
+  --goal "test for IDOR in the records and transactions APIs"
+```
+
+For CI, capture the session once, export it as a Playwright `storage_state`, then replay it
+without a browser:
+
+```bash
+cxg pentest auth import --profile pentest --target https://staging.app \
+  --storage-state ./pentest.storage.json
+cxg pentest auth verify --profile pentest           # exit 0 = alive, non-zero = expired
+cxg pentest run --codebase ./repo --target https://staging.app --auth pentest --ci
+```
+
+`--ci` (or `CXG_CI=1`) makes a dead/expired session a hard failure (**exit code 5**) at
+pre-flight, so a pipeline never silently probes unauthenticated. A profile bundle can also be
+materialised from the base64 env var `CXG_AUTH_STATE_<NAME>` and pointed at with `--auth-dir`.
+See the [pentest docs](#documentation) for the full pipeline, Electron target support, OAST
+modes, and the `report.json` schema.
+
 ### Template Operations
 
 ```bash
@@ -194,45 +261,49 @@ cxg template list
 # Search templates
 cxg template search redis
 
-# Validate a template
-cxg template validate my-template.py
-
-# Get template info
-cxg template info smtp-open-relay.py
+# Get template info (by template ID)
+cxg template info redis-unauthenticated
 ```
 
 ### Output Formats
 
+`cxg scan` writes reports with `--output-format` (comma-separated for several at once) and
+`-o`/`--output` for the destination basename. The output extension is derived from the format —
+**any extension you put on `--output` is replaced**, so `--output report.txt --output-format json`
+writes `report.json`.
+
 ```bash
 # JSON output
-cxg scan --scope target.com --format json -o results.json
+cxg scan --scope target.com --output-format json -o results
 
 # HTML report
-cxg scan --scope target.com --format html -o report.html
+cxg scan --scope target.com --output-format html -o report
 
 # SARIF for CI/CD
-cxg scan --scope target.com --format sarif -o results.sarif
+cxg scan --scope target.com --output-format sarif -o results
+
+# Several formats at once
+cxg scan --scope target.com --output-format json,html,sarif -o report
 ```
+
+Supported formats: **json, csv, sarif, html, markdown**.
 
 ---
 
 
 ## Templates
 
-Templates are maintained in a separate repository for community contributions:
+Runtime templates are **not shipped in this repository**. They are distributed separately in the
+template library repo:
 
 **[github.com/Bugb-Technologies/cert-x-gen-templates](https://github.com/Bugb-Technologies/cert-x-gen-templates)**
 
-| Language | Count | Best For |
-|----------|-------|----------|
-| Python | 15 | Stateful protocols, HTTP APIs, data processing |
-| Go | 5 | Binary protocols, high concurrency |
-| C | 5 | Low-level protocols, maximum performance |
-| Rust | 4 | Memory-safe performance, async I/O |
-| Shell | 5 | Native tool integration, system checks |
-| YAML | 24 | Simple HTTP checks, Nuclei compatibility |
+Fetch them with `cxg template update`, which clones the library into `~/.cert-x-gen/templates/`.
+From there the scanner discovers them automatically. (Templates are not auto-downloaded by a bare
+`cxg scan` — run `cxg template update`, or pass `--ut` / `--auto-update-templates` on a scan.)
 
-Templates auto-download on first scan. Update with `cxg template update`.
+Templates cover multiple languages — Python, Go, C, Rust, Shell, YAML and more — with the exact
+inventory maintained in the template repository.
 
 ### Writing Templates
 
@@ -276,7 +347,6 @@ if 'redis_version' in response:
 
 - **Code over configuration** — use real languages for real logic
 - **Deterministic execution** — same input, same output
-- **Sandboxed by default** — templates run with strict resource limits
 - **Composable scans** — mix languages, reuse logic across templates
 - **Automation-first** — built for CI, pipelines, and agentic systems
 
@@ -286,20 +356,31 @@ if 'redis_version' in response:
 
 **Execution Engine**
 - 12 supported languages (Python, Go, Rust, C, C++, Java, JavaScript, Ruby, Perl, PHP, Shell, YAML)
-- Sandboxed execution with configurable resource limits
 - Compilation caching for compiled languages
 - Parallel template execution with rate limiting
 
 **CLI**
 - Unified `--scope` for targets (single, file, CIDR, URL)
 - Smart `--templates` selection (glob patterns, tags, severity)
-- Multiple output formats (JSON, HTML, CSV, Markdown, SARIF)
-- Built-in template management and validation
+- Multiple output formats (JSON, CSV, SARIF, HTML, Markdown)
+- Built-in template management
 
 **Integration**
-- Git-based template repositories with auto-update
+- Git-based template repositories, updatable with `cxg template update`
 - CI/CD friendly (exit codes, SARIF output)
-- Configurable via CLI, config file, or environment variables
+- Configurable via CLI flags and a config file (`--config`)
+- MCP server (`cxg mcp`) for AI-agent integration
+
+### AI providers (pentest)
+
+`cxg pentest` generates probes with a local AI CLI or an HTTP API. `--ai-provider` accepts:
+`auto | bridge | claude | codex | gemini | anthropic | openai`. The **`bridge`** provider posts
+each prompt to `$BUGB_BRIDGE_URL` (with `Authorization: Bearer $BUGB_BRIDGE_TOKEN` when set) and
+reads the completion back — an editor/CI integration point rather than a local CLI. When
+`--ai-provider auto` is used, the bridge is preferred whenever `$BUGB_BRIDGE_URL` is set.
+
+Findings in `report.json` carry a `threat_id` linking each finding back to the originating
+guardlink hypothesis (`null` for AI/mutation-synthesised probes).
 
 ---
 
@@ -311,8 +392,18 @@ if 'redis_version' in response:
 | [Usage Guide](docs/USAGE_GUIDE.md) | Comprehensive CLI usage and examples |
 | [Architecture](docs/ARCHITECTURE.md) | System design and internals |
 | [Engine Guide](docs/ENGINES.md) | Language-specific execution details |
-| [Sandbox Guide](docs/SANDBOX_GUIDE.md) | Security model and resource limits |
+| [Sandbox Guide](docs/SANDBOX_GUIDE.md) | `cxg sandbox` dependency-environment management |
 | [Contributing](CONTRIBUTING.md) | How to contribute code and templates |
+
+**Whitebox pentest (`cxg pentest`):**
+
+| Document | Description |
+|----------|-------------|
+| [Pentest Overview](pentest/README.md) | The pentest pipeline at a glance |
+| [Pentest Architecture](pentest/docs/ARCHITECTURE.md) | Pipeline, substrate, and runtime intelligence layer |
+| [Operator Guide](pentest/docs/OPERATOR_GUIDE.md) | Running scans: auth, targets, OAST, Electron |
+| [Probe Templates](pentest/docs/TEMPLATES.md) | The JavaScript probe format and available primitives |
+| [Troubleshooting](pentest/docs/TROUBLESHOOTING.md) | Diagnosing pentest runs |
 
 ---
 

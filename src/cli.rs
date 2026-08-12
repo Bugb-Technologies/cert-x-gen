@@ -18,7 +18,7 @@ use std::path::PathBuf;
   🔍 Powerful Template Search: Full-text search, regex, content search, multiple filters
   ⚡ High Performance: Parallel execution, compilation caching for compiled languages
   📊 Multiple Output Formats: JSON, CSV, SARIF, HTML, Markdown
-  🔌 Extensible: Plugin system, custom templates in any supported language
+  🔌 Extensible: Custom templates in any supported language
 
 EXAMPLES:
   # Basic scanning
@@ -60,7 +60,7 @@ EXAMPLES:
   cxg scan --scope example.com --output results --output-format json
 
   # Performance tuning
-  cxg scan --scope example.com --threads 20 --parallel-targets 100
+  cxg scan --scope example.com --parallel-targets 100 --parallel-templates 20
   cxg scan --scope example.com --timeout 60s --retry 5
 
   # Stealth and safety
@@ -134,7 +134,7 @@ pub enum Commands {
     /// Search templates
     Search(SearchArgs),
 
-    /// Run as API server
+    /// Run as API server [NOT IMPLEMENTED — returns an error]
     Server(ServerArgs),
 
     /// Generate configuration file
@@ -469,7 +469,8 @@ pub enum PentestAction {
     ///   0 → no confirmed findings (clean scan)
     ///   1 → no templates available (guardlink output missing or empty)
     ///   2 → confirmed findings present
-    ///   3 → scan was hard-killed (5xx streak, scope violation, etc.)
+    ///   3 → scan was hard-killed (5xx streak, scope violation) OR, under
+    ///       `--no-restart`, a desktop target died mid-scan and was not relaunched
     ///   5 → CI mode (`--ci` / CXG_CI=1): an auth session was dead/expired at
     ///       pre-flight, so the run stopped before spending any AI calls rather
     ///       than silently probing UNAUTHENTICATED
@@ -566,11 +567,16 @@ pub enum PentestAction {
         #[arg(long, default_value = "2")]
         mutation_retries: usize,
 
-        /// AI provider. `auto` picks the first available CLI tool (claude > codex > gemini),
-        /// falling back to ANTHROPIC_API_KEY / OPENAI_API_KEY HTTP APIs. Otherwise specify
-        /// explicitly. CLI providers don't need API keys — they use your existing CLI auth.
+        /// AI provider. `auto` prefers the editor bridge when $BUGB_BRIDGE_URL is set,
+        /// then the first available CLI tool (claude > codex > gemini), falling back to
+        /// ANTHROPIC_API_KEY / OPENAI_API_KEY HTTP APIs. Otherwise specify explicitly.
+        /// CLI providers don't need API keys — they use your existing CLI auth.
         ///
-        /// Options: auto | claude | codex | gemini | anthropic | openai
+        /// Options: auto | bridge | claude | codex | gemini | anthropic | openai
+        ///
+        /// `bridge` posts each prompt to $BUGB_BRIDGE_URL (with Authorization: Bearer
+        /// $BUGB_BRIDGE_TOKEN when set) and reads the completion back — an editor/CI
+        /// integration point rather than a local CLI.
         #[arg(long, default_value = "claude")]
         ai_provider: String,
 
@@ -977,19 +983,6 @@ PORT SELECTION:
     Example:
       cxg scan --scope example.com --override-ports 80,443
 
-PROTOCOL SPECIFICATION:
-  Define which protocols to use for scanning (http, https, tcp, udp, etc.).
-  
-  --protocol <PROTOCOL>
-    Use a single protocol for all scans.
-    Example:
-      cxg scan --scope example.com --protocol https
-  
-  --protocols <PROTOCOLS>
-    Test multiple protocols (comma-separated). Engine tries each protocol.
-    Example:
-      cxg scan --scope example.com --protocols http,https
-
 TEMPLATE FILTERING:
   Control which vulnerability templates are executed. Filter by ID, language, severity, or tags.
   
@@ -1037,45 +1030,32 @@ OUTPUT AND REPORTING:
   Customize how scan results are saved and displayed.
   
   --output <BASENAME>
-    Set the output file basename. Extensions are added based on format.
+    Set the output file basename. Any trailing extension is REPLACED by the chosen
+    format's extension — e.g. `--output report.txt --output-format json` writes report.json.
     Default: scan-results
     Example:
-      cxg scan --scope example.com --output my-scan
-      # Creates: my-scan.json, my-scan.csv, etc.
-  
+      cxg scan --scope example.com --output my-scan --output-format json
+      # Writes: my-scan.json
+
   --output-format <FORMATS>
     Specify output formats (comma-separated). Multiple formats can be generated simultaneously.
-    Available: json, csv, sarif, html, xml
+    Available: json, csv, sarif, html, markdown
     - json: Machine-readable, ideal for automation and APIs
     - csv: Spreadsheet-friendly, good for reporting and analysis
     - sarif: Static Analysis Results Interchange Format (for CI/CD integration)
     - html: Human-readable report with visualizations
-    - xml: Structured format for enterprise tools
+    - markdown: Human-readable Markdown report
     Example:
       cxg scan --scope example.com --output-format json,html,sarif
-  
-  --stream
-    Enable real-time streaming output. Results are displayed as they're found.
-    Useful for long-running scans where you want immediate feedback.
-    Example:
-      cxg scan --scope example.com --stream
-  
+
   --quiet
-    Suppress non-essential output. Only show critical information and errors.
-    Ideal for scripting and automation where you want minimal noise.
+    Suppress the ASCII startup banner. Scan output itself is unchanged.
     Example:
-      cxg scan --scope example.com --quiet --output-format json
+      cxg scan --scope example.com --quiet
 
 PERFORMANCE AND CONCURRENCY:
   Tune scan performance based on your resources and target infrastructure.
-  
-  --threads <N>
-    Number of worker threads for parallel execution. Higher = faster but more resource-intensive.
-    Default: Number of CPU cores
-    Recommendation: Start with default, increase if targets can handle load
-    Example:
-      cxg scan --scope example.com --threads 20
-  
+
   --parallel-targets <N>
     How many targets to scan simultaneously. Higher = faster but may trigger rate limits.
     Default: 50
@@ -1174,7 +1154,7 @@ NETWORK CONFIGURATION:
   
   --follow-redirects
     Follow HTTP redirects automatically. Useful for discovering redirect chains.
-    Default: Enabled
+    Default: Disabled (redirects are not followed unless this flag is passed)
     Example:
       cxg scan --scope example.com --follow-redirects --max-redirects 10
   
@@ -1184,51 +1164,19 @@ NETWORK CONFIGURATION:
     Example:
       cxg scan --scope example.com --max-redirects 3
 
-ADVANCED FEATURES:
-  Advanced capabilities for complex scanning scenarios.
-  
-  --resume <SCAN-ID>
-    Resume a previously interrupted scan from where it left off.
-    Scan state is automatically saved, allowing recovery from crashes or interruptions.
-    Example:
-      cxg scan --scope example.com --resume a1b2c3d4-e5f6-7890-abcd-ef1234567890
-  
-  --distributed
-    Enable distributed scanning mode. Coordinates with other scanner instances.
-    Allows horizontal scaling across multiple machines for massive scans.
-    Example:
-      cxg scan --scope @10000-targets.txt --distributed --coordinator http://coordinator:8080
-  
-  --coordinator <URL>
-    URL of the distributed scan coordinator. Required when using --distributed.
-    The coordinator manages work distribution and result aggregation.
-    Example:
-      cxg scan --scope example.com --distributed --coordinator http://192.168.1.100:8080
-  
-  --worker-id <ID>
-    Unique identifier for this worker in distributed mode. Auto-generated if not specified.
-    Example:
-      cxg scan --scope @targets.txt --distributed --coordinator http://coordinator:8080 --worker-id scanner-01
-
 CONFIGURATION FILES:
-  Use configuration files for complex setups and reusable scan profiles.
-  
+  Use configuration files for complex setups.
+
   --config <FILE>
     Load settings from a configuration file (YAML, TOML, or JSON).
     CLI arguments override config file settings.
     Example:
       cxg scan --config production-scan.yaml --scope example.com
-  
-  --profile <NAME>
-    Use a named configuration profile from your config file.
-    Profiles allow quick switching between different scanning scenarios.
-    Example:
-      cxg scan --profile production --scope example.com
 
 COMMON SCANNING SCENARIOS:
 
 1. Quick Vulnerability Assessment (Fast, High-Severity Only):
-   cxg scan --scope example.com --severity critical,high --threads 20
+   cxg scan --scope example.com --severity critical,high
 
 2. Comprehensive Security Audit (All Templates, All Severities):
    cxg scan --scope example.com --output-format json,html,sarif
@@ -1306,11 +1254,17 @@ pub struct ScanArgs {
 
     // Protocol specification
     /// Protocol to use for scanning
-    #[arg(long, help = "Specify protocol: http, https, tcp, udp, etc.")]
+    #[arg(
+        long,
+        help = "Specify protocol: http, https, tcp, udp, etc. [NOT IMPLEMENTED — accepted and ignored]"
+    )]
     pub protocol: Option<String>,
 
     /// Multiple protocols to test (comma-separated)
-    #[arg(long, help = "Test multiple protocols. Example: http,https")]
+    #[arg(
+        long,
+        help = "Test multiple protocols. Example: http,https [NOT IMPLEMENTED — accepted and ignored]"
+    )]
     pub protocols: Option<String>,
 
     // Template selection
@@ -1366,7 +1320,7 @@ pub struct ScanArgs {
     /// thread count. The actual concurrency is controlled by --parallel-targets and
     /// --parallel-templates. This option is kept for compatibility and may be used
     /// for future thread pool configuration.
-    #[arg(long, default_value_t = num_cpus::get(), help = "Worker threads for parallel execution. Higher = faster but more CPU usage. Note: In async context, concurrency is controlled by --parallel-targets and --parallel-templates")]
+    #[arg(long, default_value_t = num_cpus::get(), help = "Worker threads for parallel execution. Concurrency is actually controlled by --parallel-targets and --parallel-templates. [NOT IMPLEMENTED — accepted and ignored]")]
     pub threads: usize,
 
     /// Number of targets to scan simultaneously
@@ -1491,26 +1445,26 @@ pub struct ScanArgs {
     )]
     pub output: String,
 
-    /// Output formats (comma-separated: json,html,sarif,csv,xml)
+    /// Output formats (comma-separated: json,csv,sarif,html,markdown)
     #[arg(
         long,
         default_value = "json",
-        help = "Output formats. json=automation, csv=spreadsheet, sarif=CI/CD, html=visual, xml=enterprise"
+        help = "Output formats. json=automation, csv=spreadsheet, sarif=CI/CD, html=visual, markdown=docs"
     )]
     pub output_format: String,
 
     /// Enable real-time streaming output (results shown as found)
     #[arg(
         long,
-        help = "Stream results in real-time. Useful for long scans where you want immediate feedback"
+        help = "Stream results in real-time. [NOT IMPLEMENTED — accepted and ignored]"
     )]
     pub stream: bool,
 
-    /// Quiet mode (suppress non-essential output)
+    /// Quiet mode (suppress the startup banner)
     #[arg(
         short,
         long,
-        help = "Minimal output: only critical info and errors. Ideal for scripting and automation"
+        help = "Suppress the ASCII startup banner. Scan output itself is unchanged"
     )]
     pub quiet: bool,
 
@@ -1518,35 +1472,35 @@ pub struct ScanArgs {
     /// Resume previously interrupted scan by scan ID
     #[arg(
         long,
-        help = "Resume scan from where it stopped. Scan state is auto-saved for recovery from crashes"
+        help = "Resume scan from where it stopped. [NOT IMPLEMENTED — accepted and ignored]"
     )]
     pub resume: Option<String>,
 
     /// Enable distributed scanning mode (horizontal scaling)
     #[arg(
         long,
-        help = "Distributed mode: coordinate with other scanners for massive scans across multiple machines"
+        help = "Distributed mode: coordinate with other scanners for massive scans. [NOT IMPLEMENTED — accepted and ignored]"
     )]
     pub distributed: bool,
 
     /// Coordinator URL for distributed scanning (required with --distributed)
     #[arg(
         long,
-        help = "Coordinator manages work distribution. Example: http://coordinator:8080"
+        help = "Coordinator URL for distributed mode. [NOT IMPLEMENTED — accepted and ignored]"
     )]
     pub coordinator: Option<String>,
 
     /// Unique worker ID for distributed scanning (auto-generated if not set)
     #[arg(
         long,
-        help = "Worker identifier in distributed mode. Example: scanner-01, worker-east-1"
+        help = "Worker identifier in distributed mode. [NOT IMPLEMENTED — accepted and ignored]"
     )]
     pub worker_id: Option<String>,
 
     /// Configuration profile name from config file
     #[arg(
         long,
-        help = "Use named profile from config. Allows quick switching between scan scenarios"
+        help = "Use named profile from config. [NOT IMPLEMENTED — accepted and ignored]"
     )]
     pub profile: Option<String>,
 
@@ -1751,7 +1705,10 @@ pub enum TemplateAction {
     /// Show the template directories used by cxg
     Pwd,
 
-    /// Display the skeleton/scaffold template for a language
+    /// Display the skeleton/scaffold template for a language.
+    ///
+    /// This is a starting scaffold, not a ready-to-run template. The emitted YAML skeleton
+    /// in particular does not pass the engine loader as-is and must be edited before use.
     Skeleton {
         /// Programming language for the skeleton
         #[arg(value_enum, value_name = "LANG")]
@@ -1919,22 +1876,13 @@ pub struct SearchArgs {
 
 #[derive(Parser, Debug)]
 #[command(
-    about = "Run CERT-X-GEN as an API server",
-    long_about = "Start CERT-X-GEN as a REST API server for remote scanning capabilities, \
-                  web-based management, and integration with other security tools.",
-    after_help = "EXAMPLES:
-  # Start server with defaults
-  cxg server
-
-  # Custom port and bind address
-  cxg server --port 8080
-  cxg server --bind 0.0.0.0 --port 3000
-
-  # Enable TLS/HTTPS
-  cxg server --tls --tls-cert server.crt --tls-key server.key
-
-  # With authentication
-  cxg server --auth-token my-secret-token"
+    about = "Run as API server [NOT IMPLEMENTED — returns an error]",
+    long_about = "Intended to start CERT-X-GEN as a REST API server for remote scanning.\n\n\
+                  NOT IMPLEMENTED: this command currently exits with \
+                  `Error: Not implemented: API server not yet implemented`. The flags below \
+                  (including --tls*) are accepted but the server does not start.",
+    after_help = "NOTE: `cxg server` is not implemented and exits with an error. The options \
+                  below are placeholders and have no effect."
 )]
 pub struct ServerArgs {
     /// Server port
