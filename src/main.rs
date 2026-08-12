@@ -15,6 +15,7 @@ use cert_x_gen::{
 };
 use clap::Parser;
 use include_dir::{include_dir, Dir};
+use std::io::IsTerminal;
 use std::sync::Arc;
 use std::{
     collections::HashSet,
@@ -28,14 +29,17 @@ use cli::{Cli, Commands};
 
 #[tokio::main]
 async fn main() {
-    // Display banner first (before parsing CLI)
-    // Check if --quiet flag is present in args
+    // Display the banner first (before parsing CLI), but never onto machine-readable
+    // stdout. The default rule is a TTY check: suppress the banner whenever stdout is
+    // not a terminal (pipes, redirects, CI, JSON-RPC over stdio for `mcp`, etc.).
+    // Explicit escapes still force suppression even on a terminal.
     let args: Vec<String> = std::env::args().collect();
-    let is_quiet = args.iter().any(|arg| arg == "--quiet" || arg == "-q")
-        || args.iter().any(|arg| arg == "mcp")
-        || std::env::var("CXG_NO_BANNER").is_ok();
+    let suppress_banner = std::env::var("CXG_NO_BANNER").is_ok()
+        || args.iter().any(|arg| arg == "--quiet" || arg == "-q")
+        || args.iter().any(|arg| arg == "--version" || arg == "-V")
+        || !std::io::stdout().is_terminal();
 
-    if !is_quiet {
+    if !suppress_banner {
         cert_x_gen::banner::display_banner();
     }
 
