@@ -335,60 +335,148 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
             target_type,
             app_cmd,
             app_binary,
-        } => {
-            args.extend([
-                "auth".into(),
-                "login".into(),
-                "--target".into(),
-                target,
-                "--profile".into(),
+            auth_sub,
+        } => match auth_sub {
+            // @g.comment -- "A subcommand routes to auth.py's browser-free CI paths (import/verify) instead of the interactive `auth login` capture. The capture path's --target/--profile are Option at the clap layer (clap derive won't negate a required parent arg for a subcommand — see cli.rs), and the import/verify subcommands carry their own --profile/--target, so the parent-level bindings are simply unused in these two branches."
+            Some(cli::AuthSubcommand::Import {
                 profile,
-                "--auth-numbers".into(),
-                auth_numbers.to_string(),
-                "--login-path".into(),
-                login_path,
-            ]);
-            if let Some(c) = creds {
-                args.extend(["--creds".into(), c]);
+                target,
+                storage_state,
+                label,
+                tier,
+                persona,
+                cohort,
+                tags,
+                headers,
+                auth_dir,
+                ci,
+            }) => {
+                args.extend([
+                    "auth".into(),
+                    "import".into(),
+                    "--profile".into(),
+                    profile,
+                    "--target".into(),
+                    target,
+                ]);
+                // @g.sink #operator_storage_state -- "hands the operator-supplied storage_state source (a path, '-' for stdin, or omitted for the env-var fallback) to auth.py, which resolves and REDACTS it; cxg never reads or echoes the session contents"
+                if let Some(s) = storage_state {
+                    args.extend(["--storage-state".into(), s]);
+                }
+                if let Some(l) = label {
+                    args.extend(["--label".into(), l]);
+                }
+                if let Some(t) = tier {
+                    args.extend(["--tier".into(), t]);
+                }
+                if let Some(p) = persona {
+                    args.extend(["--persona".into(), p]);
+                }
+                if let Some(c) = cohort {
+                    args.extend(["--cohort".into(), c]);
+                }
+                for t in tags {
+                    args.extend(["--tag".into(), t]);
+                }
+                for h in headers {
+                    args.extend(["--header".into(), h]);
+                }
+                if let Some(d) = auth_dir {
+                    args.extend(["--auth-dir".into(), d.to_string_lossy().to_string()]);
+                }
+                if ci {
+                    args.push("--ci".into());
+                }
             }
-            if let Some(f) = creds_file {
-                args.extend(["--creds-file".into(), f.to_string_lossy().to_string()]);
+            Some(cli::AuthSubcommand::Verify {
+                profile,
+                target,
+                me_path,
+                auth_dir,
+            }) => {
+                args.extend([
+                    "auth".into(),
+                    "verify".into(),
+                    "--profile".into(),
+                    profile,
+                    "--me-path".into(),
+                    me_path,
+                ]);
+                if let Some(t) = target {
+                    args.extend(["--target".into(), t]);
+                }
+                if let Some(d) = auth_dir {
+                    args.extend(["--auth-dir".into(), d.to_string_lossy().to_string()]);
+                }
             }
-            if let Some(l) = label {
-                args.extend(["--label".into(), l]);
+            None => {
+                // @g.comment -- "--target/--profile are Option at the clap layer (see cli.rs: clap derive won't negate a required parent arg for the import/verify subcommands), so the interactive-capture path enforces them here. This reproduces the pre-change 'required argument' guard for bare `cxg pentest auth` without a subcommand; the happy path is unchanged."
+                let (target, profile) = match (target, profile) {
+                    (Some(t), Some(p)) => (t, p),
+                    _ => {
+                        eprintln!(
+                            "error: `cxg pentest auth` (interactive capture) requires --target and --profile"
+                        );
+                        eprintln!("       (use `cxg pentest auth import`/`auth verify` for the non-interactive CI paths)");
+                        return Err(Error::Config(
+                            "missing --target/--profile for auth capture".to_string(),
+                        ));
+                    }
+                };
+                args.extend([
+                    "auth".into(),
+                    "login".into(),
+                    "--target".into(),
+                    target,
+                    "--profile".into(),
+                    profile,
+                    "--auth-numbers".into(),
+                    auth_numbers.to_string(),
+                    "--login-path".into(),
+                    login_path,
+                ]);
+                if let Some(c) = creds {
+                    args.extend(["--creds".into(), c]);
+                }
+                if let Some(f) = creds_file {
+                    args.extend(["--creds-file".into(), f.to_string_lossy().to_string()]);
+                }
+                if let Some(l) = label {
+                    args.extend(["--label".into(), l]);
+                }
+                if let Some(v) = verify_url {
+                    args.extend(["--verify-url".into(), v]);
+                }
+                for h in headers {
+                    args.extend(["--header".into(), h]);
+                }
+                // @g.comment -- "Forward the operator identity-metadata flags to the Python orchestrator so tier/persona/cohort/tags reach the auth capture and are persisted with the profile"
+                if let Some(t) = tier {
+                    args.extend(["--tier".into(), t]);
+                }
+                if let Some(p) = persona {
+                    args.extend(["--persona".into(), p]);
+                }
+                if let Some(c) = cohort {
+                    args.extend(["--cohort".into(), c]);
+                }
+                for t in tags {
+                    args.extend(["--tag".into(), t]);
+                }
+                // @g.comment -- "forwards desktop target selection and launch configuration to the Python orchestrator, which owns substrate construction"
+                args.push("--target-type".into());
+                args.push(target_type);
+                // @g.sink #operator_app_cmd -- "hands the operator-supplied launch command to the Python orchestrator, which splits and executes it as a child process; cxg itself never executes it"
+                if let Some(v) = app_cmd {
+                    args.push("--app-cmd".into());
+                    args.push(v);
+                }
+                if let Some(v) = app_binary {
+                    args.push("--app-binary".into());
+                    args.push(v);
+                }
             }
-            if let Some(v) = verify_url {
-                args.extend(["--verify-url".into(), v]);
-            }
-            for h in headers {
-                args.extend(["--header".into(), h]);
-            }
-            // @g.comment -- "Forward the operator identity-metadata flags to the Python orchestrator so tier/persona/cohort/tags reach the auth capture and are persisted with the profile"
-            if let Some(t) = tier {
-                args.extend(["--tier".into(), t]);
-            }
-            if let Some(p) = persona {
-                args.extend(["--persona".into(), p]);
-            }
-            if let Some(c) = cohort {
-                args.extend(["--cohort".into(), c]);
-            }
-            for t in tags {
-                args.extend(["--tag".into(), t]);
-            }
-            // @g.comment -- "forwards desktop target selection and launch configuration to the Python orchestrator, which owns substrate construction"
-            args.push("--target-type".into());
-            args.push(target_type);
-            // @g.sink #operator_app_cmd -- "hands the operator-supplied launch command to the Python orchestrator, which splits and executes it as a child process; cxg itself never executes it"
-            if let Some(v) = app_cmd {
-                args.push("--app-cmd".into());
-                args.push(v);
-            }
-            if let Some(v) = app_binary {
-                args.push("--app-binary".into());
-                args.push(v);
-            }
-        }
+        },
         cli::PentestAction::AuthList => {
             args.extend(["auth".into(), "list".into()]);
         }
@@ -434,6 +522,8 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
             template_timeout,
             stall_timeout,
             no_restart,
+            auth_dir,
+            ci,
         } => {
             args.push("pentest".into());
             args.extend(["--codebase".into(), codebase.to_string_lossy().to_string()]);
@@ -526,6 +616,14 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
             }
             if no_restart {
                 args.push("--no-restart".into());
+            }
+            // @g.comment -- "forward the CI auth-store redirect and CI-mode selector only when the operator set them, so an unset flag leaves the orchestrator's ~/.cert-x-gen/auth store and warn-on-dead-session default in force. CXG_CI=1 still reaches the orchestrator through the inherited environment even when --ci is absent."
+            if let Some(d) = auth_dir {
+                args.push("--auth-dir".into());
+                args.push(d.to_string_lossy().to_string());
+            }
+            if ci {
+                args.push("--ci".into());
             }
         }
     }
