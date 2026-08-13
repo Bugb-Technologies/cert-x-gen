@@ -190,6 +190,28 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      # No continue-on-error. crates.io is the irreversible channel — a version
+      # number, once consumed, can be yanked but never reused — so a failed
+      # publish is exactly the thing that must not pass silently. The previous
+      # `continue-on-error: true` is the same pattern that hid three consecutive
+      # Homebrew tap failures behind a green release.
+      #
+      # It was there to tolerate re-running a release whose version already
+      # exists. That case is now handled explicitly: an "already uploaded" error
+      # is reported and skipped, and every other failure fails the job.
       - name: Publish to crates.io
-        run: cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        continue-on-error: true  # Don't fail if version already exists
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          set -euo pipefail
+          if out=$(cargo publish 2>&1); then
+            echo "$out"
+            exit 0
+          fi
+          echo "$out"
+          if echo "$out" | grep -qiE "already (been )?uploaded|crate version .* is already"; then
+            echo "::notice::This version is already on crates.io; nothing to publish."
+            exit 0
+          fi
+          echo "::error::cargo publish failed."
+          exit 1

@@ -7,48 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Removed
-
-**The `sandbox` configuration section, which never took effect.**
-
-- Removed the `sandbox` section from the configuration schema: `sandbox.enabled`,
-  `sandbox.memory_limit_mb`, `sandbox.cpu_limit_percent`, `sandbox.network_access` and
-  `sandbox.filesystem_access`, along with the `NetworkAccess` and `FilesystemAccess` enums.
-
-  **These settings never did anything.** No code path has ever read them to confine, throttle,
-  or restrict template execution. Their only consumer was `ResourceManager`, which was never
-  constructed outside its own unit test. A configuration setting `sandbox.enabled: true` with
-  `filesystem_access: readonly` and `network_access: none` produced a run identical to one with
-  no sandbox configuration at all: the template read the process uid and username, listed the
-  user's home directory, confirmed `.ssh` was readable, spawned a child process, and made an
-  outbound DNS query. **Any configuration relying on these keys was not protected by them**, and
-  `cxg config validate` reported such a file as simply valid.
-
-  Templates execute as ordinary child processes with the invoking user's privileges and full
-  network and filesystem access. Review templates before running them. For isolation, run cxg
-  itself inside a container or VM, as a non-privileged user.
-
-- Removed `ResourceManager` from `src/scheduler.rs`, and the now-unreachable `Error`
-  variants `ResourceLimitExceeded` and `SandboxViolation` (with the `Error::resource_limit`
-  constructor) — no cxg error path can report a limit or a violation, because no limit or
-  confinement is enforced anywhere.
-
-### Changed
-
-- A configuration file that still contains a `sandbox` section **still loads**. cxg now prints
-  a warning on load, and `cxg config validate` reports the file as loadable-with-obsolete-sections
-  rather than valid, stating that the settings never took effect and that template execution is
-  not confined. Silently ignoring the keys would leave operators believing they are hardened.
-- `cxg sandbox` — the command that manages per-language dependency environments — is unaffected
-  and unchanged in behaviour. Its help text and docs no longer describe it as providing
-  "isolation" or "security": it separates packages, not privileges.
-- A started Docker environment with `auto_start` no longer implies the running command is
-  contained by it. cxg now says explicitly that the command executes on the host; use
-  `cxg sandbox enter` to work inside the container.
-- `docs/SANDBOX_GUIDE.md` renamed to `docs/DEPENDENCY_ENVIRONMENTS.md`, matching what it
-  documents.
-
-## [1.3.0] - 2026-08-12
+## [1.3.0] - 2026-08-13
 
 ### Added
 
@@ -119,6 +78,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `cxg search --format json | jq`. Explicit overrides remain: `CXG_NO_BANNER`, `--quiet`/`-q`.
 - Configuration sections are now optional. A partial config file loads, with omitted sections and
   omitted keys taking their compiled-in defaults.
+- A configuration file that still contains a `sandbox` section **still loads**. cxg now prints
+  a warning on load, and `cxg config validate` reports the file as loadable-with-obsolete-sections
+  rather than valid, stating that the settings never took effect and that template execution is
+  not confined. Silently ignoring the keys would leave operators believing they are hardened.
+- `cxg sandbox` — the command that manages per-language dependency environments — is unaffected
+  and unchanged in behaviour. Its help text and docs no longer describe it as providing
+  "isolation" or "security": it separates packages, not privileges.
+- A started Docker environment with `auto_start` no longer implies the running command is
+  contained by it. cxg now says explicitly that the command executes on the host; use
+  `cxg sandbox enter` to work inside the container.
+- `docs/SANDBOX_GUIDE.md` renamed to `docs/DEPENDENCY_ENVIRONMENTS.md`, matching what it
+  documents.
 
 ### Fixed
 - `cert-x-gen.example.yaml` now loads through the config parser. It previously failed to load on a
@@ -129,6 +100,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and stale claims were removed or corrected (see Notes below).
 
 ### Removed
+
+**The `sandbox` configuration section, which never took effect.**
+
+- Removed the `sandbox` section from the configuration schema: `sandbox.enabled`,
+  `sandbox.memory_limit_mb`, `sandbox.cpu_limit_percent`, `sandbox.network_access` and
+  `sandbox.filesystem_access`, along with the `NetworkAccess` and `FilesystemAccess` enums.
+
+  **These settings never did anything.** No code path has ever read them to confine, throttle,
+  or restrict template execution. Their only consumer was `ResourceManager`, which was never
+  constructed outside its own unit test. A configuration setting `sandbox.enabled: true` with
+  `filesystem_access: readonly` and `network_access: none` produced a run identical to one with
+  no sandbox configuration at all: the template read the process uid and username, listed the
+  user's home directory, confirmed `.ssh` was readable, spawned a child process, and made an
+  outbound DNS query. **Any configuration relying on these keys was not protected by them**, and
+  `cxg config validate` reported such a file as simply valid.
+
+  Templates execute as ordinary child processes with the invoking user's privileges and full
+  network and filesystem access. Review templates before running them. For isolation, run cxg
+  itself inside a container or VM, as a non-privileged user.
+
+- Removed `ResourceManager` from `src/scheduler.rs`, and the now-unreachable `Error`
+  variants `ResourceLimitExceeded` and `SandboxViolation` (with the `Error::resource_limit`
+  constructor) — no cxg error path can report a limit or a violation, because no limit or
+  confinement is enforced anywhere.
+
+**Dead configuration keys.**
+
 - **36 dead configuration keys** and the unused metrics module. Every one of these keys was parsed
   but had **no effect**. Existing config files that still set them **continue to load** — the keys
   are simply ignored.
@@ -153,7 +151,9 @@ Stated plainly so it produces no more false leads:
   changelog and the README, no execution path isolates or resource-limits templates: they run as
   ordinary child processes with the invoking user's privileges and full network and filesystem
   access. Run cxg inside a container or VM if you need isolation. (`cxg sandbox` manages
-  per-language *dependency* environments — it does not confine template execution.)
+  per-language *dependency* environments — it does not confine template execution.) The
+  `sandbox` config section that appeared to configure confinement is removed in this release,
+  and a config still carrying it now warns rather than loading silently — see **Removed**.
 - Nine `cxg scan` flags are accepted and silently ignored: `--protocol`, `--protocols`,
   `--threads`, `--stream`, `--resume`, `--distributed`, `--coordinator`, `--worker-id`,
   `--profile`. They are now grouped under a "Not Implemented" heading in `--help`.
