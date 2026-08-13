@@ -171,13 +171,64 @@ jobs:
         id: version
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
 
-      - name: Trigger Homebrew tap update
-        run: |
-          gh workflow run update-formula.yml \
-            -f version=${{ steps.version.outputs.VERSION }} \
-            -R Bugb-Technologies/homebrew-cxg
+      # `gh workflow run` returns 0 as soon as the dispatch is ACCEPTED, not when
+      # the tap workflow succeeds. That is why the tap silently stayed on 1.0.0
+      # through v1.1.1 and v1.2.0 while this job reported green every time: the
+      # tap-side push was rejected by its branch ruleset and nothing here looked.
+      #
+      # So: dispatch, find the run we just started, and block on its result.
+      # The run is identified by "newest run id that is not the one that existed
+      # before we dispatched" -- run ids increase monotonically, which avoids
+      # depending on clock agreement between this runner and GitHub.
+      - name: Trigger Homebrew tap update and wait for its result
         env:
           GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+          TAP: Bugb-Technologies/homebrew-cxg
+          VERSION: ${{ steps.version.outputs.VERSION }}
+        run: |
+          set -euo pipefail
+
+          before=$(gh run list -R "$TAP" --workflow=update-formula.yml \
+            --json databaseId --jq '.[0].databaseId // 0')
+
+          gh workflow run update-formula.yml -f version="$VERSION" -R "$TAP"
+
+          run_id=""
+          for _ in $(seq 1 30); do
+            sleep 5
+            latest=$(gh run list -R "$TAP" --workflow=update-formula.yml \
+              --json databaseId --jq '.[0].databaseId // 0')
+            if [ "$latest" != "$before" ]; then
+              run_id="$latest"
+              break
+            fi
+          done
+
+          if [ -z "$run_id" ]; then
+            echo "::error::Dispatched the tap update for v${VERSION} but no new run appeared within 150s."
+            exit 1
+          fi
+
+          echo "Tap run: https://github.com/${TAP}/actions/runs/${run_id}"
+          # --exit-status makes a failed tap run fail this job.
+          gh run watch "$run_id" -R "$TAP" --exit-status
+
+      # Independent of the workflow's own result: confirm the tap actually serves
+      # this version. Catches a run that goes green without moving the formula.
+      - name: Verify the tap formula is on this version
+        env:
+          GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.VERSION }}
+        run: |
+          set -euo pipefail
+          formula=$(gh api repos/Bugb-Technologies/homebrew-cxg/contents/Formula/cxg.rb \
+            --jq '.content' | base64 -d)
+          if ! echo "$formula" | grep -q "version \"${VERSION}\""; then
+            echo "::error::Tap formula is not at v${VERSION} after a successful update run."
+            echo "$formula" | grep -E '^\s*version ' || true
+            exit 1
+          fi
+          echo "Tap formula is at v${VERSION}."
 
   # Publish to crates.io
   crates:
