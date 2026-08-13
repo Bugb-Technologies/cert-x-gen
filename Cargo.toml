@@ -7,8 +7,20 @@ authors = ["CERT-X-GEN Core Team"]
 description = "Advanced Multi-Language Security Scanning Engine"
 license = "Apache-2.0"
 repository = "https://github.com/Bugb-Technologies/cert-x-gen"
+# The crate's front page on crates.io. Cargo would auto-detect README.md, but
+# declaring it keeps the front page from silently changing if the file is ever
+# renamed.
+readme = "README.md"
 keywords = ["security", "scanning", "vulnerability", "pentesting"]
 categories = ["command-line-utilities", "network-programming"]
+# Internal working notes — release deltas and design specs. Tracked in git, but
+# there is no reason to ship ~370K of them to every crates.io consumer.
+#
+# Do NOT extend this to pentest/ or templates/: both are build-time mandatory.
+# src/main.rs embeds pentest/ via include_dir!, and src/ai/prompt.rs embeds
+# templates/skeleton/* via include_str!, so excluding either makes the published
+# crate fail to compile.
+exclude = ["docs/_analysis", "docs/superpowers"]
 
 [[bin]]
 name = "cxg"
