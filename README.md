@@ -17,7 +17,7 @@ Write security checks as real code — Python, Rust, Go, C, Shell, or YAML — a
 <a href="#installation">Install</a> •
 <a href="#quick-start">Quick Start</a> •
 <a href="#templates">Templates</a> •
-<a href="#documentation">Docs</a> •
+<a href="https://docs.bugb.io/cxg/">Docs</a> •
 <a href="https://github.com/Bugb-Technologies/cert-x-gen-templates">Template Repo</a>
 </p>
 
@@ -55,8 +55,8 @@ cxg scan --scope targets.txt --templates redis*.py,docker*.go,system*.sh
 > running them. There is no execution sandbox or resource limiting anywhere in cxg — no flag,
 > no configuration key, no default. Run cxg inside a container or VM, and as a non-privileged
 > user, if you need isolation. See the
-> [Dependency Environment Guide](docs/DEPENDENCY_ENVIRONMENTS.md), whose `cxg sandbox` command
-> manages per-language *dependency* environments (not isolation).
+> [dependency environments guide](https://docs.bugb.io/cxg/guides/manage-dependency-environments/), whose `cxg sandbox`
+> command manages per-language *dependency* environments (not isolation).
 
 
 ---
@@ -389,23 +389,36 @@ guardlink hypothesis (`null` for AI/mutation-synthesised probes).
 
 ## Documentation
 
+Full documentation is at **<https://docs.bugb.io/cxg/>**. It is generated against a released
+binary, and every command it shows was run and its real output pasted in.
+
+| | |
+|---|---|
+| [Install cxg](https://docs.bugb.io/cxg/get-started/installation/) | Three install methods, and where templates come from |
+| [Run your first scan](https://docs.bugb.io/cxg/get-started/first-scan/) | A real finding on a target you control |
+| [Scan a target](https://docs.bugb.io/cxg/guides/scanning-a-target/) | Scope, template selection, output formats, exit codes |
+| [Write your first template](https://docs.bugb.io/cxg/guides/write-your-first-template/) | A detection that follows one response to choose its next request |
+| [Run a pentest](https://docs.bugb.io/cxg/guides/pentest/) | The whitebox pipeline, auth, OAST, Electron, CI |
+| [CLI reference](https://docs.bugb.io/cxg/reference/cli/) | Every command, flag, and default, generated from `--help` |
+| [Why polyglot templates](https://docs.bugb.io/cxg/concepts/why-polyglot-templates/) | When a check should be code, and what that costs |
+| [Template trust model](https://docs.bugb.io/cxg/concepts/template-trust-model/) | What running a template actually grants it |
+
+### In this repository
+
+Contributor documentation stays here, because it describes the code rather than
+the product.
+
 | Document | Description |
 |----------|-------------|
-| [Usage Guide](docs/USAGE_GUIDE.md) | Comprehensive CLI usage and examples |
 | [Architecture](docs/ARCHITECTURE.md) | System design and internals |
-| [Engine Guide](docs/ENGINES.md) | Language-specific execution details |
-| [Dependency Environments](docs/DEPENDENCY_ENVIRONMENTS.md) | `cxg sandbox` dependency-environment management |
+| [Engine architecture](docs/ENGINE_ARCHITECTURE.md) | How an engine is structured and added |
+| [Pentest architecture](pentest/docs/ARCHITECTURE.md) | Pipeline, substrate, and the runtime intelligence layer |
+| [Probe templates](pentest/docs/TEMPLATES.md) | The JavaScript probe format and its primitives |
 | [Contributing](CONTRIBUTING.md) | How to contribute code and templates |
 
-**Whitebox pentest (`cxg pentest`):**
-
-| Document | Description |
-|----------|-------------|
-| [Pentest Overview](pentest/README.md) | The pentest pipeline at a glance |
-| [Pentest Architecture](pentest/docs/ARCHITECTURE.md) | Pipeline, substrate, and runtime intelligence layer |
-| [Operator Guide](pentest/docs/OPERATOR_GUIDE.md) | Running scans: auth, targets, OAST, Electron |
-| [Probe Templates](pentest/docs/TEMPLATES.md) | The JavaScript probe format and available primitives |
-| [Troubleshooting](pentest/docs/TROUBLESHOOTING.md) | Diagnosing pentest runs |
+`pentest/docs/TEMPLATES.md` and `pentest/docs/ARCHITECTURE.md` are referenced by
+`cxg pentest run --help` and by the pipeline's own code, so they live with the
+code they describe.
 
 ---
 

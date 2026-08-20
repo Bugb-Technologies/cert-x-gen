@@ -502,8 +502,8 @@ network-namespace limits applied by the host.
 ## 📚 Related Documentation
 
 - **[ENGINE_ARCHITECTURE.md](ENGINE_ARCHITECTURE.md)** - Detailed engine architecture
-- **[ENGINES.md](ENGINES.md)** - Language-specific documentation
-- **[USAGE_GUIDE.md](USAGE_GUIDE.md)** - Complete usage guide
+- **[How cxg executes templates](https://docs.bugb.io/cxg/concepts/how-cxg-executes-templates/)** - Language-specific execution
+- **[Usage guide](https://docs.bugb.io/cxg/get-started/first-scan/)** - Installing, scanning, and reading results
 - **[TEMPLATE_REGISTRY.md](templates/TEMPLATE_REGISTRY.md)** - Template catalog
 
 ---
