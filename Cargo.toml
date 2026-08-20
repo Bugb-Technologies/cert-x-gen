@@ -13,14 +13,14 @@ repository = "https://github.com/Bugb-Technologies/cert-x-gen"
 readme = "README.md"
 keywords = ["security", "scanning", "vulnerability", "pentesting"]
 categories = ["command-line-utilities", "network-programming"]
-# Internal working notes — release deltas and design specs. Tracked in git, but
-# there is no reason to ship ~370K of them to every crates.io consumer.
+# No `exclude` here on purpose. The internal working notes it used to keep out
+# of the published crate (docs/_analysis, docs/superpowers) are gone from the
+# repository entirely.
 #
-# Do NOT extend this to pentest/ or templates/: both are build-time mandatory.
-# src/main.rs embeds pentest/ via include_dir!, and src/ai/prompt.rs embeds
-# templates/skeleton/* via include_str!, so excluding either makes the published
-# crate fail to compile.
-exclude = ["docs/_analysis", "docs/superpowers"]
+# If one is ever added back, do NOT list pentest/ or templates/: both are
+# build-time mandatory. src/main.rs embeds pentest/ via include_dir!, and
+# src/ai/prompt.rs embeds templates/skeleton/* via include_str!, so excluding
+# either makes the published crate fail to compile.
 
 [[bin]]
 name = "cxg"
