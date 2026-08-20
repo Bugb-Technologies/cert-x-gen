@@ -15,7 +15,7 @@ use std::path::PathBuf;
     after_help = "Run 'cxg <command> --help' for full details on any command.\n\
                   \n\
                   Repository:    https://github.com/Bugb-Technologies/cert-x-gen\n\
-                  Documentation: https://github.com/Bugb-Technologies/cert-x-gen/tree/main/docs\n\
+                  Documentation: https://docs.bugb.io/cxg/\n\
                   Issues:        https://github.com/Bugb-Technologies/cert-x-gen/issues",
     after_long_help = "KEY FEATURES:
   🎯 12 Programming Languages: Python, JavaScript, Rust, C, C++, Java, Go, Ruby, Perl, PHP, Shell, YAML
@@ -76,7 +76,7 @@ EXAMPLES:
 
 LINKS:
   Repository:    https://github.com/Bugb-Technologies/cert-x-gen
-  Documentation: https://github.com/Bugb-Technologies/cert-x-gen/tree/main/docs
+  Documentation: https://docs.bugb.io/cxg/
   Issues:        https://github.com/Bugb-Technologies/cert-x-gen/issues"
 )]
 pub struct Cli {
@@ -1143,7 +1143,7 @@ pub enum AuthSubcommand {
                   filtered by language, severity, tags, and custom criteria to focus on specific \
                   vulnerability classes or compliance requirements.",
     after_help = "Run 'cxg scan --help' for the full flag reference, worked examples, and common scenarios.\n\
-                  Docs: https://github.com/Bugb-Technologies/cert-x-gen/tree/main/docs",
+                  Docs: https://docs.bugb.io/cxg/",
     after_long_help = "DETAILED USAGE GUIDE:
 
 TARGET SPECIFICATION:

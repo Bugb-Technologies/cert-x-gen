@@ -476,4 +476,4 @@ if has_python {
 
 ## Documentation
 
-- [Dependency Environment Guide](../../docs/DEPENDENCY_ENVIRONMENTS.md)
+- [Manage template dependency environments](https://docs.bugb.io/cxg/guides/manage-dependency-environments/)

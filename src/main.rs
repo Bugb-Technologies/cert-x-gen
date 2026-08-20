@@ -4085,7 +4085,7 @@ fn print_version() {
     println!();
     println!("Links:");
     println!("  Repository:    https://github.com/Bugb-Technologies/cert-x-gen");
-    println!("  Documentation: https://github.com/Bugb-Technologies/cert-x-gen/tree/main/docs");
+    println!("  Documentation: https://docs.bugb.io/cxg/");
     println!("  Issues:        https://github.com/Bugb-Technologies/cert-x-gen/issues");
 }
 
