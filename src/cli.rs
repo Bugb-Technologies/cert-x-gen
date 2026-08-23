@@ -916,6 +916,79 @@ pub enum PentestAction {
         )]
         host_scan_path: Option<String>,
 
+        /// Run cross-site probes (CSRF, CORS, clickjacking) from a loopback origin
+        /// cxg controls, in the same browsing context as the identity under test.
+        ///
+        /// Without this, those classes are reported as NOT PROBED rather than tested
+        /// from the target's own origin. A same-origin probe of them is unsound: an
+        /// app defended only by an Origin check accepts cxg's own-origin request, so
+        /// the probe confirms an attack a real cross-site attacker could never land.
+        // @g.comment -- "Opt-in because it binds a listening socket on the operator's machine and performs REAL cross-site state changes against their application. Both are consequences an operator should choose rather than discover, which is why this is a flag and not a default even though it strictly improves verdict quality."
+        #[arg(
+            long,
+            help_heading = "Probe execution",
+            display_order = 7,
+            help = "Probe CSRF/CORS/clickjacking from a foreign origin cxg controls"
+        )]
+        attacker_origin: bool,
+
+        /// Generate templates for N hypotheses per AI call instead of one each.
+        ///
+        /// Measured: 130-220s per AI template, so 105 routes cost ~4.5 hours.
+        /// Default 1 is the existing per-hypothesis path, byte-for-byte.
+        // @g.comment -- "Clamped to 5 inside the generator rather than here, so the blast radius of one timed-out call stays bounded: a failed batch costs a re-run of that chunk individually, and at 5 the worst case is five regenerations rather than fifty. Cached and deterministically-emittable hypotheses are excluded before batching, so a fully-cached run makes zero calls whatever this is set to."
+        #[arg(
+            long,
+            help_heading = "Hypothesis filtering",
+            display_order = 10,
+            default_value_t = 1,
+            help = "Hypotheses per AI generation call (1 = today's behaviour)"
+        )]
+        batch_size: usize,
+
+        /// Emit probes with no AI call at all for unambiguous shapes.
+        ///
+        /// Covers cross-identity IDOR reads and missing collection authorization —
+        /// 47 of Juice Shop's 105 discovered routes. These probes read no source,
+        /// so they cannot cite a code-level cause; breadth, not depth.
+        // @g.comment -- "Opt-in because a deterministic probe is genuinely WEAKER than an AI-authored one: it cannot recognise an intentional design or name the guard that failed. An operator should choose that trade deliberately rather than inherit it from a default."
+        #[arg(
+            long,
+            help_heading = "Hypothesis filtering",
+            display_order = 11,
+            help = "Emit known-shape probes without an AI call (fast, source-blind)"
+        )]
+        deterministic_templates: bool,
+
+        /// Discover routes from source instead of requiring guardlink annotations.
+        ///
+        /// guardlink only parses GAL annotations, so an un-annotated codebase yields
+        /// zero hypotheses and the scan exits with "no templates available" having
+        /// tested nothing. Measured on OWASP Juice Shop: guardlink 0, discovery 105.
+        // @g.comment -- "Opt-in because it changes WHAT gets tested: a discovered route is an attack SURFACE inferred from source, not a threat anybody declared, so its hypotheses are speculative in a way an annotated one is not. An annotated hypothesis always wins where both cover the same route. Default off keeps every existing run byte-identical."
+        #[arg(
+            long,
+            help_heading = "Hypothesis filtering",
+            display_order = 9,
+            help = "Also derive hypotheses from routes found in source (no annotations needed)"
+        )]
+        discover_routes: bool,
+
+        /// Permit `cxg.socket`: raw TCP/TLS bytes with no HTTP client in between.
+        ///
+        /// Required for request smuggling, desync and header-order attacks, which no
+        /// HTTP client can express — both `window.fetch` and Playwright's
+        /// APIRequestContext normalise the framing that IS the payload for those
+        /// classes. Can desync connections or wedge a server.
+        // @g.comment -- "Permission, distinct from the substrate capability that says a socket is POSSIBLE. Byte-level traffic can wedge a target, and an operator must opt into that consequence rather than inherit it from their choice of --target-type. Without it, request_smuggling and http_desync hypotheses route to review_only_threats instead of consuming a template slot they could never conclude."
+        #[arg(
+            long,
+            help_heading = "Probe execution",
+            display_order = 8,
+            help = "Permit raw TCP/TLS byte-level probes (smuggling, desync)"
+        )]
+        allow_raw_socket: bool,
+
         /// Absolute ceiling on one template's dispatch before it is abandoned and
         /// treated as a dead target. Default 900s. This is a BACKSTOP only —
         /// `--stall-timeout` is what actually catches a frozen app. 0 disables it,
