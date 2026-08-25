@@ -526,6 +526,12 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
             app_cmd,
             app_binary,
             host_scan_path,
+            attacker_origin,
+            allow_raw_socket,
+            discover_routes,
+            enable_chaining,
+            batch_size,
+            deterministic_templates,
             template_timeout,
             stall_timeout,
             no_restart,
@@ -611,6 +617,26 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
             if let Some(v) = host_scan_path {
                 args.push("--host-scan-path".into());
                 args.push(v);
+            }
+            // @g.comment -- "Both are pushed only when set, matching every other boolean here: an absent flag leaves the orchestrator's own default in force rather than this layer restating it, so the two CLIs cannot drift apart on what 'off' means."
+            if attacker_origin {
+                args.push("--attacker-origin".into());
+            }
+            if allow_raw_socket {
+                args.push("--allow-raw-socket".into());
+            }
+            if discover_routes {
+                args.push("--discover-routes".into());
+            }
+            if enable_chaining {
+                args.push("--enable-chaining".into());
+            }
+            if batch_size > 1 {
+                args.push("--batch-size".into());
+                args.push(batch_size.to_string());
+            }
+            if deterministic_templates {
+                args.push("--deterministic-templates".into());
             }
             // @g.comment -- "forwards the two dispatch bounds and the recovery opt-out only when the operator actually set them, so an unset flag leaves the orchestrator's own default in force rather than this layer restating it — one default, in one place, that the two CLIs cannot drift apart on"
             if let Some(v) = template_timeout {
