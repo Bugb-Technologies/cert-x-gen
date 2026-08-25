@@ -529,6 +529,7 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
             attacker_origin,
             allow_raw_socket,
             discover_routes,
+            enable_chaining,
             batch_size,
             deterministic_templates,
             template_timeout,
@@ -626,6 +627,9 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
             }
             if discover_routes {
                 args.push("--discover-routes".into());
+            }
+            if enable_chaining {
+                args.push("--enable-chaining".into());
             }
             if batch_size > 1 {
                 args.push("--batch-size".into());

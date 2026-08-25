@@ -960,6 +960,20 @@ pub enum PentestAction {
         )]
         deterministic_templates: bool,
 
+        /// Let a probe hand a fact it discovered to a later probe.
+        ///
+        /// Templates declare `@provides: <name>` / `@requires_artifact: <name>`; cxg
+        /// orders providers before consumers and passes the value through a per-run
+        /// store. Edges are also derived automatically from guardlink `@flows`.
+        // @g.comment -- "Opt-in because it CHANGES TEMPLATE ORDER: a consumer waits for its provider, and one that declares an artifact nobody provides is skipped rather than run. With the flag off the order is the plain destructive_priority sort it has always been, so an existing run is unaffected."
+        #[arg(
+            long,
+            help_heading = "Probe execution",
+            display_order = 12,
+            help = "Allow multi-step chains: one probe hands a fact to the next"
+        )]
+        enable_chaining: bool,
+
         /// Discover routes from source instead of requiring guardlink annotations.
         ///
         /// guardlink only parses GAL annotations, so an un-annotated codebase yields
