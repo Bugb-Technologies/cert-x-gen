@@ -523,6 +523,33 @@ pub fn parse_findings(stdout: &str, target: &Target, template_id: &str) -> Resul
     parse_simple_findings(&simple_findings, target, template_id)
 }
 
+/// Read the CWE list a shell template attached to a finding.
+///
+/// Templates write the canonical `cwe_ids` field -- the name used by
+/// `types.rs` and by cxg's own JSON output -- but the original parser read
+/// only the singular string key `cwe`, so a template emitting `cwe_ids` had
+/// its CWEs silently dropped. Both spellings are accepted here, and each may
+/// be a single string or an array of them.
+///
+/// When neither key is present the result is an empty vector. The original
+/// parser produced `vec![""]`, so every finding from every shell template
+/// carried one bogus empty CWE id downstream.
+fn parse_cwe_ids(simple: &serde_json::Value) -> Vec<String> {
+    let mut ids = Vec::new();
+    for key in ["cwe_ids", "cwe"] {
+        match simple.get(key) {
+            Some(serde_json::Value::Array(arr)) => {
+                ids.extend(arr.iter().filter_map(|v| v.as_str()).map(|s| s.to_string()));
+            }
+            Some(serde_json::Value::String(s)) => ids.push(s.clone()),
+            _ => {}
+        }
+    }
+    let mut seen = HashSet::new();
+    ids.retain(|id| !id.trim().is_empty() && seen.insert(id.clone()));
+    ids
+}
+
 fn parse_simple_findings(
     simple_findings: &[serde_json::Value],
     target: &Target,
@@ -599,11 +626,7 @@ fn parse_simple_findings(
                 }
             },
             cve_ids: Vec::new(),
-            cwe_ids: vec![simple
-                .get("cwe")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string()],
+            cwe_ids: parse_cwe_ids(simple),
             cvss_score: simple
                 .get("cvss_score")
                 .and_then(|v| v.as_f64())
@@ -1488,6 +1511,58 @@ mod tests {
             !marker.exists(),
             "child survived the dropped timeout and wrote {}",
             marker.display()
+        );
+    }
+    // -----------------------------------------------------------------
+    // s12 6.2 -- CWE ids from a shell template's finding JSON
+    // -----------------------------------------------------------------
+
+    fn cwes_of(json: &str) -> Vec<String> {
+        let values: Vec<serde_json::Value> = serde_json::from_str(json).unwrap();
+        let target = Target::new("example.com", Protocol::Https);
+        let findings = parse_simple_findings(&values, &target, "t").unwrap();
+        findings[0].cwe_ids.clone()
+    }
+
+    /// A template writing the canonical `cwe_ids` array keeps its CWEs. The
+    /// parser used to read only `cwe`, so these were silently dropped.
+    #[test]
+    fn a_template_emitting_cwe_ids_keeps_its_cwes() {
+        assert_eq!(
+            cwes_of(r#"[{"title":"t","cwe_ids":["CWE-787","CWE-125"]}]"#),
+            vec!["CWE-787".to_string(), "CWE-125".to_string()]
+        );
+    }
+
+    /// The singular `cwe` string still works, so no existing template breaks.
+    #[test]
+    fn the_singular_cwe_key_is_still_accepted() {
+        assert_eq!(
+            cwes_of(r#"[{"title":"t","cwe":"CWE-89"}]"#),
+            vec!["CWE-89".to_string()]
+        );
+    }
+
+    /// No CWE key at all means no CWE. The parser used to inject `vec![""]`,
+    /// so every finding from every shell template carried an empty CWE id.
+    #[test]
+    fn no_cwe_key_injects_no_empty_cwe() {
+        assert!(cwes_of(r#"[{"title":"t"}]"#).is_empty());
+    }
+
+    /// ...and an explicitly empty or blank value is not an id either.
+    #[test]
+    fn a_blank_cwe_value_is_not_an_id() {
+        assert!(cwes_of(r#"[{"title":"t","cwe":"","cwe_ids":["  "]}]"#).is_empty());
+    }
+
+    /// Both spellings together are merged without duplicates, in the order
+    /// they were read.
+    #[test]
+    fn both_cwe_spellings_are_merged_without_duplicates() {
+        assert_eq!(
+            cwes_of(r#"[{"title":"t","cwe_ids":["CWE-787"],"cwe":"CWE-787"}]"#),
+            vec!["CWE-787".to_string()]
         );
     }
 }
