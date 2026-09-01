@@ -679,6 +679,11 @@ pub async fn execute_command(
 ) -> Result<String> {
     let mut cmd = Command::new(command);
     cmd.args(args).stdout(Stdio::piped()).stderr(Stdio::piped());
+    // Kill the child if this future is dropped. Template execution is wrapped in
+    // `tokio::time::timeout` (src/executor.rs), and dropping the timed-out future
+    // only stops *awaiting* the child -- without this the process outlives its own
+    // timeout and keeps running unsupervised.
+    cmd.kill_on_drop(true);
 
     // Set environment variables
     for (key, value) in env_vars {
@@ -758,5 +763,35 @@ mod tests {
         // PORT is meaningless for a CLI target but is still emitted, so the
         // contract stays uniform. Templates must ignore it when KIND=cli.
         assert_eq!(env.get("CERT_X_GEN_TARGET_PORT").unwrap(), "80");
+    }
+
+    /// A template that outruns its timeout must not outlive it. `execute_command`
+    /// sets `kill_on_drop`, so dropping the timed-out future kills the child;
+    /// without it the child keeps running and completes its side effects.
+    #[tokio::test]
+    async fn execute_command_kills_the_child_when_the_caller_times_out() {
+        let dir = tempfile::tempdir().unwrap();
+        let marker = dir.path().join("survived");
+        let script = format!(
+            "sleep 5; echo alive > {}",
+            marker.display()
+        );
+        let args = vec!["-c".to_string(), script];
+
+        let timed_out = tokio::time::timeout(
+            std::time::Duration::from_millis(300),
+            execute_command("sh", &args, &HashMap::new()),
+        )
+        .await;
+        assert!(timed_out.is_err(), "the command should have outrun the timeout");
+
+        // Well past the child's own sleep: if it were still alive it would have
+        // written the marker by now.
+        tokio::time::sleep(std::time::Duration::from_secs(6)).await;
+        assert!(
+            !marker.exists(),
+            "child survived the dropped timeout and wrote {}",
+            marker.display()
+        );
     }
 }
