@@ -1512,7 +1512,10 @@ pub struct ScanArgs {
             "cidr"
         ],
         value_name = "SCOPE",
-        value_delimiter = ',',
+        // No `value_delimiter` here on purpose. Comma splitting for scope
+        // values is done by `expand_scope_entry`, which exempts `cli:` paths
+        // (a binary path may legitimately contain a comma). Letting clap split
+        // first would cut such a path in half before the exemption is reached.
         help_heading = "Target Selection",
         display_order = 1,
         help = "Targets: hosts, CIDRs, URLs, or @files (comma-separated)",

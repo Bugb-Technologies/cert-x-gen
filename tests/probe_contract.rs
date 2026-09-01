@@ -52,6 +52,8 @@ fn make_executable(path: &Path) {
 /// One ledger row, as read back out of the result JSON.
 #[derive(Debug)]
 struct Row {
+    target: String,
+    target_kind: String,
     status: String,
     findings: u64,
     exit_code: Option<i64>,
@@ -106,6 +108,8 @@ fn scan(dir: &Path, template: &str, extra: &[&str], target: &str) -> ScanOutcome
         .expect("result JSON carries an `executions` ledger")
         .iter()
         .map(|e| Row {
+            target: e["target"].as_str().unwrap_or_default().to_string(),
+            target_kind: e["target_kind"].as_str().unwrap_or_default().to_string(),
             status: e["status"].as_str().unwrap().to_string(),
             findings: e["findings"].as_u64().unwrap(),
             exit_code: e["exit_code"].as_i64(),
@@ -545,4 +549,48 @@ fn oracle_gating_is_off_without_the_preflight_flag() {
     // The fixture prints an ASan-shaped report, so this one does confirm --
     // the point is only that cxg did not refuse to run it.
     assert!(out.single().declared_by_template);
+}
+
+// ---------------------------------------------------------------------------
+// A2 -- the `cli:` comma exemption, end to end through the real binary
+// ---------------------------------------------------------------------------
+
+/// A `cli://` path containing a comma, passed on the *command line*, is one
+/// CLI target. The helper-level unit test for this exemption
+/// (`expand_scope_entry`) passed while the binary still split the value,
+/// because clap's `value_delimiter` cut it before the helper was reached, so
+/// this test deliberately drives the built `cxg` binary.
+#[test]
+fn a_cli_scope_with_a_comma_is_one_cli_target_through_the_binary() {
+    let dir = tempfile::tempdir().unwrap();
+    let nested = dir.path().join("comma,name");
+    std::fs::create_dir(&nested).unwrap();
+    let bin = install_target(&nested, "toy_defective.sh");
+
+    let out = scan(dir.path(), "cli-probe-contract.sh", &[], &cli_scope(&bin));
+
+    // One row, not two: no truncated CLI target and no spurious network
+    // target synthesised from the tail of the path.
+    let row = out.single();
+    assert_eq!(row.target_kind, "cli");
+    assert!(
+        row.target.contains("comma,name"),
+        "the comma survived into the target: {:?}",
+        row.target
+    );
+    assert_eq!(row.status, "confirmed");
+}
+
+/// The exemption stays narrow: an ordinary comma-separated `--scope` value on
+/// the command line is still two targets.
+#[test]
+fn an_ordinary_comma_scope_is_still_two_targets_through_the_binary() {
+    let dir = tempfile::tempdir().unwrap();
+
+    let out = scan(dir.path(), "env-echo.sh", &[], "127.0.0.1,127.0.0.2");
+
+    assert_eq!(out.rows.len(), 2, "rows were {:?}", out.rows);
+    let mut targets: Vec<&str> = out.rows.iter().map(|r| r.target.as_str()).collect();
+    targets.sort_unstable();
+    assert_eq!(targets, vec!["127.0.0.1", "127.0.0.2"]);
 }
