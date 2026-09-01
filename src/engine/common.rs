@@ -397,6 +397,38 @@ pub fn build_env_vars(target: &Target, context: &Context) -> Result<HashMap<Stri
         target.protocol.to_string(),
     );
 
+    // --- Structured probe input. Each variable is emitted only when the
+    // operator supplied the corresponding flag, so a scan that passes none of
+    // them produces exactly the environment it always did.
+    if !context.probe_argv.is_empty() {
+        let argv_json = serde_json::to_string(&context.probe_argv)
+            .map_err(|e| Error::Serialization(e.to_string()))?;
+        env_vars.insert("CERT_X_GEN_ARGV".to_string(), argv_json);
+    }
+    if let Some(ref p) = context.probe_stdin_file {
+        env_vars.insert(
+            "CERT_X_GEN_STDIN_FILE".to_string(),
+            p.to_string_lossy().to_string(),
+        );
+    }
+    if let Some(ref p) = context.probe_input_dir {
+        env_vars.insert(
+            "CERT_X_GEN_INPUT_DIR".to_string(),
+            p.to_string_lossy().to_string(),
+        );
+    }
+    if !context.probe_env.is_empty() {
+        // A repeated key takes its last value, matching shell assignment.
+        let map: std::collections::BTreeMap<&str, &str> = context
+            .probe_env
+            .iter()
+            .map(|(k, v)| (k.as_str(), v.as_str()))
+            .collect();
+        let env_json =
+            serde_json::to_string(&map).map_err(|e| Error::Serialization(e.to_string()))?;
+        env_vars.insert("CERT_X_GEN_TARGET_ENV".to_string(), env_json);
+    }
+
     // Port configuration
     if !context.additional_ports.is_empty() {
         let ports_str = context
@@ -876,6 +908,47 @@ mod tests {
         // PORT is meaningless for a CLI target but is still emitted, so the
         // contract stays uniform. Templates must ignore it when KIND=cli.
         assert_eq!(env.get("CERT_X_GEN_TARGET_PORT").unwrap(), "80");
+    }
+
+    #[test]
+    fn build_env_vars_delivers_the_probe_input_when_it_was_supplied() {
+        let target = Target::new("/opt/build/toy", Protocol::Cli);
+        let context = Context {
+            probe_argv: vec!["--label".to_string(), "AAAA".to_string()],
+            probe_stdin_file: Some("/tmp/case.bin".into()),
+            probe_input_dir: Some("/tmp/corpus".into()),
+            probe_env: vec![(
+                "ASAN_OPTIONS".to_string(),
+                "abort_on_error=1".to_string(),
+            )],
+            ..Context::default()
+        };
+
+        let env = build_env_vars(&target, &context).unwrap();
+        assert_eq!(env.get("CERT_X_GEN_ARGV").unwrap(), r#"["--label","AAAA"]"#);
+        assert_eq!(env.get("CERT_X_GEN_STDIN_FILE").unwrap(), "/tmp/case.bin");
+        assert_eq!(env.get("CERT_X_GEN_INPUT_DIR").unwrap(), "/tmp/corpus");
+        assert_eq!(
+            env.get("CERT_X_GEN_TARGET_ENV").unwrap(),
+            r#"{"ASAN_OPTIONS":"abort_on_error=1"}"#
+        );
+    }
+
+    /// The additive claim at the wire level: a scan that passes no probe flags
+    /// produces exactly the environment it produced before they existed.
+    #[test]
+    fn build_env_vars_omits_every_probe_variable_when_none_was_supplied() {
+        let target = Target::with_port("example.com", 8443, Protocol::Https);
+        let env = build_env_vars(&target, &Context::default()).unwrap();
+
+        for name in [
+            "CERT_X_GEN_ARGV",
+            "CERT_X_GEN_STDIN_FILE",
+            "CERT_X_GEN_INPUT_DIR",
+            "CERT_X_GEN_TARGET_ENV",
+        ] {
+            assert!(!env.contains_key(name), "{name} leaked into a network scan");
+        }
     }
 
     #[test]

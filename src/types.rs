@@ -278,6 +278,26 @@ pub struct Context {
     /// Cookies for authenticated scans
     #[serde(default)]
     pub cookies: Vec<(String, String)>,
+
+    // --- Structured probe input. All additive and all absent unless the
+    // corresponding flag was passed, so a network scan's template environment
+    // is byte-identical to what it was before these existed.
+    /// Argument vector cxg hands the template to feed the target under test.
+    /// Exposed as `CERT_X_GEN_ARGV` (JSON array). Empty means not supplied.
+    #[serde(default)]
+    pub probe_argv: Vec<String>,
+    /// File whose bytes the template should feed to the target's stdin.
+    /// Exposed as `CERT_X_GEN_STDIN_FILE`.
+    #[serde(default)]
+    pub probe_stdin_file: Option<PathBuf>,
+    /// Directory of seed inputs (corpus) the template may iterate. cxg does
+    /// not mutate or minimise it. Exposed as `CERT_X_GEN_INPUT_DIR`.
+    #[serde(default)]
+    pub probe_input_dir: Option<PathBuf>,
+    /// Environment the template should set on the *target* process, not on
+    /// itself. Exposed as `CERT_X_GEN_TARGET_ENV` (JSON object).
+    #[serde(default)]
+    pub probe_env: Vec<(String, String)>,
 }
 
 impl Default for Context {
@@ -294,6 +314,10 @@ impl Default for Context {
             override_ports: None,
             headers: Vec::new(),
             cookies: Vec::new(),
+            probe_argv: Vec::new(),
+            probe_stdin_file: None,
+            probe_input_dir: None,
+            probe_env: Vec::new(),
         }
     }
 }

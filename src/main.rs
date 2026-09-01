@@ -1260,6 +1260,8 @@ async fn run_scan(args: cli::ScanArgs, config_path: Option<PathBuf>) -> Result<(
         }
     }
 
+    apply_probe_input(&args, &mut job.context)?;
+
     tracing::info!(
         "Scan job created: {} targets × {} templates = {} total checks",
         job.targets.len(),
@@ -1468,6 +1470,76 @@ fn expand_targets_for_ports(targets: Vec<Target>, ports: &[u16]) -> Vec<Target> 
     }
 
     expanded
+}
+
+/// Move the probe-input flags onto the scan context.
+///
+/// Every one of these is optional and each is delivered to the template as its
+/// own environment variable, absent unless the flag was passed. Paths are
+/// validated here and canonicalised, so a template never receives a path that
+/// does not resolve or that depends on cxg's working directory -- a probe
+/// silently reading nothing is exactly the kind of quiet wrong answer the
+/// execution ledger exists to prevent.
+fn apply_probe_input(args: &cli::ScanArgs, context: &mut cert_x_gen::types::Context) -> Result<()> {
+    if !args.arg.is_empty() {
+        context.probe_argv = args.arg.clone();
+        tracing::info!(
+            "Probe argv: {} argument(s) delivered as CERT_X_GEN_ARGV",
+            context.probe_argv.len()
+        );
+    }
+
+    if let Some(ref path) = args.stdin_file {
+        if !path.is_file() {
+            return Err(Error::config(format!(
+                "--stdin-file '{}' is not a readable file",
+                path.display()
+            )));
+        }
+        let resolved = path.canonicalize().unwrap_or_else(|_| path.clone());
+        tracing::info!("Probe stdin file: {}", resolved.display());
+        context.probe_stdin_file = Some(resolved);
+    }
+
+    if let Some(ref path) = args.input {
+        if !path.is_dir() {
+            return Err(Error::config(format!(
+                "--input '{}' is not a directory",
+                path.display()
+            )));
+        }
+        let resolved = path.canonicalize().unwrap_or_else(|_| path.clone());
+        tracing::info!("Probe input dir: {}", resolved.display());
+        context.probe_input_dir = Some(resolved);
+    }
+
+    for kv in &args.target_env {
+        // Only the FIRST '=' separates key from value, so a value that is
+        // itself a k=v list (ASAN_OPTIONS=abort_on_error=1) survives intact.
+        let Some((key, value)) = kv.split_once('=') else {
+            return Err(Error::config(format!(
+                "--target-env '{}' is not KEY=VALUE",
+                kv
+            )));
+        };
+        if key.is_empty() {
+            return Err(Error::config(format!(
+                "--target-env '{}' has an empty key",
+                kv
+            )));
+        }
+        context
+            .probe_env
+            .push((key.to_string(), value.to_string()));
+    }
+    if !context.probe_env.is_empty() {
+        tracing::info!(
+            "Probe target environment: {} variable(s) delivered as CERT_X_GEN_TARGET_ENV",
+            context.probe_env.len()
+        );
+    }
+
+    Ok(())
 }
 
 /// Parse a single target string (supports host:port format)
@@ -4899,6 +4971,98 @@ mod tests {
         let target = parse_target_string("cli:/opt/build/toy");
         assert_eq!(target.protocol, Protocol::Cli);
         assert_eq!(target.address, "/opt/build/toy");
+    }
+
+    fn scan_args(extra: &[&str]) -> cli::ScanArgs {
+        let mut argv = vec!["scan"];
+        argv.extend_from_slice(extra);
+        <cli::ScanArgs as clap::Parser>::parse_from(argv)
+    }
+
+    /// A probe argument must be able to be the target's own flag, which means
+    /// clap has to stop treating a hyphen-leading value as a flag of its own.
+    #[test]
+    fn probe_arguments_accept_hyphen_leading_values() {
+        let args = scan_args(&["--arg", "--label", "--arg", "AAAA"]);
+        assert_eq!(args.arg, vec!["--label", "AAAA"]);
+
+        let mut context = cert_x_gen::types::Context::default();
+        apply_probe_input(&args, &mut context).unwrap();
+        assert_eq!(context.probe_argv, vec!["--label", "AAAA"]);
+    }
+
+    /// Only the first '=' separates key from value, so a sanitizer option list
+    /// (which is itself k=v) survives intact.
+    #[test]
+    fn target_env_splits_on_the_first_equals_only() {
+        let args = scan_args(&["--target-env", "ASAN_OPTIONS=abort_on_error=1"]);
+        let mut context = cert_x_gen::types::Context::default();
+        apply_probe_input(&args, &mut context).unwrap();
+        assert_eq!(
+            context.probe_env,
+            vec![(
+                "ASAN_OPTIONS".to_string(),
+                "abort_on_error=1".to_string()
+            )]
+        );
+    }
+
+    #[test]
+    fn target_env_without_an_equals_is_an_error_not_a_silent_drop() {
+        let args = scan_args(&["--target-env", "NOEQUALS"]);
+        let mut context = cert_x_gen::types::Context::default();
+        let err = apply_probe_input(&args, &mut context).unwrap_err().to_string();
+        assert!(err.contains("NOEQUALS"), "error was {err}");
+    }
+
+    #[test]
+    fn a_missing_stdin_file_is_rejected_before_the_scan_starts() {
+        let args = scan_args(&["--stdin-file", "/definitely/not/here.bin"]);
+        let mut context = cert_x_gen::types::Context::default();
+        let err = apply_probe_input(&args, &mut context).unwrap_err().to_string();
+        assert!(err.contains("not a readable file"), "error was {err}");
+    }
+
+    #[test]
+    fn an_input_path_that_is_not_a_directory_is_rejected() {
+        let file = tempfile::NamedTempFile::new().unwrap();
+        let args = scan_args(&["--input", file.path().to_str().unwrap()]);
+        let mut context = cert_x_gen::types::Context::default();
+        let err = apply_probe_input(&args, &mut context).unwrap_err().to_string();
+        assert!(err.contains("not a directory"), "error was {err}");
+    }
+
+    /// Probe paths are canonicalised so the template never depends on cxg's
+    /// working directory to resolve them.
+    #[test]
+    fn probe_paths_are_canonicalised() {
+        let dir = tempfile::tempdir().unwrap();
+        let stdin_file = dir.path().join("case.bin");
+        std::fs::write(&stdin_file, b"probe").unwrap();
+        let indirect = dir.path().join(".").join("case.bin");
+
+        let args = scan_args(&["--stdin-file", indirect.to_str().unwrap()]);
+        let mut context = cert_x_gen::types::Context::default();
+        apply_probe_input(&args, &mut context).unwrap();
+
+        assert_eq!(
+            context.probe_stdin_file.unwrap(),
+            stdin_file.canonicalize().unwrap()
+        );
+    }
+
+    /// With no probe flags the context is untouched, which is what keeps a
+    /// network scan's template environment byte-identical to before.
+    #[test]
+    fn no_probe_flags_leaves_the_context_empty() {
+        let args = scan_args(&[]);
+        let mut context = cert_x_gen::types::Context::default();
+        apply_probe_input(&args, &mut context).unwrap();
+
+        assert!(context.probe_argv.is_empty());
+        assert!(context.probe_stdin_file.is_none());
+        assert!(context.probe_input_dir.is_none());
+        assert!(context.probe_env.is_empty());
     }
 
     #[test]

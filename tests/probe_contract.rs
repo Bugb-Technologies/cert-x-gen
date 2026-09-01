@@ -179,3 +179,136 @@ fn records_a_template_declared_skip_for_a_non_cli_target() {
     assert_eq!(row.status, "skipped");
     assert!(row.detail.contains("not-a-cli-target"), "detail was {:?}", row.detail);
 }
+
+// ---------------------------------------------------------------------------
+// Feature B -- structured probe input delivery
+// ---------------------------------------------------------------------------
+
+/// The same binary and the same template give opposite verdicts purely from
+/// cxg-supplied argv. The probe input is no longer the template author's guess.
+#[test]
+fn argv_from_the_arg_flag_drives_the_verdict() {
+    let dir = tempfile::tempdir().unwrap();
+    let bin = install_target(dir.path(), "toy_defective.sh");
+    let scope = cli_scope(&bin);
+
+    let over = scan(
+        dir.path(),
+        "cli-probe-contract.sh",
+        &["--arg", "--label", "--arg", "AAAAAAAAAAAAAAAAAAAA"],
+        &scope,
+    );
+    let row = over.single();
+    assert_eq!(row.status, "confirmed");
+    assert!(row.detail.contains("input=cxg-argv"), "detail was {:?}", row.detail);
+
+    let safe = scan(
+        dir.path(),
+        "cli-probe-contract.sh",
+        &["--arg", "--label", "--arg", "ok"],
+        &scope,
+    );
+    let row = safe.single();
+    assert_eq!(row.status, "refuted");
+    assert!(row.detail.contains("input=cxg-argv"), "detail was {:?}", row.detail);
+}
+
+/// The same discrimination through the other universal CLI channel.
+#[test]
+fn stdin_from_the_stdin_file_flag_drives_the_verdict() {
+    let dir = tempfile::tempdir().unwrap();
+    let bin = install_target(dir.path(), "toy_defective.sh");
+    let scope = cli_scope(&bin);
+
+    let over_path = dir.path().join("over.txt");
+    std::fs::write(&over_path, b"AAAAAAAAAAAAAAAAAAAA\n").unwrap();
+    let safe_path = dir.path().join("safe.txt");
+    std::fs::write(&safe_path, b"ok\n").unwrap();
+
+    let over = scan(
+        dir.path(),
+        "cli-probe-contract.sh",
+        &["--stdin-file", over_path.to_str().unwrap()],
+        &scope,
+    );
+    let row = over.single();
+    assert_eq!(row.status, "confirmed");
+    assert!(
+        row.detail.contains("input=cxg-stdin-file"),
+        "detail was {:?}",
+        row.detail
+    );
+
+    let safe = scan(
+        dir.path(),
+        "cli-probe-contract.sh",
+        &["--stdin-file", safe_path.to_str().unwrap()],
+        &scope,
+    );
+    assert_eq!(safe.single().status, "refuted");
+}
+
+/// Every probe variable reaches the template when its flag is passed.
+#[test]
+fn every_probe_variable_reaches_the_template() {
+    let dir = tempfile::tempdir().unwrap();
+    let bin = install_target(dir.path(), "toy_defective.sh");
+    let stdin_file = dir.path().join("case.bin");
+    std::fs::write(&stdin_file, b"probe").unwrap();
+    let corpus = dir.path().join("corpus");
+    std::fs::create_dir(&corpus).unwrap();
+
+    let out = scan(
+        dir.path(),
+        "env-echo.sh",
+        &[
+            "--arg",
+            "--label",
+            "--arg",
+            "AAAA",
+            "--stdin-file",
+            stdin_file.to_str().unwrap(),
+            "--input",
+            corpus.to_str().unwrap(),
+            "--target-env",
+            "ASAN_OPTIONS=abort_on_error=1",
+        ],
+        &cli_scope(&bin),
+    );
+
+    let detail = &out.single().detail;
+    assert!(detail.contains("CERT_X_GEN_TARGET_KIND=cli"), "{detail}");
+    assert!(detail.contains("CERT_X_GEN_ARGV=[--label,AAAA]"), "{detail}");
+    assert!(detail.contains("case.bin"), "{detail}");
+    assert!(detail.contains("corpus"), "{detail}");
+    assert!(
+        detail.contains("CERT_X_GEN_TARGET_ENV={ASAN_OPTIONS:abort_on_error=1}"),
+        "{detail}"
+    );
+}
+
+/// The additive claim, end to end: a network target scanned without the probe
+/// flags sees none of the new variables, so its template environment is what
+/// it always was.
+#[test]
+fn a_network_target_sees_none_of_the_probe_variables() {
+    let dir = tempfile::tempdir().unwrap();
+
+    let out = scan(dir.path(), "env-echo.sh", &[], "https://example.com:8443");
+
+    let detail = &out.single().detail;
+    assert!(detail.contains("CERT_X_GEN_TARGET_HOST=example.com"), "{detail}");
+    assert!(detail.contains("CERT_X_GEN_TARGET_KIND=https"), "{detail}");
+    for name in [
+        "CERT_X_GEN_ARGV",
+        "CERT_X_GEN_STDIN_FILE",
+        "CERT_X_GEN_INPUT_DIR",
+        "CERT_X_GEN_TARGET_ENV",
+        "CERT_X_GEN_TARGET_INSTRUMENTATION",
+    ] {
+        assert!(
+            detail.contains(&format!("{name}=<unset>")),
+            "{name} leaked into a network scan: {detail}"
+        );
+    }
+}

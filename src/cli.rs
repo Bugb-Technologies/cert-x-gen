@@ -1639,6 +1639,59 @@ pub struct ScanArgs {
     )]
     pub context: Option<String>,
 
+    // ===== Probe Input =====
+    #[arg(
+        long = "arg",
+        value_name = "ARG",
+        allow_hyphen_values = true,
+        help_heading = "Probe Input",
+        display_order = 51,
+        help = "Argument to feed the target under test (repeatable)",
+        long_help = "Argument passed through to the target the template drives, not to the \
+                     template itself. Repeat for an argument vector; hyphen-leading values are \
+                     accepted, so the target's own flags can be passed. Delivered to the \
+                     template as CERT_X_GEN_ARGV (a JSON array). Example: \
+                     --arg --label --arg AAAAAAAAAAAAAAAAAAAA"
+    )]
+    pub arg: Vec<String>,
+
+    #[arg(
+        long,
+        value_name = "PATH",
+        help_heading = "Probe Input",
+        display_order = 52,
+        help = "File whose bytes are fed to the target's stdin",
+        long_help = "Path to a file whose bytes the template should feed to the target's stdin. \
+                     Delivered as CERT_X_GEN_STDIN_FILE, canonicalised, so the template does not \
+                     depend on its working directory."
+    )]
+    pub stdin_file: Option<PathBuf>,
+
+    #[arg(
+        long = "input",
+        value_name = "DIR",
+        help_heading = "Probe Input",
+        display_order = 53,
+        help = "Directory of seed inputs (corpus) for the probe",
+        long_help = "Directory of seed inputs the template may iterate over. Delivered as \
+                     CERT_X_GEN_INPUT_DIR. cxg does not mutate or minimise the corpus -- corpus \
+                     search is discovery, and cxg verifies -- it only hands over the directory."
+    )]
+    pub input: Option<PathBuf>,
+
+    #[arg(
+        long,
+        value_name = "K=V",
+        help_heading = "Probe Input",
+        display_order = 54,
+        help = "Environment variable to set on the target (repeatable)",
+        long_help = "Environment variable the template should set on the target process, not on \
+                     itself. Delivered as CERT_X_GEN_TARGET_ENV (a JSON object). Repeatable; a \
+                     repeated key takes its last value. Typical use is sanitizer runtime \
+                     control, e.g. --target-env ASAN_OPTIONS=abort_on_error=1"
+    )]
+    pub target_env: Vec<String>,
+
     #[arg(
         long,
         value_name = "GROUP",
