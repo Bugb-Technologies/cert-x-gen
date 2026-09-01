@@ -95,6 +95,13 @@ pub struct ParsedMetadata {
     /// The template exits non-zero on purpose; cxg must keep its stdout.
     /// Declared as: `# @allow_nonzero_exit: true`
     pub allow_nonzero_exit: bool,
+    /// Oracles the template relies on to decide something is wrong.
+    /// Declared as: `# @oracles: asan, signal, exit`
+    pub oracles: Vec<String>,
+    /// Target kinds the template accepts. Empty means no declaration, and a
+    /// template with no declaration runs everywhere -- today's behaviour.
+    /// Declared as: `# @target_kinds: cli`
+    pub target_kinds: Vec<String>,
 }
 
 impl ParsedMetadata {
@@ -235,6 +242,16 @@ pub fn parse_metadata_from_comments(content: &str) -> ParsedMetadata {
     // @allow_nonzero_exit: true
     if let Some(v) = extract_metadata_field(&header_content, "allow_nonzero_exit") {
         metadata.allow_nonzero_exit = matches!(v.to_lowercase().as_str(), "true" | "yes" | "1");
+    }
+
+    // @oracles: asan, signal, exit
+    if let Some(v) = extract_metadata_field(&header_content, "oracles") {
+        metadata.oracles = parse_comma_separated(&v);
+    }
+
+    // @target_kinds: cli
+    if let Some(v) = extract_metadata_field(&header_content, "target_kinds") {
+        metadata.target_kinds = parse_comma_separated(&v);
     }
 
     metadata
@@ -706,6 +723,8 @@ pub fn create_metadata(path: &Path, language: TemplateLanguage) -> TemplateMetad
         batch_group: parsed.batch_group,
         auto_probe: parsed.auto_probe,
         allow_nonzero_exit: parsed.allow_nonzero_exit,
+        oracles: parsed.oracles,
+        target_kinds: parsed.target_kinds,
     }
 }
 
@@ -824,6 +843,79 @@ const DEBUG_INFO_MARKERS: &[&str] = &[".debug_info", "__debug_info", ".debug_lin
 
 /// How much of the file is read at a time while scanning for markers.
 const SCAN_CHUNK: usize = 1 << 20;
+
+/// Oracles that only work if the *build* carries the matching instrumentation,
+/// mapped to the instrumentation label [`detect_instrumentation`] reports.
+///
+/// Everything outside this list -- `signal`, `exit`, `assert`, `timeout`,
+/// `diff`, `property`, `detector` -- works on any build, so a template that
+/// declares one of those always has a way to reach a verdict.
+const BUILD_DEPENDENT_ORACLES: &[(&str, &str)] = &[
+    ("asan", "asan"),
+    ("ubsan", "ubsan"),
+    ("msan", "msan"),
+    ("tsan", "tsan"),
+];
+
+/// Does a template's `@target_kinds` declaration accept this target?
+///
+/// **An empty declaration accepts everything.** That is deliberate and load
+/// bearing: every template written before this annotation existed has an empty
+/// declaration, and gating them would silently stop the whole public registry
+/// from running against new target kinds.
+pub fn target_kind_accepted(declared: &[String], kind: &str) -> bool {
+    if declared.is_empty() {
+        return true;
+    }
+    let kind = kind.to_lowercase();
+    // http and https are the same kind of target to a template author.
+    const WEB: &[&str] = &["http", "https", "web"];
+    let kind_is_web = WEB.contains(&kind.as_str());
+
+    declared.iter().any(|d| {
+        let d = d.trim().to_lowercase();
+        d == "any" || d == "*" || d == kind || (kind_is_web && WEB.contains(&d.as_str()))
+    })
+}
+
+/// Which of a template's declared oracles the build cannot support.
+///
+/// Returns `None` when the template can still reach a verdict: either it
+/// declared no oracles, or it declared at least one that does not depend on
+/// the build, or the build carries the instrumentation it asked for. Returns
+/// the missing build-dependent oracles otherwise -- a template that can only
+/// decide via ASan, run against a build with no ASan, cannot produce a verdict
+/// worth having.
+pub fn unsupported_oracles(declared: &[String], instrumentation: &[String]) -> Option<Vec<String>> {
+    if declared.is_empty() {
+        return None;
+    }
+    let declared: Vec<String> = declared.iter().map(|o| o.trim().to_lowercase()).collect();
+
+    let has_build_independent = declared
+        .iter()
+        .any(|o| !BUILD_DEPENDENT_ORACLES.iter().any(|(name, _)| name == o));
+    if has_build_independent {
+        return None;
+    }
+
+    let missing: Vec<String> = declared
+        .iter()
+        .filter(|o| {
+            BUILD_DEPENDENT_ORACLES
+                .iter()
+                .find(|(name, _)| name == *o)
+                .is_some_and(|(_, label)| !instrumentation.iter().any(|i| i == label))
+        })
+        .cloned()
+        .collect();
+
+    if missing.len() == declared.len() {
+        Some(missing)
+    } else {
+        None
+    }
+}
 
 /// Inspect a local executable and report which instrumentation it carries.
 ///
@@ -1135,6 +1227,67 @@ mod tests {
         ] {
             assert!(!env.contains_key(name), "{name} leaked into a network scan");
         }
+    }
+
+    #[test]
+    fn parses_oracles_and_target_kinds_from_the_header() {
+        let header = "#!/bin/bash\n# @id: probe\n# @oracles: asan, signal, exit\n# @target_kinds: cli\n";
+        let parsed = parse_metadata_from_comments(header);
+        assert_eq!(parsed.oracles, vec!["asan", "signal", "exit"]);
+        assert_eq!(parsed.target_kinds, vec!["cli"]);
+
+        let bare = parse_metadata_from_comments("#!/bin/bash\n# @id: probe\n");
+        assert!(bare.oracles.is_empty());
+        assert!(bare.target_kinds.is_empty());
+    }
+
+    /// The load-bearing default: no declaration means every kind, so the
+    /// existing template registry keeps running against every target.
+    #[test]
+    fn an_absent_target_kind_declaration_accepts_every_kind() {
+        assert!(target_kind_accepted(&[], "cli"));
+        assert!(target_kind_accepted(&[], "https"));
+    }
+
+    #[test]
+    fn a_declared_target_kind_accepts_only_what_it_named() {
+        let cli = vec!["cli".to_string()];
+        assert!(target_kind_accepted(&cli, "cli"));
+        assert!(!target_kind_accepted(&cli, "https"));
+        assert!(!target_kind_accepted(&cli, "tcp"));
+
+        // http and https are one kind to a template author.
+        let web = vec!["http".to_string()];
+        assert!(target_kind_accepted(&web, "https"));
+        assert!(target_kind_accepted(&web, "http"));
+        assert!(!target_kind_accepted(&web, "cli"));
+
+        assert!(target_kind_accepted(&["any".to_string()], "cli"));
+        assert!(target_kind_accepted(&["CLI".to_string()], "cli"));
+    }
+
+    #[test]
+    fn a_sanitizer_only_template_is_unsupported_on_a_build_without_that_sanitizer() {
+        let asan_only = vec!["asan".to_string()];
+        assert_eq!(
+            unsupported_oracles(&asan_only, &[]),
+            Some(vec!["asan".to_string()])
+        );
+        assert_eq!(
+            unsupported_oracles(&asan_only, &["asan".to_string(), "debug-info".to_string()]),
+            None
+        );
+    }
+
+    /// A template that also declares a build-independent oracle can still
+    /// reach a verdict, so it is never gated.
+    #[test]
+    fn a_template_with_a_fallback_oracle_is_always_supported() {
+        let mixed = vec!["asan".to_string(), "signal".to_string(), "exit".to_string()];
+        assert_eq!(unsupported_oracles(&mixed, &[]), None);
+
+        assert_eq!(unsupported_oracles(&[], &[]), None);
+        assert_eq!(unsupported_oracles(&["signal".to_string()], &[]), None);
     }
 
     #[test]

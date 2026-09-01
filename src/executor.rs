@@ -168,6 +168,17 @@ impl Executor {
             return Ok((findings, records));
         }
 
+        // What this build can reveal, read once per target and reused by every
+        // template's oracle check below.
+        let instrumentation: Vec<String> =
+            if matches!(target.protocol, crate::types::Protocol::Cli) {
+                crate::engine::common::detect_instrumentation(std::path::Path::new(
+                    &target.address,
+                ))
+            } else {
+                Vec::new()
+            };
+
         // Execute templates in parallel with limited concurrency
         let per_template: Vec<(Vec<Finding>, ExecutionRecord)> = stream::iter(&job.templates)
             .map(|template| async {
@@ -177,6 +188,41 @@ impl Executor {
                 }
 
                 let started = std::time::Instant::now();
+
+                // A template that has declared it cannot handle this target, or
+                // cannot reach a verdict on this build, is recorded as skipped
+                // with the reason rather than run and reported as no-findings.
+                if let Some(reason) = Self::declaration_skip_reason(
+                    target,
+                    template.metadata(),
+                    &job.context,
+                    &instrumentation,
+                ) {
+                    if let Some(progress) = get_progress() {
+                        progress.template_done(&target.address, template.id(), 0);
+                    }
+                    tracing::info!(
+                        "Skipping template {} for target {}: {}",
+                        template.id(),
+                        target.address,
+                        reason
+                    );
+                    return (
+                        Vec::new(),
+                        ExecutionRecord {
+                            target: target.address.clone(),
+                            target_kind: target.protocol.to_string(),
+                            template_id: template.id().to_string(),
+                            status: ExecutionStatus::Skipped,
+                            declared_by_template: false,
+                            findings: 0,
+                            exit_code: None,
+                            detail: Some(reason),
+                            duration_ms: started.elapsed().as_millis() as u64,
+                        },
+                    );
+                }
+
                 match self
                     .execute_single_template(template.as_ref(), target, &job.context)
                     .await
@@ -300,6 +346,48 @@ impl Executor {
             );
             None
         }
+    }
+
+    /// Decide whether a template's own declarations rule this target out.
+    ///
+    /// Two independent checks, both driven by annotations that did not exist
+    /// before this contract, so no template written against the old contract
+    /// changes behaviour:
+    ///
+    /// * `@target_kinds` -- a template that declares which kinds it handles
+    ///   cannot work against any other kind, whatever the operator asked for.
+    ///   An *absent* declaration accepts every kind, which is what keeps the
+    ///   existing registry running.
+    /// * `@oracles` -- a template whose only ways of deciding depend on
+    ///   instrumentation the build does not carry cannot reach a verdict worth
+    ///   having. This is gated on `--require-instrumentation`, the same flag
+    ///   that says "only run where the build can earn the verdict".
+    fn declaration_skip_reason(
+        target: &crate::types::Target,
+        metadata: &crate::types::TemplateMetadata,
+        context: &crate::types::Context,
+        instrumentation: &[String],
+    ) -> Option<String> {
+        let kind = target.protocol.to_string();
+        if !crate::engine::common::target_kind_accepted(&metadata.target_kinds, &kind) {
+            return Some(format!(
+                "target-kind-mismatch(kind={}, accepts={})",
+                kind,
+                metadata.target_kinds.join("|")
+            ));
+        }
+
+        if context.require_instrumentation
+            && matches!(target.protocol, crate::types::Protocol::Cli)
+        {
+            if let Some(missing) =
+                crate::engine::common::unsupported_oracles(&metadata.oracles, instrumentation)
+            {
+                return Some(format!("oracle-unavailable({})", missing.join("|")));
+            }
+        }
+
+        None
     }
 
     /// Build a ledger row from a completed execution.
@@ -461,6 +549,127 @@ mod tests {
                 &context
             ),
             Some("target-not-found".to_string())
+        );
+    }
+
+    fn metadata_with(oracles: &[&str], kinds: &[&str]) -> crate::types::TemplateMetadata {
+        use crate::types::{AuthorInfo, Severity, TemplateLanguage, TemplateMetadata};
+        TemplateMetadata {
+            id: "probe".to_string(),
+            name: "Probe".to_string(),
+            author: AuthorInfo {
+                name: "test".to_string(),
+                email: None,
+                github: None,
+            },
+            severity: Severity::High,
+            description: "probe".to_string(),
+            cve_ids: Vec::new(),
+            cwe_ids: Vec::new(),
+            cvss_score: None,
+            tags: Vec::new(),
+            language: TemplateLanguage::Shell,
+            file_path: std::path::PathBuf::from("probe.sh"),
+            created: chrono::Utc::now(),
+            updated: chrono::Utc::now(),
+            version: "1.0".to_string(),
+            confidence: None,
+            context_vars: Vec::new(),
+            vuln_class: None,
+            hypothesis_tags: Vec::new(),
+            batch_group: None,
+            auto_probe: false,
+            allow_nonzero_exit: false,
+            oracles: oracles.iter().map(|s| s.to_string()).collect(),
+            target_kinds: kinds.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    /// The behaviour that protects the existing registry: a template with no
+    /// declarations is never gated, on any target.
+    #[test]
+    fn a_template_that_declares_nothing_is_never_gated() {
+        let context = crate::types::Context {
+            require_instrumentation: true,
+            ..crate::types::Context::default()
+        };
+        assert_eq!(
+            Executor::declaration_skip_reason(
+                &cli_target(),
+                &metadata_with(&[], &[]),
+                &context,
+                &[]
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn a_declared_target_kind_mismatch_is_skipped_with_the_reason() {
+        let context = crate::types::Context::default();
+        let net = Target::with_port("example.com", 443, Protocol::Https);
+
+        let reason = Executor::declaration_skip_reason(
+            &net,
+            &metadata_with(&[], &["cli"]),
+            &context,
+            &[],
+        )
+        .unwrap();
+        assert!(reason.starts_with("target-kind-mismatch"), "{reason}");
+        assert!(reason.contains("kind=https"), "{reason}");
+        assert!(reason.contains("accepts=cli"), "{reason}");
+
+        // ...and the matching kind is not gated.
+        assert_eq!(
+            Executor::declaration_skip_reason(
+                &cli_target(),
+                &metadata_with(&[], &["cli"]),
+                &context,
+                &[]
+            ),
+            None
+        );
+    }
+
+    /// The join between the oracle declaration and the instrumentation
+    /// preflight: a template that can only decide via ASan, on a build with no
+    /// ASan, is skipped with the reason rather than run to a verdict it cannot
+    /// earn. Gated on --require-instrumentation.
+    #[test]
+    fn an_asan_only_template_is_skipped_on_a_build_without_asan() {
+        let context = crate::types::Context {
+            require_instrumentation: true,
+            ..crate::types::Context::default()
+        };
+        let metadata = metadata_with(&["asan"], &["cli"]);
+
+        assert_eq!(
+            Executor::declaration_skip_reason(&cli_target(), &metadata, &context, &[]),
+            Some("oracle-unavailable(asan)".to_string())
+        );
+        assert_eq!(
+            Executor::declaration_skip_reason(
+                &cli_target(),
+                &metadata,
+                &context,
+                &["asan".to_string()]
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn oracle_gating_only_applies_when_the_preflight_was_requested() {
+        let context = crate::types::Context::default();
+        assert_eq!(
+            Executor::declaration_skip_reason(
+                &cli_target(),
+                &metadata_with(&["asan"], &["cli"]),
+                &context,
+                &[]
+            ),
+            None
         );
     }
 

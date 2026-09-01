@@ -723,6 +723,22 @@ pub struct TemplateMetadata {
     /// error. From `@allow_nonzero_exit`.
     #[serde(default)]
     pub allow_nonzero_exit: bool,
+
+    /// Oracles the template relies on to decide something is wrong, from
+    /// `@oracles`. Vocabulary: `asan` `ubsan` `msan` `tsan` `signal` `exit`
+    /// `assert` `timeout` `diff` `property` `detector`. cxg does not implement
+    /// these -- the template observes the target -- but knowing which one a
+    /// template depends on lets cxg refuse to run it against a build that
+    /// cannot support it.
+    #[serde(default)]
+    pub oracles: Vec<String>,
+
+    /// Target kinds the template accepts, from `@target_kinds` (e.g. `cli`,
+    /// `http`). **Empty means no declaration, and a template with no
+    /// declaration runs against every kind** -- which is every template
+    /// written before this annotation existed.
+    #[serde(default)]
+    pub target_kinds: Vec<String>,
 }
 
 /// Author information

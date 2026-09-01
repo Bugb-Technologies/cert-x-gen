@@ -187,17 +187,18 @@ fn refutes_on_the_corrected_twin() {
     );
 }
 
-/// A template that declines a target reports `skipped` with a reason, so "zero
-/// findings" is never blind.
+/// A template that declines a target reports `skipped` with its own reason, so
+/// "zero findings" is never blind. `env-echo.sh` declares no `@target_kinds`,
+/// so cxg runs it and the skip is the template's own considered verdict.
 #[test]
-fn records_a_template_declared_skip_for_a_non_cli_target() {
+fn records_a_template_declared_skip_with_its_own_reason() {
     let dir = tempfile::tempdir().unwrap();
 
-    let out = scan(dir.path(), "cli-probe-contract.sh", &[], "127.0.0.1");
+    let out = scan(dir.path(), "env-echo.sh", &[], "127.0.0.1");
 
     let row = out.single();
     assert_eq!(row.status, "skipped");
-    assert!(row.detail.contains("not-a-cli-target"), "detail was {:?}", row.detail);
+    assert!(row.declared_by_template, "the template declared this itself");
 }
 
 // ---------------------------------------------------------------------------
@@ -455,4 +456,93 @@ fn the_template_is_told_what_instrumentation_the_build_carries() {
         "{}",
         out.single().detail
     );
+}
+
+// ---------------------------------------------------------------------------
+// Feature C -- oracle and target-kind declarations
+// ---------------------------------------------------------------------------
+
+/// A template that declares which kinds it handles is not run against another
+/// kind at all: the mismatch is recorded, so the "zero findings" is explained.
+#[test]
+fn a_declared_target_kind_mismatch_is_recorded_rather_than_run() {
+    let dir = tempfile::tempdir().unwrap();
+
+    let out = scan(
+        dir.path(),
+        "cli-probe-asan-only.sh",
+        &[],
+        "https://example.com:8443",
+    );
+
+    let row = out.single();
+    assert_eq!(row.status, "skipped");
+    assert!(
+        row.detail.starts_with("target-kind-mismatch"),
+        "detail was {:?}",
+        row.detail
+    );
+    assert!(row.detail.contains("kind=https"), "detail was {:?}", row.detail);
+    assert!(
+        !row.declared_by_template,
+        "cxg refused before the template ran"
+    );
+}
+
+/// The join between the oracle declaration and the instrumentation preflight:
+/// a template whose only oracle is ASan, run against a build with no ASan,
+/// under --require-instrumentation, is skipped with the reason.
+#[test]
+fn an_asan_only_template_is_skipped_when_the_build_has_no_asan() {
+    let dir = tempfile::tempdir().unwrap();
+    // A build with *some* instrumentation, so the target-level preflight lets
+    // it through and the oracle check is what decides.
+    let bin = install_target(dir.path(), "toy_defective.sh");
+    let mut body = std::fs::read_to_string(&bin).unwrap();
+    body.push_str("\n# build markers: __llvm_profile_write_file\n");
+    std::fs::write(&bin, body).unwrap();
+    make_executable(&bin);
+
+    let out = scan(
+        dir.path(),
+        "cli-probe-asan-only.sh",
+        &["--require-instrumentation"],
+        &cli_scope(&bin),
+    );
+
+    let row = out.single();
+    assert_eq!(row.status, "skipped");
+    assert_eq!(row.detail, "oracle-unavailable(asan)");
+}
+
+/// ...and the same template on a build that does carry ASan runs normally.
+#[test]
+fn an_asan_only_template_runs_when_the_build_carries_asan() {
+    let dir = tempfile::tempdir().unwrap();
+    let bin = install_instrumented_target(dir.path(), "toy_defective.sh");
+
+    let out = scan(
+        dir.path(),
+        "cli-probe-asan-only.sh",
+        &["--require-instrumentation"],
+        &cli_scope(&bin),
+    );
+
+    let row = out.single();
+    assert_eq!(row.status, "confirmed");
+    assert_eq!(row.findings, 1);
+}
+
+/// Oracle gating belongs to the preflight: without the flag, cxg runs the
+/// template and reports what it observed.
+#[test]
+fn oracle_gating_is_off_without_the_preflight_flag() {
+    let dir = tempfile::tempdir().unwrap();
+    let bin = install_target(dir.path(), "toy_defective.sh");
+
+    let out = scan(dir.path(), "cli-probe-asan-only.sh", &[], &cli_scope(&bin));
+
+    // The fixture prints an ASan-shaped report, so this one does confirm --
+    // the point is only that cxg did not refuse to run it.
+    assert!(out.single().declared_by_template);
 }

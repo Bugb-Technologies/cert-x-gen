@@ -380,6 +380,8 @@ mod tests {
                 batch_group: None,
                 auto_probe: false,
                 allow_nonzero_exit: false,
+                oracles: Vec::new(),
+                target_kinds: Vec::new(),
             },
         })
     }
