@@ -142,6 +142,32 @@ impl Executor {
         let mut findings = Vec::new();
         let mut records = Vec::new();
 
+        // Instrumentation preflight. For a local CLI target, "no findings" is
+        // only evidence of absence if the build could have shown the defect.
+        // With --require-instrumentation, refuse honestly instead of running a
+        // probe whose refutation cxg could not have earned.
+        if let Some(reason) = Self::preflight_skip_reason(target, &job.context) {
+            tracing::warn!(
+                "Skipping target {} under --require-instrumentation: {}",
+                target.address,
+                reason
+            );
+            for template in &job.templates {
+                records.push(ExecutionRecord {
+                    target: target.address.clone(),
+                    target_kind: target.protocol.to_string(),
+                    template_id: template.id().to_string(),
+                    status: ExecutionStatus::Skipped,
+                    declared_by_template: false,
+                    findings: 0,
+                    exit_code: None,
+                    detail: Some(reason.clone()),
+                    duration_ms: 0,
+                });
+            }
+            return Ok((findings, records));
+        }
+
         // Execute templates in parallel with limited concurrency
         let per_template: Vec<(Vec<Finding>, ExecutionRecord)> = stream::iter(&job.templates)
             .map(|template| async {
@@ -240,6 +266,42 @@ impl Executor {
         Ok((findings, records))
     }
 
+    /// Decide whether a target must be skipped before anything runs against it.
+    ///
+    /// Returns the machine-readable skip reason, or `None` to proceed. Only
+    /// `cli://` targets are gated, and only when the operator asked for the
+    /// preflight -- the check is about what a *build* can reveal, which is
+    /// meaningless for a network host.
+    fn preflight_skip_reason(
+        target: &crate::types::Target,
+        context: &crate::types::Context,
+    ) -> Option<String> {
+        if !context.require_instrumentation
+            || !matches!(target.protocol, crate::types::Protocol::Cli)
+        {
+            return None;
+        }
+
+        let path = std::path::Path::new(&target.address);
+        if !path.is_file() {
+            // Distinct from "no instrumentation": there is no build here at all,
+            // and calling that a missing sanitizer would misdescribe it.
+            return Some("target-not-found".to_string());
+        }
+
+        let detected = crate::engine::common::detect_instrumentation(path);
+        if detected.is_empty() {
+            Some("no-instrumentation-detected".to_string())
+        } else {
+            tracing::debug!(
+                "Target {} carries instrumentation: {}",
+                target.address,
+                detected.join(",")
+            );
+            None
+        }
+    }
+
     /// Build a ledger row from a completed execution.
     ///
     /// cxg *infers* a status from what it observed -- findings > 0 means
@@ -331,6 +393,75 @@ mod tests {
 
     fn cli_target() -> Target {
         Target::new("/opt/build/toy", Protocol::Cli)
+    }
+
+    #[test]
+    fn the_preflight_is_off_unless_the_operator_asks_for_it() {
+        let context = crate::types::Context::default();
+        assert_eq!(
+            Executor::preflight_skip_reason(&cli_target(), &context),
+            None,
+            "an un-requested preflight must never change a scan"
+        );
+    }
+
+    /// The preflight is about what a *build* can reveal, which is meaningless
+    /// for a network host -- those are never gated.
+    #[test]
+    fn the_preflight_never_gates_a_network_target() {
+        let context = crate::types::Context {
+            require_instrumentation: true,
+            ..crate::types::Context::default()
+        };
+        let net = Target::with_port("example.com", 443, Protocol::Https);
+        assert_eq!(Executor::preflight_skip_reason(&net, &context), None);
+    }
+
+    #[test]
+    fn the_preflight_skips_an_uninstrumented_build_and_passes_an_instrumented_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let context = crate::types::Context {
+            require_instrumentation: true,
+            ..crate::types::Context::default()
+        };
+
+        let stripped = dir.path().join("toy_stripped");
+        std::fs::write(&stripped, b"no markers at all").unwrap();
+        assert_eq!(
+            Executor::preflight_skip_reason(
+                &Target::new(stripped.to_string_lossy().to_string(), Protocol::Cli),
+                &context
+            ),
+            Some("no-instrumentation-detected".to_string())
+        );
+
+        let instrumented = dir.path().join("toy_asan");
+        std::fs::write(&instrumented, b"__asan_init").unwrap();
+        assert_eq!(
+            Executor::preflight_skip_reason(
+                &Target::new(instrumented.to_string_lossy().to_string(), Protocol::Cli),
+                &context
+            ),
+            None
+        );
+    }
+
+    /// A target that is not there at all is a different failure from a build
+    /// with no sanitizer, and gets its own reason rather than being
+    /// misdescribed as one.
+    #[test]
+    fn the_preflight_distinguishes_a_missing_target_from_a_bare_build() {
+        let context = crate::types::Context {
+            require_instrumentation: true,
+            ..crate::types::Context::default()
+        };
+        assert_eq!(
+            Executor::preflight_skip_reason(
+                &Target::new("/definitely/not/here", Protocol::Cli),
+                &context
+            ),
+            Some("target-not-found".to_string())
+        );
     }
 
     #[test]

@@ -417,6 +417,20 @@ pub fn build_env_vars(target: &Target, context: &Context) -> Result<HashMap<Stri
             p.to_string_lossy().to_string(),
         );
     }
+    // Tell the template what the build can actually reveal, so a probe never
+    // has to guess whether "nothing happened" means "nothing is wrong".
+    if matches!(target.protocol, crate::types::Protocol::Cli) {
+        let detected = detect_instrumentation(Path::new(&target.address));
+        env_vars.insert(
+            "CERT_X_GEN_TARGET_INSTRUMENTATION".to_string(),
+            if detected.is_empty() {
+                "none".to_string()
+            } else {
+                detected.join(",")
+            },
+        );
+    }
+
     if !context.probe_env.is_empty() {
         // A repeated key takes its last value, matching shell assignment.
         let map: std::collections::BTreeMap<&str, &str> = context
@@ -781,6 +795,178 @@ pub fn generate_cache_key(path: &Path) -> Result<String> {
 }
 
 // ============================================================================
+// Instrumentation preflight
+// ============================================================================
+
+/// Symbols a build carries when it was compiled with the corresponding
+/// instrumentation, and the label cxg reports for each.
+///
+/// This is the cheap, honest version of OSS-Fuzz's `bad_build_check`: before
+/// concluding "no defect", establish that the build could have shown one.
+const INSTRUMENTATION_MARKERS: &[(&str, &str)] = &[
+    ("__asan_init", "asan"),
+    ("__asan_report_load1", "asan"),
+    ("__ubsan_handle", "ubsan"),
+    ("__msan_init", "msan"),
+    ("__tsan_init", "tsan"),
+    ("__sanitizer_cov", "sancov"),
+    ("LLVMFuzzerTestOneInput", "libfuzzer"),
+    ("__llvm_profile", "profile"),
+];
+
+/// Byte sequences that mean the build carries DWARF debug info, and so can
+/// report a file and a line rather than a bare address.
+///
+/// `.debug_info` is the ELF section name; `__debug_info` is the Mach-O one. A
+/// sibling `.dSYM` bundle is checked separately -- that is where `dsymutil`
+/// puts macOS debug info, outside the executable entirely.
+const DEBUG_INFO_MARKERS: &[&str] = &[".debug_info", "__debug_info", ".debug_line"];
+
+/// How much of the file is read at a time while scanning for markers.
+const SCAN_CHUNK: usize = 1 << 20;
+
+/// Inspect a local executable and report which instrumentation it carries.
+///
+/// Returns e.g. `["asan", "debug-info"]`. An **empty** vec is the important
+/// case: it means the binary carries none of the markers cxg knows how to
+/// read, and therefore that a "no findings" result from it is not evidence of
+/// absence. `--require-instrumentation` turns that into an honest `skipped`
+/// instead of a false refutation.
+///
+/// Detection is a byte-level scan of the file: the markers appear in the
+/// symbol table (or the dynamic symbol table, for a stripped binary that links
+/// a sanitizer runtime), so no external tool is needed and the result is the
+/// same on ELF and Mach-O. It is a heuristic in one direction only -- a file
+/// that merely *contains* the bytes reads as instrumented, which makes cxg run
+/// the probe rather than skip it. It never fabricates the absence of
+/// instrumentation, which is the direction that would produce a false verdict.
+pub fn detect_instrumentation(path: &Path) -> Vec<String> {
+    if let Some(cached) = instrumentation_cache_get(path) {
+        return cached;
+    }
+    let detected = detect_instrumentation_uncached(path);
+    instrumentation_cache_put(path, &detected);
+    detected
+}
+
+fn detect_instrumentation_uncached(path: &Path) -> Vec<String> {
+    use std::collections::BTreeSet;
+    use std::io::Read;
+
+    let mut found: BTreeSet<String> = BTreeSet::new();
+
+    // Debug info can live outside the executable: dsymutil writes a sibling
+    // `<binary>.dSYM` bundle. Check that before opening the file at all, so it
+    // is found even for a binary that is otherwise stripped.
+    let mut dsym = path.as_os_str().to_os_string();
+    dsym.push(".dSYM");
+    if Path::new(&dsym).exists() {
+        found.insert("debug-info".to_string());
+    }
+
+    let Ok(mut file) = std::fs::File::open(path) else {
+        return found.into_iter().collect();
+    };
+
+    // The longest marker, minus one, is how much of each chunk must be carried
+    // into the next so a marker straddling a chunk boundary is still seen.
+    let overlap = INSTRUMENTATION_MARKERS
+        .iter()
+        .map(|(m, _)| m.len())
+        .chain(DEBUG_INFO_MARKERS.iter().map(|m| m.len()))
+        .max()
+        .unwrap_or(1)
+        .saturating_sub(1);
+
+    let mut buf = vec![0u8; SCAN_CHUNK + overlap];
+    let mut carried = 0usize;
+    loop {
+        let read = match file.read(&mut buf[carried..]) {
+            Ok(0) => break,
+            Ok(n) => n,
+            Err(_) => break,
+        };
+        let filled = carried + read;
+        let window = &buf[..filled];
+
+        for (marker, label) in INSTRUMENTATION_MARKERS {
+            if !found.contains(*label) && contains_bytes(window, marker.as_bytes()) {
+                found.insert((*label).to_string());
+            }
+        }
+        if !found.contains("debug-info")
+            && DEBUG_INFO_MARKERS
+                .iter()
+                .any(|m| contains_bytes(window, m.as_bytes()))
+        {
+            found.insert("debug-info".to_string());
+        }
+
+        if filled <= overlap {
+            break;
+        }
+        let tail = filled - overlap;
+        buf.copy_within(tail..filled, 0);
+        carried = overlap;
+    }
+
+    found.into_iter().collect()
+}
+
+/// Substring search over raw bytes.
+///
+/// Anchors on the needle's first byte before comparing, so scanning a
+/// multi-megabyte binary for a handful of markers stays cheap.
+fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
+    if needle.is_empty() || needle.len() > haystack.len() {
+        return false;
+    }
+    let first = needle[0];
+    let last_start = haystack.len() - needle.len();
+    let mut cursor = 0usize;
+    while cursor <= last_start {
+        let Some(offset) = haystack[cursor..=last_start].iter().position(|&b| b == first) else {
+            return false;
+        };
+        let start = cursor + offset;
+        if &haystack[start..start + needle.len()] == needle {
+            return true;
+        }
+        cursor = start + 1;
+    }
+    false
+}
+
+/// Cache key: a binary is only re-scanned if it changed on disk.
+type InstrumentationKey = (std::path::PathBuf, u64, Option<std::time::SystemTime>);
+
+fn instrumentation_cache() -> &'static std::sync::Mutex<HashMap<InstrumentationKey, Vec<String>>> {
+    static CACHE: std::sync::OnceLock<
+        std::sync::Mutex<HashMap<InstrumentationKey, Vec<String>>>,
+    > = std::sync::OnceLock::new();
+    CACHE.get_or_init(|| std::sync::Mutex::new(HashMap::new()))
+}
+
+fn instrumentation_key(path: &Path) -> Option<InstrumentationKey> {
+    let meta = std::fs::metadata(path).ok()?;
+    Some((path.to_path_buf(), meta.len(), meta.modified().ok()))
+}
+
+fn instrumentation_cache_get(path: &Path) -> Option<Vec<String>> {
+    let key = instrumentation_key(path)?;
+    instrumentation_cache().lock().ok()?.get(&key).cloned()
+}
+
+fn instrumentation_cache_put(path: &Path, detected: &[String]) {
+    let Some(key) = instrumentation_key(path) else {
+        return;
+    };
+    if let Ok(mut cache) = instrumentation_cache().lock() {
+        cache.insert(key, detected.to_vec());
+    }
+}
+
+// ============================================================================
 // Probe contract: exit-tolerant execution and template-declared status
 // ============================================================================
 
@@ -949,6 +1135,119 @@ mod tests {
         ] {
             assert!(!env.contains_key(name), "{name} leaked into a network scan");
         }
+    }
+
+    #[test]
+    fn detects_a_sanitizer_marker_and_reports_nothing_without_one() {
+        let dir = tempfile::tempdir().unwrap();
+
+        let instrumented = dir.path().join("with_asan");
+        std::fs::write(&instrumented, b"\x7fELF....__asan_init....rest").unwrap();
+        assert_eq!(detect_instrumentation(&instrumented), vec!["asan"]);
+
+        let bare = dir.path().join("no_markers");
+        std::fs::write(&bare, b"\x7fELF....just some bytes....").unwrap();
+        assert!(
+            detect_instrumentation(&bare).is_empty(),
+            "an empty result is the signal that a refutation would not be evidence"
+        );
+    }
+
+    #[test]
+    fn detects_each_known_instrumentation_label() {
+        let dir = tempfile::tempdir().unwrap();
+        for (marker, label) in [
+            ("__ubsan_handle_add_overflow", "ubsan"),
+            ("__msan_init", "msan"),
+            ("__tsan_init", "tsan"),
+            ("__sanitizer_cov_trace_pc", "sancov"),
+            ("LLVMFuzzerTestOneInput", "libfuzzer"),
+            ("__llvm_profile_write_file", "profile"),
+        ] {
+            let path = dir.path().join(label);
+            std::fs::write(&path, marker.as_bytes()).unwrap();
+            assert_eq!(
+                detect_instrumentation(&path),
+                vec![label.to_string()],
+                "marker {marker} should report {label}"
+            );
+        }
+    }
+
+    #[test]
+    fn detects_debug_info_from_a_dwarf_section_name() {
+        let dir = tempfile::tempdir().unwrap();
+
+        let elf = dir.path().join("elf_with_dwarf");
+        std::fs::write(&elf, b"....debug_info....").unwrap();
+        assert_eq!(detect_instrumentation(&elf), vec!["debug-info"]);
+
+        let macho = dir.path().join("macho_with_dwarf");
+        std::fs::write(&macho, b"....__debug_info....").unwrap();
+        assert_eq!(detect_instrumentation(&macho), vec!["debug-info"]);
+    }
+
+    /// dsymutil puts macOS debug info in a sibling bundle, outside the
+    /// executable, so a stripped-looking binary can still resolve file:line.
+    #[test]
+    fn detects_debug_info_from_a_sibling_dsym_bundle() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin = dir.path().join("toy");
+        std::fs::write(&bin, b"no markers here").unwrap();
+        assert!(detect_instrumentation(&bin).is_empty());
+
+        std::fs::create_dir(dir.path().join("toy.dSYM")).unwrap();
+        // The cache is keyed on the binary's own size and mtime, so touch it
+        // to force a re-read now that its sibling exists.
+        std::fs::write(&bin, b"no markers here either").unwrap();
+        assert_eq!(detect_instrumentation(&bin), vec!["debug-info"]);
+    }
+
+    /// The scan reads the file in chunks, carrying an overlap so a marker
+    /// lying across a chunk boundary is still found.
+    #[test]
+    fn finds_a_marker_that_straddles_a_read_boundary() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("big");
+
+        let marker = b"__asan_init";
+        // Place the marker so it starts a few bytes before the first boundary.
+        let prefix_len = SCAN_CHUNK - 4;
+        let mut bytes = vec![b'.'; prefix_len];
+        bytes.extend_from_slice(marker);
+        bytes.extend(std::iter::repeat_n(b'.', SCAN_CHUNK));
+        std::fs::write(&path, &bytes).unwrap();
+
+        assert_eq!(detect_instrumentation(&path), vec!["asan"]);
+    }
+
+    #[test]
+    fn a_missing_binary_reports_no_instrumentation_rather_than_panicking() {
+        assert!(detect_instrumentation(Path::new("/definitely/not/here")).is_empty());
+    }
+
+    #[test]
+    fn build_env_vars_reports_instrumentation_only_for_cli_targets() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin = dir.path().join("toy_asan");
+        std::fs::write(&bin, b"__asan_init and .debug_info").unwrap();
+
+        let cli = Target::new(bin.to_string_lossy().to_string(), Protocol::Cli);
+        let env = build_env_vars(&cli, &Context::default()).unwrap();
+        assert_eq!(
+            env.get("CERT_X_GEN_TARGET_INSTRUMENTATION").unwrap(),
+            "asan,debug-info"
+        );
+
+        let bare = dir.path().join("toy_stripped");
+        std::fs::write(&bare, b"nothing to see").unwrap();
+        let cli = Target::new(bare.to_string_lossy().to_string(), Protocol::Cli);
+        let env = build_env_vars(&cli, &Context::default()).unwrap();
+        assert_eq!(env.get("CERT_X_GEN_TARGET_INSTRUMENTATION").unwrap(), "none");
+
+        let net = Target::with_port("example.com", 443, Protocol::Https);
+        let env = build_env_vars(&net, &Context::default()).unwrap();
+        assert!(!env.contains_key("CERT_X_GEN_TARGET_INSTRUMENTATION"));
     }
 
     #[test]

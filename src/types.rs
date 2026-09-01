@@ -298,6 +298,11 @@ pub struct Context {
     /// itself. Exposed as `CERT_X_GEN_TARGET_ENV` (JSON object).
     #[serde(default)]
     pub probe_env: Vec<(String, String)>,
+    /// Refuse to run against a `cli://` target whose build carries no
+    /// detectable instrumentation, rather than reporting a "no findings"
+    /// result that reads as a refutation but is not evidence.
+    #[serde(default)]
+    pub require_instrumentation: bool,
 }
 
 impl Default for Context {
@@ -318,6 +323,7 @@ impl Default for Context {
             probe_stdin_file: None,
             probe_input_dir: None,
             probe_env: Vec::new(),
+            require_instrumentation: false,
         }
     }
 }

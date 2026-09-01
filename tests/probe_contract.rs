@@ -26,6 +26,21 @@ fn install_target(dir: &Path, name: &str) -> PathBuf {
     dest
 }
 
+/// Install the fixture and append the byte markers a sanitizer-linked build
+/// would carry as linker symbols, so the instrumentation preflight sees an
+/// instrumented target. `detect_instrumentation` is a byte-level scan, so the
+/// markers are all it looks for; a real ELF/Mach-O build carries the same bytes
+/// in its symbol table. The detector itself is unit-tested against every
+/// marker in src/engine/common.rs.
+fn install_instrumented_target(dir: &Path, name: &str) -> PathBuf {
+    let dest = install_target(dir, name);
+    let mut body = std::fs::read_to_string(&dest).unwrap();
+    body.push_str("\n# build markers: __asan_init __asan_report_load1\n");
+    std::fs::write(&dest, body).unwrap();
+    make_executable(&dest);
+    dest
+}
+
 fn make_executable(path: &Path) {
     #[cfg(unix)]
     {
@@ -61,6 +76,11 @@ fn scan(dir: &Path, template: &str, extra: &[&str], target: &str) -> ScanOutcome
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_cxg"));
     cmd.current_dir(dir)
         .env("CXG_NO_BANNER", "1")
+        // Keep the run hermetic: cxg keeps per-user state under its home dir
+        // (~/.cert-x-gen/.templates-config.json and friends), and several test
+        // processes sharing one home race on it. Point every run at its own.
+        .env("HOME", dir)
+        .env("CERT_X_GEN_HOME", dir)
         .arg("scan")
         .arg("--disable-update-check")
         .arg("--no-color")
@@ -311,4 +331,128 @@ fn a_network_target_sees_none_of_the_probe_variables() {
             "{name} leaked into a network scan: {detail}"
         );
     }
+}
+
+// ---------------------------------------------------------------------------
+// Feature E -- instrumentation preflight
+// ---------------------------------------------------------------------------
+
+/// The failure mode the whole product must not ship with: a build that cannot
+/// reveal the defect runs the probe, sees nothing, and reports a refutation
+/// that is indistinguishable from a real one.
+#[test]
+fn an_uninstrumented_build_reports_a_refutation_it_did_not_earn() {
+    let dir = tempfile::tempdir().unwrap();
+    // The fixture with the planted defect, but with no instrumentation markers:
+    // the stand-in for a stripped build that absorbs the defect silently.
+    let bin = install_target(dir.path(), "toy_silent.sh");
+
+    let out = scan(dir.path(), "cli-probe-contract.sh", &[], &cli_scope(&bin));
+
+    let row = out.single();
+    assert_eq!(row.status, "refuted");
+    assert!(row.detail.contains("handled probe input cleanly"));
+}
+
+/// ...and the fix. The same binary and the same probe, under
+/// --require-instrumentation, is SKIPPED with a machine-readable reason
+/// instead. cxg can now say "I could not have seen it".
+#[test]
+fn require_instrumentation_turns_that_refutation_into_an_honest_skip() {
+    let dir = tempfile::tempdir().unwrap();
+    let bin = install_target(dir.path(), "toy_silent.sh");
+
+    let out = scan(
+        dir.path(),
+        "cli-probe-contract.sh",
+        &["--require-instrumentation"],
+        &cli_scope(&bin),
+    );
+
+    let row = out.single();
+    assert_eq!(row.status, "skipped");
+    assert_eq!(row.detail, "no-instrumentation-detected");
+    assert_eq!(row.findings, 0);
+    assert_eq!(row.exit_code, None, "nothing ran, so there is no exit code");
+    assert!(!row.declared_by_template, "cxg refused, the template never ran");
+}
+
+/// The preflight must not block a build that *can* show the defect.
+#[test]
+fn require_instrumentation_still_runs_an_instrumented_build() {
+    let dir = tempfile::tempdir().unwrap();
+    let bin = install_instrumented_target(dir.path(), "toy_defective.sh");
+
+    let out = scan(
+        dir.path(),
+        "cli-probe-contract.sh",
+        &["--require-instrumentation"],
+        &cli_scope(&bin),
+    );
+
+    let row = out.single();
+    assert_eq!(row.status, "confirmed");
+    assert_eq!(row.findings, 1);
+}
+
+/// A target that is not there at all gets its own reason, so "skipped" never
+/// has to stand for two different failures.
+#[test]
+fn a_missing_cli_target_is_skipped_as_not_found() {
+    let dir = tempfile::tempdir().unwrap();
+    let missing = dir.path().join("no_such_binary");
+
+    let out = scan(
+        dir.path(),
+        "cli-probe-contract.sh",
+        &["--require-instrumentation"],
+        &cli_scope(&missing),
+    );
+
+    let row = out.single();
+    assert_eq!(row.status, "skipped");
+    assert_eq!(row.detail, "target-not-found");
+}
+
+/// The preflight is off unless asked for, and never gates a network host.
+#[test]
+fn require_instrumentation_does_not_gate_a_network_target() {
+    let dir = tempfile::tempdir().unwrap();
+
+    let out = scan(
+        dir.path(),
+        "env-echo.sh",
+        &["--require-instrumentation"],
+        "https://example.com:8443",
+    );
+
+    // The template ran (it declared its own skip); cxg did not refuse it.
+    assert!(out.single().declared_by_template);
+}
+
+/// The template is told what the build can reveal, whether or not the
+/// preflight is enabled.
+#[test]
+fn the_template_is_told_what_instrumentation_the_build_carries() {
+    let dir = tempfile::tempdir().unwrap();
+
+    let bare = install_target(dir.path(), "toy_bare.sh");
+    let out = scan(dir.path(), "env-echo.sh", &[], &cli_scope(&bare));
+    assert!(
+        out.single()
+            .detail
+            .contains("CERT_X_GEN_TARGET_INSTRUMENTATION=none"),
+        "{}",
+        out.single().detail
+    );
+
+    let instrumented = install_instrumented_target(dir.path(), "toy_asan.sh");
+    let out = scan(dir.path(), "env-echo.sh", &[], &cli_scope(&instrumented));
+    assert!(
+        out.single()
+            .detail
+            .contains("CERT_X_GEN_TARGET_INSTRUMENTATION=asan"),
+        "{}",
+        out.single().detail
+    );
 }
