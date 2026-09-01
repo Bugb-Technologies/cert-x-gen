@@ -124,6 +124,11 @@ pub enum Protocol {
     Rdp,
     /// Custom protocol with name
     Custom(String),
+    /// Local CLI/binary target. `Target::address` carries a filesystem path to a
+    /// locally-built executable rather than a network host. Additive: existing
+    /// network protocols are unchanged, and the `CERT_X_GEN_TARGET_HOST` env
+    /// contract still holds (for a Cli target the "host" is the binary path).
+    Cli,
 }
 
 impl std::fmt::Display for Protocol {
@@ -140,6 +145,7 @@ impl std::fmt::Display for Protocol {
             Protocol::Smb => write!(f, "smb"),
             Protocol::Rdp => write!(f, "rdp"),
             Protocol::Custom(name) => write!(f, "{}", name),
+            Protocol::Cli => write!(f, "cli"),
         }
     }
 }

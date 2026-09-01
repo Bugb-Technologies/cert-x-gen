@@ -1472,6 +1472,17 @@ fn expand_targets_for_ports(targets: Vec<Target>, ports: &[u16]) -> Vec<Target> 
 
 /// Parse a single target string (supports host:port format)
 fn parse_target_string(target_str: &str) -> Target {
+    // Local CLI/binary target: `cli://<path>` or `cli:<path>` carries a
+    // filesystem path to a locally-built executable, not a network host. Kept
+    // ahead of URL parsing so arbitrary paths (leading slash, no authority) are
+    // preserved verbatim in `Target::address`.
+    if let Some(rest) = target_str.strip_prefix("cli://") {
+        return Target::new(rest, Protocol::Cli);
+    }
+    if let Some(rest) = target_str.strip_prefix("cli:") {
+        return Target::new(rest, Protocol::Cli);
+    }
+
     if let Ok(url) = url::Url::parse(target_str) {
         if let Some(host) = url.host_str() {
             let protocol = match url.scheme().to_lowercase().as_str() {
@@ -4798,5 +4809,33 @@ async fn handle_providers_command(action: cli::ProviderAction) -> Result<()> {
 
             Ok(())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_target_string_accepts_cli_scheme_with_authority() {
+        let target = parse_target_string("cli:///opt/build/toy");
+        assert_eq!(target.protocol, Protocol::Cli);
+        assert_eq!(target.address, "/opt/build/toy");
+        assert_eq!(target.port, None);
+    }
+
+    #[test]
+    fn parse_target_string_accepts_bare_cli_scheme() {
+        let target = parse_target_string("cli:/opt/build/toy");
+        assert_eq!(target.protocol, Protocol::Cli);
+        assert_eq!(target.address, "/opt/build/toy");
+    }
+
+    #[test]
+    fn parse_target_string_leaves_network_targets_alone() {
+        let target = parse_target_string("https://example.com:8443");
+        assert_eq!(target.protocol, Protocol::Https);
+        assert_eq!(target.address, "example.com");
+        assert_eq!(target.port, Some(8443));
     }
 }

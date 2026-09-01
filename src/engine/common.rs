@@ -379,6 +379,14 @@ pub fn build_env_vars(target: &Target, context: &Context) -> Result<HashMap<Stri
         "CERT_X_GEN_TARGET_PORT".to_string(),
         target.port.unwrap_or(80).to_string(),
     );
+    // Target kind lets a template distinguish a local CLI/binary target
+    // (CERT_X_GEN_TARGET_HOST is a filesystem path) from a network host
+    // (it is a hostname/IP) without re-parsing. Additive: templates that
+    // ignore it are unaffected. Network targets report "http"/"https"/etc.
+    env_vars.insert(
+        "CERT_X_GEN_TARGET_KIND".to_string(),
+        target.protocol.to_string(),
+    );
 
     // Port configuration
     if !context.additional_ports.is_empty() {
@@ -723,4 +731,32 @@ pub fn generate_cache_key(path: &Path) -> Result<String> {
         .hash(&mut hasher);
 
     Ok(format!("{:x}", hasher.finish()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::{Context, Protocol, Target};
+
+    #[test]
+    fn build_env_vars_reports_target_kind_for_network_targets() {
+        let target = Target::with_port("example.com", 8443, Protocol::Https);
+        let env = build_env_vars(&target, &Context::default()).unwrap();
+
+        assert_eq!(env.get("CERT_X_GEN_TARGET_HOST").unwrap(), "example.com");
+        assert_eq!(env.get("CERT_X_GEN_TARGET_PORT").unwrap(), "8443");
+        assert_eq!(env.get("CERT_X_GEN_TARGET_KIND").unwrap(), "https");
+    }
+
+    #[test]
+    fn build_env_vars_reports_cli_kind_and_carries_the_path_as_host() {
+        let target = Target::new("/opt/build/toy", Protocol::Cli);
+        let env = build_env_vars(&target, &Context::default()).unwrap();
+
+        assert_eq!(env.get("CERT_X_GEN_TARGET_HOST").unwrap(), "/opt/build/toy");
+        assert_eq!(env.get("CERT_X_GEN_TARGET_KIND").unwrap(), "cli");
+        // PORT is meaningless for a CLI target but is still emitted, so the
+        // contract stays uniform. Templates must ignore it when KIND=cli.
+        assert_eq!(env.get("CERT_X_GEN_TARGET_PORT").unwrap(), "80");
+    }
 }
