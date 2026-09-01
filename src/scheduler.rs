@@ -176,6 +176,7 @@ mod tests {
                 hypothesis_tags: Vec::new(),
                 batch_group: None,
                 auto_probe: false,
+                allow_nonzero_exit: false,
             },
         }
     }

@@ -7,7 +7,7 @@ use crate::flows::FlowExecutor;
 use crate::network::NetworkClient;
 use crate::progress::get_progress;
 use crate::session::SessionManager;
-use crate::types::Finding;
+use crate::types::{ExecutionRecord, ExecutionStatus, Finding};
 use futures::stream::{self, StreamExt};
 use std::sync::Arc;
 use tokio::sync::Semaphore;
@@ -50,8 +50,21 @@ impl Executor {
         &self.flow_executor
     }
 
-    /// Execute a scan job
+    /// Execute a scan job (findings only).
+    ///
+    /// Preserved signature: library callers that only want findings are
+    /// unaffected. [`Executor::execute_with_records`] is the same run with the
+    /// execution ledger attached.
     pub async fn execute(&self, job: &ScanJob) -> Result<Vec<Finding>> {
+        self.execute_with_records(job).await.map(|(f, _)| f)
+    }
+
+    /// Execute a scan job and return the per-(template, target) execution
+    /// ledger alongside the findings.
+    pub async fn execute_with_records(
+        &self,
+        job: &ScanJob,
+    ) -> Result<(Vec<Finding>, Vec<ExecutionRecord>)> {
         tracing::info!(
             "Executing scan job {} with {} targets and {} templates",
             job.id,
@@ -61,8 +74,10 @@ impl Executor {
 
         let findings = Arc::new(tokio::sync::Mutex::new(Vec::new()));
 
-        // Process targets in parallel with semaphore control
-        stream::iter(&job.targets)
+        // Process targets in parallel with semaphore control. Findings keep
+        // their existing shared-accumulator path; the ledger is returned from
+        // each target task and collected by the stream, so it needs no lock.
+        let per_target_records: Vec<Vec<ExecutionRecord>> = stream::iter(&job.targets)
             .map(|target| {
                 let findings = Arc::clone(&findings);
                 let executor = self;
@@ -80,7 +95,7 @@ impl Executor {
 
                     // Execute all templates for this target
                     match executor.execute_templates_for_target(target, job).await {
-                        Ok(target_findings) => {
+                        Ok((target_findings, target_records)) => {
                             if !target_findings.is_empty() {
                                 tracing::info!(
                                     "Found {} findings for target {}",
@@ -89,9 +104,11 @@ impl Executor {
                                 );
                                 findings.lock().await.extend(target_findings);
                             }
+                            target_records
                         }
                         Err(e) => {
                             tracing::error!("Error processing target {}: {}", target.address, e);
+                            Vec::new()
                         }
                     }
                 }
@@ -105,7 +122,15 @@ impl Executor {
             Err(arc) => arc.blocking_lock().clone(),
         };
 
-        Ok(findings)
+        // Targets are processed unordered; sort so the ledger is deterministic.
+        let mut records: Vec<ExecutionRecord> = per_target_records.into_iter().flatten().collect();
+        records.sort_by(|a, b| {
+            a.target
+                .cmp(&b.target)
+                .then_with(|| a.template_id.cmp(&b.template_id))
+        });
+
+        Ok((findings, records))
     }
 
     /// Execute all templates for a single target
@@ -113,22 +138,24 @@ impl Executor {
         &self,
         target: &crate::types::Target,
         job: &ScanJob,
-    ) -> Result<Vec<Finding>> {
+    ) -> Result<(Vec<Finding>, Vec<ExecutionRecord>)> {
         let mut findings = Vec::new();
+        let mut records = Vec::new();
 
         // Execute templates in parallel with limited concurrency
-        let template_findings: Vec<Result<Vec<Finding>>> = stream::iter(&job.templates)
+        let per_template: Vec<(Vec<Finding>, ExecutionRecord)> = stream::iter(&job.templates)
             .map(|template| async {
                 // Update progress with current template
                 if let Some(progress) = get_progress() {
                     progress.set_template(template.id(), &target.address);
                 }
 
+                let started = std::time::Instant::now();
                 match self
                     .execute_single_template(template.as_ref(), target, &job.context)
                     .await
                 {
-                    Ok(template_findings) => {
+                    Ok((template_findings, report)) => {
                         let findings_count = template_findings.len();
 
                         // Update progress
@@ -144,7 +171,27 @@ impl Executor {
                                 target.address
                             );
                         }
-                        Ok(template_findings)
+
+                        let record = Self::record_from_report(
+                            target,
+                            template.id(),
+                            findings_count,
+                            report,
+                            started.elapsed(),
+                        );
+                        tracing::info!(
+                            "Execution {} against {} -> {} ({} findings, {})",
+                            template.id(),
+                            target.address,
+                            record.status,
+                            findings_count,
+                            if record.declared_by_template {
+                                "template-declared"
+                            } else {
+                                "cxg-inferred"
+                            }
+                        );
+                        (template_findings, record)
                     }
                     Err(e) => {
                         // Update progress even on failure
@@ -158,7 +205,26 @@ impl Executor {
                             target.address,
                             e
                         );
-                        Err(e)
+
+                        let status = if matches!(e, Error::Timeout { .. }) {
+                            ExecutionStatus::TimedOut
+                        } else {
+                            ExecutionStatus::Errored
+                        };
+                        (
+                            Vec::new(),
+                            ExecutionRecord {
+                                target: target.address.clone(),
+                                target_kind: target.protocol.to_string(),
+                                template_id: template.id().to_string(),
+                                status,
+                                declared_by_template: false,
+                                findings: 0,
+                                exit_code: None,
+                                detail: Some(e.to_string()),
+                                duration_ms: started.elapsed().as_millis() as u64,
+                            },
+                        )
                     }
                 }
             })
@@ -166,12 +232,55 @@ impl Executor {
             .collect()
             .await;
 
-        // Collect successful results
-        for mut template_findings in template_findings.into_iter().flatten() {
+        for (mut template_findings, record) in per_template {
             findings.append(&mut template_findings);
+            records.push(record);
         }
 
-        Ok(findings)
+        Ok((findings, records))
+    }
+
+    /// Build a ledger row from a completed execution.
+    ///
+    /// cxg *infers* a status from what it observed -- findings > 0 means
+    /// confirmed, 0 means refuted -- and a template may *override* it with its
+    /// own declared verdict. `declared_by_template` records which happened, so
+    /// an operator can always tell a template's considered verdict from cxg's
+    /// default guess.
+    fn record_from_report(
+        target: &crate::types::Target,
+        template_id: &str,
+        findings_count: usize,
+        report: crate::engine::common::TemplateReport,
+        elapsed: std::time::Duration,
+    ) -> ExecutionRecord {
+        let inferred = if findings_count > 0 {
+            ExecutionStatus::Confirmed
+        } else {
+            ExecutionStatus::Refuted
+        };
+        let declared_by_template = report.status.is_some();
+        let status = report.status.unwrap_or(inferred);
+
+        // A status cxg could not parse must not vanish: surface it in the
+        // ledger rather than silently substituting the inferred one.
+        let detail = match (report.unrecognised_status, report.detail) {
+            (Some(raw), Some(d)) => Some(format!("unrecognised-status({}): {}", raw, d)),
+            (Some(raw), None) => Some(format!("unrecognised-status({})", raw)),
+            (None, d) => d,
+        };
+
+        ExecutionRecord {
+            target: target.address.clone(),
+            target_kind: target.protocol.to_string(),
+            template_id: template_id.to_string(),
+            status,
+            declared_by_template,
+            findings: findings_count,
+            exit_code: report.exit_code,
+            detail,
+            duration_ms: elapsed.as_millis() as u64,
+        }
     }
 
     /// Execute a single template against a target
@@ -180,7 +289,7 @@ impl Executor {
         template: &dyn crate::template::Template,
         target: &crate::types::Target,
         context: &crate::types::Context,
-    ) -> Result<Vec<Finding>> {
+    ) -> Result<(Vec<Finding>, crate::engine::common::TemplateReport)> {
         tracing::debug!(
             "Executing template {} against target {}",
             template.id(),
@@ -190,7 +299,7 @@ impl Executor {
         // Set timeout for template execution
         let timeout = std::time::Duration::from_secs(self.config.templates.timeout_secs);
 
-        match tokio::time::timeout(timeout, template.execute(target, context)).await {
+        match tokio::time::timeout(timeout, template.execute_with_status(target, context)).await {
             Ok(Ok(findings)) => Ok(findings),
             Ok(Err(e)) => Err(e),
             Err(_) => Err(Error::Timeout {
@@ -209,10 +318,93 @@ impl Executor {
 mod tests {
     use super::*;
 
+    use crate::engine::common::TemplateReport;
+    use crate::types::{Protocol, Target};
+    use std::time::Duration;
+
     #[tokio::test]
     async fn test_executor_creation() {
         let config = Arc::new(Config::default());
         let executor = Executor::new(config).await;
         assert!(executor.is_ok());
+    }
+
+    fn cli_target() -> Target {
+        Target::new("/opt/build/toy", Protocol::Cli)
+    }
+
+    #[test]
+    fn infers_confirmed_from_findings_when_the_template_declares_nothing() {
+        let record = Executor::record_from_report(
+            &cli_target(),
+            "probe",
+            2,
+            TemplateReport::default(),
+            Duration::from_millis(7),
+        );
+        assert_eq!(record.status, ExecutionStatus::Confirmed);
+        assert!(!record.declared_by_template);
+        assert_eq!(record.findings, 2);
+        assert_eq!(record.target_kind, "cli");
+    }
+
+    /// Zero findings is only a refutation by cxg's default guess. The record
+    /// says so, so an operator can tell it from a considered verdict.
+    #[test]
+    fn infers_refuted_from_no_findings_when_the_template_declares_nothing() {
+        let record = Executor::record_from_report(
+            &cli_target(),
+            "probe",
+            0,
+            TemplateReport::default(),
+            Duration::from_millis(1),
+        );
+        assert_eq!(record.status, ExecutionStatus::Refuted);
+        assert!(!record.declared_by_template);
+    }
+
+    #[test]
+    fn a_template_declared_status_overrides_the_inference() {
+        let report = TemplateReport {
+            status: Some(ExecutionStatus::Skipped),
+            detail: Some("no-instrumentation".to_string()),
+            exit_code: Some(0),
+            ..TemplateReport::default()
+        };
+        let record = Executor::record_from_report(
+            &cli_target(),
+            "probe",
+            0,
+            report,
+            Duration::from_millis(1),
+        );
+        assert_eq!(record.status, ExecutionStatus::Skipped);
+        assert!(record.declared_by_template);
+        assert_eq!(record.detail.as_deref(), Some("no-instrumentation"));
+        assert_eq!(record.exit_code, Some(0));
+    }
+
+    #[test]
+    fn an_unrecognised_declared_status_is_surfaced_in_the_ledger() {
+        let report = TemplateReport {
+            unrecognised_status: Some("refuuted".to_string()),
+            detail: Some("clean run".to_string()),
+            ..TemplateReport::default()
+        };
+        let record = Executor::record_from_report(
+            &cli_target(),
+            "probe",
+            0,
+            report,
+            Duration::from_millis(1),
+        );
+        // cxg falls back to its own inference...
+        assert_eq!(record.status, ExecutionStatus::Refuted);
+        assert!(!record.declared_by_template);
+        // ...but the typo is visible rather than swallowed.
+        assert_eq!(
+            record.detail.as_deref(),
+            Some("unrecognised-status(refuuted): clean run")
+        );
     }
 }

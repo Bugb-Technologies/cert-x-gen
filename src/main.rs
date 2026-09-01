@@ -4261,7 +4261,77 @@ fn print_scan_summary(results: &cert_x_gen::types::ScanResults) {
         style(results.findings.len()).bold()
     );
     println!();
+
+    print_execution_ledger(results);
+
     println!("{}", style("═".repeat(80)).dim());
+}
+
+/// Rows of the execution ledger printed under the summary before it is elided.
+const LEDGER_ROW_LIMIT: usize = 25;
+
+/// Print the per-(template, target) execution ledger.
+///
+/// Findings tell you what was confirmed. This tells you what was *refuted*,
+/// *skipped* or *errored* -- distinctions a scan reporting zero findings
+/// otherwise cannot express. The full ledger is always in the JSON output;
+/// the terminal shows counts plus a bounded sample of the rows.
+fn print_execution_ledger(results: &cert_x_gen::types::ScanResults) {
+    use cert_x_gen::types::ExecutionStatus;
+    use console::style;
+
+    if results.executions.is_empty() {
+        return;
+    }
+
+    println!("{}", style("Execution Status:").bold());
+    for status in ExecutionStatus::ALL {
+        let count = results
+            .executions
+            .iter()
+            .filter(|e| e.status == status)
+            .count();
+        let label = format!("{}:", status.to_string().to_uppercase());
+        let styled = match status {
+            ExecutionStatus::Confirmed => style(format!("{:<11}{}", label, count)).red(),
+            ExecutionStatus::Refuted => style(format!("{:<11}{}", label, count)).green(),
+            ExecutionStatus::Skipped => style(format!("{:<11}{}", label, count)).yellow(),
+            ExecutionStatus::Errored | ExecutionStatus::TimedOut => {
+                style(format!("{:<11}{}", label, count)).magenta()
+            }
+        };
+        println!("  {}", styled);
+    }
+    println!();
+
+    for e in results.executions.iter().take(LEDGER_ROW_LIMIT) {
+        println!(
+            "  {:<10} {} → {}{}{}",
+            style(e.status.to_string()).bold(),
+            e.template_id,
+            e.target,
+            e.detail
+                .as_ref()
+                .map(|d| format!("  [{}]", d))
+                .unwrap_or_default(),
+            if e.declared_by_template {
+                style("  (template-declared)").dim().to_string()
+            } else {
+                String::new()
+            }
+        );
+    }
+    if results.executions.len() > LEDGER_ROW_LIMIT {
+        println!(
+            "  {}",
+            style(format!(
+                "… and {} more execution(s); the full ledger is in the JSON output",
+                results.executions.len() - LEDGER_ROW_LIMIT
+            ))
+            .dim()
+        );
+    }
+    println!();
 }
 
 /// Run AI command

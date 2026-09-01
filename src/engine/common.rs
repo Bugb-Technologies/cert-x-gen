@@ -91,6 +91,10 @@ pub struct ParsedMetadata {
     /// Whether the template can self-acquire missing context via probing.
     /// Declared as: `# @auto_probe: true`
     pub auto_probe: bool,
+
+    /// The template exits non-zero on purpose; cxg must keep its stdout.
+    /// Declared as: `# @allow_nonzero_exit: true`
+    pub allow_nonzero_exit: bool,
 }
 
 impl ParsedMetadata {
@@ -226,6 +230,11 @@ pub fn parse_metadata_from_comments(content: &str) -> ParsedMetadata {
     // @auto_probe: true
     if let Some(ap_str) = extract_metadata_field(&header_content, "auto_probe") {
         metadata.auto_probe = matches!(ap_str.to_lowercase().as_str(), "true" | "yes" | "1");
+    }
+
+    // @allow_nonzero_exit: true
+    if let Some(v) = extract_metadata_field(&header_content, "allow_nonzero_exit") {
+        metadata.allow_nonzero_exit = matches!(v.to_lowercase().as_str(), "true" | "yes" | "1");
     }
 
     metadata
@@ -650,6 +659,7 @@ pub fn create_metadata(path: &Path, language: TemplateLanguage) -> TemplateMetad
         hypothesis_tags: parsed.hypothesis_tags,
         batch_group: parsed.batch_group,
         auto_probe: parsed.auto_probe,
+        allow_nonzero_exit: parsed.allow_nonzero_exit,
     }
 }
 
@@ -738,6 +748,109 @@ pub fn generate_cache_key(path: &Path) -> Result<String> {
     Ok(format!("{:x}", hasher.finish()))
 }
 
+// ============================================================================
+// Probe contract: exit-tolerant execution and template-declared status
+// ============================================================================
+
+/// Full outcome of a child process, including the non-zero cases.
+#[derive(Debug, Clone)]
+pub struct ExecOutcome {
+    /// Captured stdout (kept even when the process failed)
+    pub stdout: String,
+    /// Captured stderr (kept even when the process succeeded)
+    pub stderr: String,
+    /// Exit code, when the process exited normally. `None` when it was killed
+    /// by a signal.
+    pub exit_code: Option<i32>,
+    /// True when the process exited with status 0
+    pub success: bool,
+}
+
+/// Execute a command and return the full outcome, without treating a non-zero
+/// exit as an error.
+///
+/// [`execute_command`] discards stdout whenever the child exits non-zero. For a
+/// probe template whose whole job is to provoke a crash in a target, that
+/// throws the evidence away: the finding, the sanitizer report and the exit
+/// code all go with it. This variant keeps them and lets the caller decide.
+pub async fn execute_command_full(
+    command: &str,
+    args: &[String],
+    env_vars: &HashMap<String, String>,
+) -> Result<ExecOutcome> {
+    let mut cmd = Command::new(command);
+    cmd.args(args).stdout(Stdio::piped()).stderr(Stdio::piped());
+    // Same rationale as execute_command: a dropped timeout must kill the child.
+    cmd.kill_on_drop(true);
+
+    for (key, value) in env_vars {
+        cmd.env(key, value);
+    }
+
+    let output = cmd
+        .output()
+        .await
+        .map_err(|e| Error::Execution(format!("Failed to execute command: {}", e)))?;
+
+    Ok(ExecOutcome {
+        stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+        stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+        exit_code: output.status.code(),
+        success: output.status.success(),
+    })
+}
+
+/// A template's self-declared verdict, read from the JSON wrapper's metadata.
+///
+/// ```json
+/// {"findings": [], "metadata": {"status": "refuted", "detail": "exit=0"}}
+/// ```
+///
+/// Purely additive: `parse_findings` already accepts and ignores `metadata`.
+#[derive(Debug, Clone, Default)]
+pub struct TemplateReport {
+    /// Status the template declared, if it declared a recognised one
+    pub status: Option<crate::types::ExecutionStatus>,
+    /// A `metadata.status` value cxg did not recognise, kept verbatim so an
+    /// operator sees the typo instead of silently getting cxg's own guess.
+    pub unrecognised_status: Option<String>,
+    /// Short reason the template gave
+    pub detail: Option<String>,
+    /// Exit code of the template process, when the engine observed it
+    pub exit_code: Option<i32>,
+}
+
+/// Extract a template-declared status from its JSON output.
+///
+/// Non-JSON output, or JSON with no `metadata.status`, yields an empty report
+/// and cxg falls back to inferring the status from the finding count.
+pub fn parse_template_report(stdout: &str) -> TemplateReport {
+    let mut report = TemplateReport::default();
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(stdout) else {
+        return report;
+    };
+    let Some(meta) = value.get("metadata") else {
+        return report;
+    };
+    if let Some(raw) = meta.get("status").and_then(|v| v.as_str()) {
+        match crate::types::ExecutionStatus::parse(raw) {
+            Some(status) => report.status = Some(status),
+            None => {
+                tracing::warn!(
+                    "Template declared an unrecognised metadata.status '{}'; \
+                     falling back to cxg's inferred status",
+                    raw
+                );
+                report.unrecognised_status = Some(raw.to_string());
+            }
+        }
+    }
+    if let Some(d) = meta.get("detail").and_then(|v| v.as_str()) {
+        report.detail = Some(d.to_string());
+    }
+    report
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -763,6 +876,64 @@ mod tests {
         // PORT is meaningless for a CLI target but is still emitted, so the
         // contract stays uniform. Templates must ignore it when KIND=cli.
         assert_eq!(env.get("CERT_X_GEN_TARGET_PORT").unwrap(), "80");
+    }
+
+    #[test]
+    fn parses_allow_nonzero_exit_from_the_header() {
+        let yes = "#!/bin/bash\n# @id: probe\n# @allow_nonzero_exit: true\n";
+        assert!(parse_metadata_from_comments(yes).allow_nonzero_exit);
+
+        let no = "#!/bin/bash\n# @id: probe\n";
+        assert!(!parse_metadata_from_comments(no).allow_nonzero_exit);
+
+        let explicit_false = "#!/bin/bash\n# @id: probe\n# @allow_nonzero_exit: false\n";
+        assert!(!parse_metadata_from_comments(explicit_false).allow_nonzero_exit);
+    }
+
+    #[test]
+    fn template_report_reads_a_declared_status_and_detail() {
+        let report = parse_template_report(
+            r#"{"findings":[],"metadata":{"status":"refuted","detail":"exit=0"}}"#,
+        );
+        assert_eq!(report.status, Some(crate::types::ExecutionStatus::Refuted));
+        assert_eq!(report.detail.as_deref(), Some("exit=0"));
+        assert_eq!(report.unrecognised_status, None);
+    }
+
+    /// A status cxg cannot parse must be surfaced, not silently replaced by
+    /// cxg's own guess -- that is the exact failure the ledger exists to stop.
+    #[test]
+    fn template_report_keeps_an_unrecognised_status_verbatim() {
+        let report =
+            parse_template_report(r#"{"findings":[],"metadata":{"status":"refuuted"}}"#);
+        assert_eq!(report.status, None);
+        assert_eq!(report.unrecognised_status.as_deref(), Some("refuuted"));
+    }
+
+    #[test]
+    fn template_report_is_empty_for_output_that_declares_nothing() {
+        assert!(parse_template_report("not json at all").status.is_none());
+        assert!(parse_template_report(r#"{"findings":[]}"#).status.is_none());
+        assert!(parse_template_report(r#"{"findings":[],"metadata":{}}"#)
+            .status
+            .is_none());
+    }
+
+    /// `execute_command` discards stdout on a non-zero exit; `execute_command_full`
+    /// is the variant that keeps the evidence a crashing probe produces.
+    #[tokio::test]
+    async fn execute_command_full_keeps_stdout_on_a_nonzero_exit() {
+        let args = vec!["-c".to_string(), "echo evidence; exit 3".to_string()];
+
+        let outcome = execute_command_full("sh", &args, &HashMap::new())
+            .await
+            .unwrap();
+        assert_eq!(outcome.stdout.trim(), "evidence");
+        assert_eq!(outcome.exit_code, Some(3));
+        assert!(!outcome.success);
+
+        // The contrast, on the same command.
+        assert!(execute_command("sh", &args, &HashMap::new()).await.is_err());
     }
 
     /// A template that outruns its timeout must not outlive it. `execute_command`

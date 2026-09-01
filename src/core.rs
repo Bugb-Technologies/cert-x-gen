@@ -166,12 +166,13 @@ impl CertXGen {
         drop(scheduler); // Release lock
 
         // Execute scan using executor
-        let findings = self.executor.execute(&job).await?;
+        let (findings, executions) = self.executor.execute_with_records(&job).await?;
 
         // Aggregate results
         for finding in findings {
             results.add_finding(finding);
         }
+        results.executions = executions;
 
         // Update statistics
         results.statistics.targets_scanned = job.targets.len();
@@ -186,9 +187,10 @@ impl CertXGen {
         results.complete();
 
         tracing::info!(
-            "Scan {} completed. Found {} findings",
+            "Scan {} completed. Found {} findings across {} executions",
             job.id,
-            results.findings.len()
+            results.findings.len(),
+            results.executions.len()
         );
 
         Ok(results)
