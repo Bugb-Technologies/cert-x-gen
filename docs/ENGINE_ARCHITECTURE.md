@@ -202,11 +202,149 @@ CERT_X_GEN_TEMPLATE_ID=redis-unauthenticated
 CERT_X_GEN_TEMPLATE_NAME="Redis Unauthenticated Access"
 CERT_X_GEN_TEMPLATE_AUTHOR="CERT-X-GEN Team"
 
+# Target kind: http | https | tcp | udp | ... | cli
+CERT_X_GEN_TARGET_KIND=https
+
 # Additional configuration
 CERT_X_GEN_TIMEOUT=30
 CERT_X_GEN_RETRY_COUNT=3
 CERT_X_GEN_USER_AGENT="CERT-X-GEN/1.0"
 ```
+
+---
+
+## The probe contract
+
+The probe contract is what lets a template drive a **local binary** with input
+cxg supplies, and report a verdict cxg can record. Everything in it is
+optional: a template that ignores all of it behaves exactly as before, and a
+scan that passes none of the flags produces exactly the environment it always
+did.
+
+### `cli://` targets
+
+A target can be a locally-built executable rather than a network host:
+
+```bash
+cxg scan --scope cli:///abs/path/to/binary      # canonical
+cxg scan --scope cli:/abs/path/to/binary        # also parses
+```
+
+For such a target:
+
+| Variable | Value |
+| --- | --- |
+| `CERT_X_GEN_TARGET_HOST` | the **binary path**, canonicalised |
+| `CERT_X_GEN_TARGET_KIND` | `cli` |
+| `CERT_X_GEN_TARGET_PORT` | **meaningless — ignore it when `KIND=cli`.** It is still emitted (as `80`) so the environment stays uniform across kinds, but it names nothing |
+
+A `cli:` scope entry is taken verbatim: it is never split on commas and never
+read as a file of targets, so a binary path containing a comma survives.
+
+### Probe input flags
+
+Each variable is **absent** unless its flag was passed, so a template must
+treat every one as optional and fall back to its own default probe.
+
+| Scan flag | Environment variable | Shape | Meaning |
+| --- | --- | --- | --- |
+| `--arg <ARG>` (repeatable) | `CERT_X_GEN_ARGV` | JSON array of strings | argument vector for the target. Hyphen-leading values are accepted, so the target's own flags can be passed |
+| `--stdin-file <PATH>` | `CERT_X_GEN_STDIN_FILE` | path | file whose bytes are the target's stdin |
+| `--input <DIR>` | `CERT_X_GEN_INPUT_DIR` | path | seed corpus directory. cxg hands it over unmodified; it does not mutate or minimise |
+| `--target-env <K=V>` (repeatable) | `CERT_X_GEN_TARGET_ENV` | JSON object | environment for the **target** process, not for the template. Splits on the first `=` only, so `ASAN_OPTIONS=abort_on_error=1` survives |
+| — | `CERT_X_GEN_TARGET_INSTRUMENTATION` | comma list or `none` | what a `cli://` build can reveal, e.g. `asan,debug-info`. Always set for a `cli://` target |
+
+Paths are validated and canonicalised before the scan starts: a `--stdin-file`
+that is not a readable file, an `--input` that is not a directory, and a
+`--target-env` without a `KEY=VALUE` shape are all hard errors rather than
+silently dropped input.
+
+```bash
+cxg scan --scope cli://$BIN --templates probe.sh \
+    --arg --label --arg "$(cat case.txt)" \
+    --stdin-file ./case.bin \
+    --input ./corpus/ \
+    --target-env ASAN_OPTIONS=abort_on_error=1
+```
+
+### Instrumentation preflight
+
+```bash
+cxg scan --scope cli://$BIN --require-instrumentation
+```
+
+Without this, a build that carries no sanitizer runs the probe, sees nothing,
+and is reported as a **refutation it did not earn** — a false negative
+indistinguishable from a real one. With it, cxg inspects the binary for
+sanitizer, coverage and debug-info markers first, and records every
+(template, target) execution as `skipped` with a machine-readable reason
+instead:
+
+| Reason | Meaning |
+| --- | --- |
+| `no-instrumentation-detected` | the build carries no marker cxg can read, so it could not have shown the defect |
+| `target-not-found` | there is no binary at that path at all |
+| `oracle-unavailable(asan)` | the template's only oracles are sanitizers this build does not carry (see `@oracles`) |
+| `target-kind-mismatch(kind=…, accepts=…)` | the template declared `@target_kinds` and this is not one of them (applies with or without the flag) |
+
+cxg **inspects and refuses; it does not build the target.** Doing that
+honestly needs a per-project build recipe, and half-doing it produces exactly
+the confident false refutations this feature exists to prevent. Build the
+target with your language's instrumented profile — for C/C++,
+`-fsanitize=address -g`.
+
+### Template annotations
+
+Parsed exactly like the existing `@`-annotations, all optional:
+
+| Annotation | Example | Effect |
+| --- | --- | --- |
+| `@allow_nonzero_exit` | `true` | The template exits non-zero on purpose. A probe that successfully provokes a crash naturally does; without this cxg discards its stdout and the finding is lost |
+| `@oracles` | `asan, signal, exit` | How the template decides something is wrong. Vocabulary: `asan` `ubsan` `msan` `tsan` `signal` `exit` `assert` `timeout` `diff` `property` `detector` |
+| `@target_kinds` | `cli` | Which kinds the template accepts. **Absent means every kind** — do not add it for completeness, only when the template genuinely cannot handle other kinds |
+
+### Declaring an execution status
+
+Every (template, target) pair produces one row in `ScanResults.executions`.
+cxg infers the status from what it observed — findings > 0 is `confirmed`,
+0 is `refuted`, a timeout is `timed-out`, any other error is `errored` — and a
+template may override it in the JSON wrapper `parse_findings` already accepts:
+
+```json
+{"findings": [],
+ "metadata": {"status": "refuted", "detail": "target handled probe input cleanly (exit=0)"}}
+```
+
+`status` is one of `confirmed` `refuted` `errored` `skipped` `timed-out`. An
+unrecognised value is reported as `unrecognised-status(<value>)`, never
+silently ignored.
+
+Declaring it is how a template says *"I ran, I exercised the target, and there
+is no defect"* rather than leaving that indistinguishable from a template that
+did nothing. Each row records `declared_by_template`, so an operator can
+always tell a template's considered verdict from cxg's default guess:
+
+```json
+{"target": "/path/toy_defective", "target_kind": "cli",
+ "template_id": "cli-probe-contract", "status": "confirmed",
+ "declared_by_template": true, "findings": 1, "exit_code": 3,
+ "detail": "oracle=asan exit=134 input=cxg-argv", "duration_ms": 597}
+```
+
+The ledger appears in the JSON output and in an **Execution Status** block in
+the terminal summary. Other output formats (SARIF, CSV, HTML, Markdown) do not
+carry it: a non-result has no natural SARIF representation, and forcing one is
+its own design question.
+
+### Which engines implement it
+
+The shell engine implements the probe contract today. The other engines
+inherit a default `Template::execute_with_status` that delegates to `execute`
+and declares nothing, so they compile and behave exactly as before; their
+templates still get the full environment above, and cxg still records an
+inferred status for them.
+
+---
 
 ### JSON Output Format
 

@@ -1550,17 +1550,30 @@ fn apply_probe_input(args: &cli::ScanArgs, context: &mut cert_x_gen::types::Cont
     Ok(())
 }
 
+/// Resolve a `cli://` path to its canonical form, falling back to the literal.
+///
+/// `cli://toy`, `cli://./toy` and `cli:///abs/path/toy` all name the same
+/// binary, and without this they would be three distinct targets producing
+/// three separate sets of ledger rows for one artifact. A path that does not
+/// resolve is kept verbatim, so the operator sees back what they typed --
+/// the preflight reports that case as `target-not-found`.
+fn canonical_cli_path(path: &str) -> String {
+    std::fs::canonicalize(path)
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| path.to_string())
+}
+
 /// Parse a single target string (supports host:port format)
 fn parse_target_string(target_str: &str) -> Target {
     // Local CLI/binary target: `cli://<path>` or `cli:<path>` carries a
     // filesystem path to a locally-built executable, not a network host. Kept
-    // ahead of URL parsing so arbitrary paths (leading slash, no authority) are
-    // preserved verbatim in `Target::address`.
-    if let Some(rest) = target_str.strip_prefix("cli://") {
-        return Target::new(rest, Protocol::Cli);
-    }
-    if let Some(rest) = target_str.strip_prefix("cli:") {
-        return Target::new(rest, Protocol::Cli);
+    // ahead of URL parsing so arbitrary paths (leading slash, no authority)
+    // survive into `Target::address`.
+    if let Some(rest) = target_str
+        .strip_prefix("cli://")
+        .or_else(|| target_str.strip_prefix("cli:"))
+    {
+        return Target::new(canonical_cli_path(rest), Protocol::Cli);
     }
 
     if let Ok(url) = url::Url::parse(target_str) {
@@ -1633,6 +1646,15 @@ fn expand_scope_entry(
 ) -> Result<()> {
     let trimmed = entry.trim();
     if trimmed.is_empty() {
+        return Ok(());
+    }
+
+    // A `cli:` entry is a filesystem path, not a list and not a file of
+    // targets. Taken verbatim before any of the splitting below, so a binary
+    // whose path contains a comma is not cut in half, and one that happens to
+    // sit next to a readable file is not read as a target list.
+    if trimmed.starts_with("cli://") || trimmed.starts_with("cli:") {
+        acc.push(trimmed.to_string());
         return Ok(());
     }
 
@@ -5071,6 +5093,68 @@ mod tests {
         assert!(context.probe_stdin_file.is_none());
         assert!(context.probe_input_dir.is_none());
         assert!(context.probe_env.is_empty());
+    }
+
+    /// A1: three spellings of one binary must be one target, not three.
+    #[test]
+    fn cli_target_paths_are_canonicalised_so_spellings_deduplicate() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin = dir.path().join("toy");
+        std::fs::write(&bin, b"#!/bin/sh\n").unwrap();
+        let canonical = bin.canonicalize().unwrap().to_string_lossy().to_string();
+
+        let dotted = dir.path().join(".").join("toy");
+        for spelling in [
+            format!("cli://{}", bin.display()),
+            format!("cli:{}", bin.display()),
+            format!("cli://{}", dotted.display()),
+        ] {
+            let target = parse_target_string(&spelling);
+            assert_eq!(target.protocol, Protocol::Cli);
+            assert_eq!(target.address, canonical, "spelling {spelling} did not canonicalise");
+        }
+    }
+
+    /// A path that does not resolve is kept verbatim, so the operator sees
+    /// back what they typed rather than a rewritten guess.
+    #[test]
+    fn an_unresolvable_cli_path_is_kept_verbatim() {
+        let target = parse_target_string("cli:///definitely/not/here");
+        assert_eq!(target.address, "/definitely/not/here");
+    }
+
+    /// A2: a `cli:` scope entry is a path, not a comma list and not a file of
+    /// targets, so none of the scope splitting may touch it.
+    #[test]
+    fn a_cli_scope_entry_with_a_comma_is_not_split_in_half() {
+        let mut acc = Vec::new();
+        let mut stack = HashSet::new();
+        expand_scope_entry("cli:///opt/my,build/toy", &mut acc, &mut stack).unwrap();
+        assert_eq!(acc, vec!["cli:///opt/my,build/toy".to_string()]);
+    }
+
+    /// ...and a `cli:` entry that happens to name a readable file is still a
+    /// target, not a list of targets to read.
+    #[test]
+    fn a_cli_scope_entry_is_never_read_as_a_target_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin = dir.path().join("toy");
+        std::fs::write(&bin, b"example.com\nother.example\n").unwrap();
+
+        let mut acc = Vec::new();
+        let mut stack = HashSet::new();
+        let entry = format!("cli://{}", bin.display());
+        expand_scope_entry(&entry, &mut acc, &mut stack).unwrap();
+        assert_eq!(acc, vec![entry]);
+    }
+
+    /// The exemption is narrow: ordinary scope entries still split.
+    #[test]
+    fn ordinary_scope_entries_still_split_on_commas() {
+        let mut acc = Vec::new();
+        let mut stack = HashSet::new();
+        expand_scope_entry("example.com,other.example", &mut acc, &mut stack).unwrap();
+        assert_eq!(acc, vec!["example.com", "other.example"]);
     }
 
     #[test]
