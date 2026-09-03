@@ -514,7 +514,7 @@ mod tests {
         };
 
         let stripped = dir.path().join("toy_stripped");
-        std::fs::write(&stripped, b"no markers at all").unwrap();
+        std::fs::write(&stripped, b"\x7fELF\x02\x01\x01\x00no markers at all").unwrap();
         assert_eq!(
             Executor::preflight_skip_reason(
                 &Target::new(stripped.to_string_lossy().to_string(), Protocol::Cli),
@@ -524,7 +524,9 @@ mod tests {
         );
 
         let instrumented = dir.path().join("toy_asan");
-        std::fs::write(&instrumented, b"__asan_init").unwrap();
+        // A compiled object, because that is the only shape the marker scan
+        // reads (s14 item 2): a script saying `__asan_init` is not a build.
+        std::fs::write(&instrumented, b"\x7fELF\x02\x01\x01\x00__asan_init").unwrap();
         assert_eq!(
             Executor::preflight_skip_reason(
                 &Target::new(instrumented.to_string_lossy().to_string(), Protocol::Cli),

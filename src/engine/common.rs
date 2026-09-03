@@ -864,6 +864,42 @@ const INSTRUMENTATION_MARKERS: &[(&str, &str)] = &[
 /// puts macOS debug info, outside the executable entirely.
 const DEBUG_INFO_MARKERS: &[&str] = &[".debug_info", "__debug_info", ".debug_line"];
 
+/// Magic numbers that begin a real compiled object: ELF, every Mach-O flavour
+/// (32/64-bit, both endiannesses, and the universal "fat" wrapper), PE/COFF,
+/// and a static archive.
+///
+/// Only a file that starts with one of these can *carry* instrumentation, so
+/// only such a file is worth scanning for markers. See [`is_object_file`].
+const OBJECT_MAGICS: &[&[u8]] = &[
+    b"\x7fELF",                    // ELF (Linux, BSD)
+    &[0xFE, 0xED, 0xFA, 0xCE],     // Mach-O 32-bit, big endian
+    &[0xFE, 0xED, 0xFA, 0xCF],     // Mach-O 64-bit, big endian
+    &[0xCE, 0xFA, 0xED, 0xFE],     // Mach-O 32-bit, little endian
+    &[0xCF, 0xFA, 0xED, 0xFE],     // Mach-O 64-bit, little endian
+    &[0xCA, 0xFE, 0xBA, 0xBE],     // Mach-O universal binary
+    &[0xBE, 0xBA, 0xFE, 0xCA],     // Mach-O universal binary, byte-swapped
+    b"MZ",                         // PE/COFF (the DOS stub)
+    b"!<arch>\n",                  // static archive (.a)
+];
+
+/// How many leading bytes are read to decide whether a file is an object.
+const OBJECT_MAGIC_PEEK: usize = 8;
+
+/// Is this file a compiled object, judged by its leading bytes?
+///
+/// The instrumentation markers are *symbol names*, and a symbol name only
+/// means something inside a compiled object. A shebang script, a source file
+/// or a JS bundle that merely mentions `__asan_init` -- in a comment, a corpus
+/// entry, or its own documentation -- is not instrumented, and reading it as
+/// instrumented is the dangerous direction: the preflight would pass and cxg
+/// would report a refutation the build could never have earned.
+///
+/// A text file cannot carry a sanitizer runtime, so nothing is lost by
+/// refusing to scan it.
+fn is_object_file(header: &[u8]) -> bool {
+    OBJECT_MAGICS.iter().any(|magic| header.starts_with(magic))
+}
+
 /// How much of the file is read at a time while scanning for markers.
 const SCAN_CHUNK: usize = 1 << 20;
 
@@ -951,10 +987,17 @@ pub fn unsupported_oracles(declared: &[String], instrumentation: &[String]) -> O
 /// Detection is a byte-level scan of the file: the markers appear in the
 /// symbol table (or the dynamic symbol table, for a stripped binary that links
 /// a sanitizer runtime), so no external tool is needed and the result is the
-/// same on ELF and Mach-O. It is a heuristic in one direction only -- a file
-/// that merely *contains* the bytes reads as instrumented, which makes cxg run
-/// the probe rather than skip it. It never fabricates the absence of
-/// instrumentation, which is the direction that would produce a false verdict.
+/// same on ELF and Mach-O.
+///
+/// The scan only runs on a **compiled object** ([`is_object_file`]). Anything
+/// else -- a shebang script, a JS bundle, a source file, a corpus entry --
+/// reports `none` however many marker strings it contains. Those strings are
+/// symbol names in an object and prose everywhere else, and reading prose as
+/// instrumentation fails in the dangerous direction: the preflight passes and
+/// cxg reports a refutation the build could never have earned. Within an
+/// object the scan stays a heuristic in the safe direction only -- a byte
+/// sequence that is not really a symbol makes cxg *run* the probe rather than
+/// skip it.
 pub fn detect_instrumentation(path: &Path) -> Vec<String> {
     if let Some(cached) = instrumentation_cache_get(path) {
         return cached;
@@ -966,22 +1009,46 @@ pub fn detect_instrumentation(path: &Path) -> Vec<String> {
 
 fn detect_instrumentation_uncached(path: &Path) -> Vec<String> {
     use std::collections::BTreeSet;
-    use std::io::Read;
+    use std::io::{Read, Seek};
 
     let mut found: BTreeSet<String> = BTreeSet::new();
 
+    let Ok(mut file) = std::fs::File::open(path) else {
+        return Vec::new();
+    };
+
+    // Only a compiled object can carry instrumentation. Deciding this from the
+    // file's magic *before* scanning is what stops a script that mentions
+    // `__asan_init` in a comment from reading as an ASan build -- a false
+    // all-clear, which is exactly what the preflight exists to prevent.
+    let mut header = [0u8; OBJECT_MAGIC_PEEK];
+    let mut header_len = 0usize;
+    while header_len < header.len() {
+        match file.read(&mut header[header_len..]) {
+            Ok(0) => break,
+            Ok(n) => header_len += n,
+            Err(_) => return Vec::new(),
+        }
+    }
+    if !is_object_file(&header[..header_len]) {
+        tracing::debug!(
+            "Target {:?} is not a compiled object; reporting no instrumentation",
+            path
+        );
+        return Vec::new();
+    }
+    if file.seek(std::io::SeekFrom::Start(0)).is_err() {
+        return Vec::new();
+    }
+
     // Debug info can live outside the executable: dsymutil writes a sibling
-    // `<binary>.dSYM` bundle. Check that before opening the file at all, so it
-    // is found even for a binary that is otherwise stripped.
+    // `<binary>.dSYM` bundle, so it is found even for a binary that is
+    // otherwise stripped.
     let mut dsym = path.as_os_str().to_os_string();
     dsym.push(".dSYM");
     if Path::new(&dsym).exists() {
         found.insert("debug-info".to_string());
     }
-
-    let Ok(mut file) = std::fs::File::open(path) else {
-        return found.into_iter().collect();
-    };
 
     // The longest marker, minus one, is how much of each chunk must be carried
     // into the next so a marker straddling a chunk boundary is still seen.
@@ -1341,7 +1408,10 @@ mod tests {
             ("__llvm_profile_write_file", "profile"),
         ] {
             let path = dir.path().join(label);
-            std::fs::write(&path, marker.as_bytes()).unwrap();
+            // A real object, because only an object is scanned at all.
+            let mut body = b"\x7fELF\x02\x01\x01\x00".to_vec();
+            body.extend_from_slice(marker.as_bytes());
+            std::fs::write(&path, &body).unwrap();
             assert_eq!(
                 detect_instrumentation(&path),
                 vec![label.to_string()],
@@ -1355,11 +1425,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
 
         let elf = dir.path().join("elf_with_dwarf");
-        std::fs::write(&elf, b"....debug_info....").unwrap();
+        std::fs::write(&elf, b"\x7fELF....debug_info....").unwrap();
         assert_eq!(detect_instrumentation(&elf), vec!["debug-info"]);
 
         let macho = dir.path().join("macho_with_dwarf");
-        std::fs::write(&macho, b"....__debug_info....").unwrap();
+        std::fs::write(&macho, b"\xcf\xfa\xed\xfe....__debug_info....").unwrap();
         assert_eq!(detect_instrumentation(&macho), vec!["debug-info"]);
     }
 
@@ -1369,13 +1439,13 @@ mod tests {
     fn detects_debug_info_from_a_sibling_dsym_bundle() {
         let dir = tempfile::tempdir().unwrap();
         let bin = dir.path().join("toy");
-        std::fs::write(&bin, b"no markers here").unwrap();
+        std::fs::write(&bin, b"\xcf\xfa\xed\xfeno markers here").unwrap();
         assert!(detect_instrumentation(&bin).is_empty());
 
         std::fs::create_dir(dir.path().join("toy.dSYM")).unwrap();
         // The cache is keyed on the binary's own size and mtime, so touch it
         // to force a re-read now that its sibling exists.
-        std::fs::write(&bin, b"no markers here either").unwrap();
+        std::fs::write(&bin, b"\xcf\xfa\xed\xfeno markers here either").unwrap();
         assert_eq!(detect_instrumentation(&bin), vec!["debug-info"]);
     }
 
@@ -1390,11 +1460,78 @@ mod tests {
         // Place the marker so it starts a few bytes before the first boundary.
         let prefix_len = SCAN_CHUNK - 4;
         let mut bytes = vec![b'.'; prefix_len];
+        bytes[..4].copy_from_slice(b"\x7fELF");
         bytes.extend_from_slice(marker);
         bytes.extend(std::iter::repeat_n(b'.', SCAN_CHUNK));
         std::fs::write(&path, &bytes).unwrap();
 
         assert_eq!(detect_instrumentation(&path), vec!["asan"]);
+    }
+
+    /// s14 item 2. A script that merely *mentions* a sanitizer symbol -- in a
+    /// comment, its own documentation, or a corpus entry -- is not an
+    /// instrumented build. Reading it as one is a false all-clear: the
+    /// preflight passes and cxg reports a refutation the build could not have
+    /// earned. This is the exact shape s14 found against a Node CLI bundle.
+    #[test]
+    fn a_script_that_mentions_a_marker_carries_no_instrumentation() {
+        let dir = tempfile::tempdir().unwrap();
+
+        let script = dir.path().join("interp-cli.js");
+        std::fs::write(
+            &script,
+            b"#!/usr/bin/env node\n// Detected symbols include __asan_init and __ubsan_handle_type_mismatch.\n",
+        )
+        .unwrap();
+        assert!(
+            detect_instrumentation(&script).is_empty(),
+            "a shebang script is never an instrumented build, whatever it says"
+        );
+
+        // Same bytes, this time inside a compiled object: still detected.
+        let object = dir.path().join("with_asan.o");
+        std::fs::write(
+            &object,
+            b"\x7fELF\x02\x01\x01\x00__asan_init __ubsan_handle_type_mismatch",
+        )
+        .unwrap();
+        assert_eq!(detect_instrumentation(&object), vec!["asan", "ubsan"]);
+    }
+
+    /// The same rule for a plain source file and for a Python console-script
+    /// wrapper -- the two other shapes a `cli://` target took in s14.
+    #[test]
+    fn only_a_compiled_object_is_scanned_for_markers() {
+        let dir = tempfile::tempdir().unwrap();
+
+        for (name, body) in [
+            ("source.c", "/* calls __asan_init at startup */\nint main(void){return 0;}\n"),
+            ("bugb", "#!/usr/bin/env python3\n# __asan_init, __llvm_profile, .debug_info\nimport sys\n"),
+            ("notes.txt", "the marker is __tsan_init\n"),
+        ] {
+            let path = dir.path().join(name);
+            std::fs::write(&path, body).unwrap();
+            assert!(
+                detect_instrumentation(&path).is_empty(),
+                "{name} is not a compiled object and must report no instrumentation"
+            );
+        }
+    }
+
+    #[test]
+    fn object_magic_covers_elf_macho_pe_and_archives() {
+        assert!(is_object_file(b"\x7fELF\x02\x01"));
+        assert!(is_object_file(&[0xcf, 0xfa, 0xed, 0xfe, 0x0c]));
+        assert!(is_object_file(&[0xce, 0xfa, 0xed, 0xfe]));
+        assert!(is_object_file(&[0xfe, 0xed, 0xfa, 0xcf]));
+        assert!(is_object_file(&[0xca, 0xfe, 0xba, 0xbe]));
+        assert!(is_object_file(b"MZ\x90\x00"));
+        assert!(is_object_file(b"!<arch>\n"));
+
+        assert!(!is_object_file(b"#!/bin/bash\n"));
+        assert!(!is_object_file(b"import sys"));
+        assert!(!is_object_file(b""));
+        assert!(!is_object_file(b"\x7fEL"));
     }
 
     #[test]
@@ -1406,7 +1543,7 @@ mod tests {
     fn build_env_vars_reports_instrumentation_only_for_cli_targets() {
         let dir = tempfile::tempdir().unwrap();
         let bin = dir.path().join("toy_asan");
-        std::fs::write(&bin, b"__asan_init and .debug_info").unwrap();
+        std::fs::write(&bin, b"\x7fELF__asan_init and .debug_info").unwrap();
 
         let cli = Target::new(bin.to_string_lossy().to_string(), Protocol::Cli);
         let env = build_env_vars(&cli, &Context::default()).unwrap();

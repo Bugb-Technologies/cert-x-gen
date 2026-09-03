@@ -287,6 +287,15 @@ instead:
 | `oracle-unavailable(asan)` | the template's only oracles are sanitizers this build does not carry (see `@oracles`) |
 | `target-kind-mismatch(kind=…, accepts=…)` | the template declared `@target_kinds` and this is not one of them (applies with or without the flag) |
 
+The marker scan runs on **compiled objects only** — ELF, Mach-O, PE, static
+archives. A shebang script, a JS bundle, a Python console-script wrapper or a
+source file reports `none` however many marker strings it contains: those
+strings are symbol names in an object and prose everywhere else, and reading
+prose as instrumentation would let the preflight pass on a build that can show
+nothing. An **interpreted CLI therefore always detects `none`** — see
+`@oracles` below for how a template whose oracles do not need a sanitizer still
+runs against one.
+
 cxg **inspects and refuses; it does not build the target.** Doing that
 honestly needs a per-project build recipe, and half-doing it produces exactly
 the confident false refutations this feature exists to prevent. Build the

@@ -26,19 +26,41 @@ fn install_target(dir: &Path, name: &str) -> PathBuf {
     dest
 }
 
-/// Install the fixture and append the byte markers a sanitizer-linked build
-/// would carry as linker symbols, so the instrumentation preflight sees an
-/// instrumented target. `detect_instrumentation` is a byte-level scan, so the
-/// markers are all it looks for; a real ELF/Mach-O build carries the same bytes
-/// in its symbol table. The detector itself is unit-tested against every
-/// marker in src/engine/common.rs.
-fn install_instrumented_target(dir: &Path, name: &str) -> PathBuf {
-    let dest = install_target(dir, name);
-    let mut body = std::fs::read_to_string(&dest).unwrap();
-    body.push_str("\n# build markers: __asan_init __asan_report_load1\n");
-    std::fs::write(&dest, body).unwrap();
+/// Compile the C twin of the fixture (`toy_instrumented.c`) into `dir`, with
+/// `markers` carried as an ordinary string constant.
+///
+/// It has to be a *compiled object*: since s14 item 2 the marker scan runs
+/// only on ELF/Mach-O/PE, so a shebang script that merely says `__asan_init`
+/// reports `none`. A real sanitizer-linked build carries the same bytes in its
+/// symbol table; this carries them in `__cstring`, which the byte-level scan
+/// reads identically. The detector itself is unit-tested against every marker
+/// in src/engine/common.rs.
+///
+/// `cc` is not an extra dependency: cargo already needs a C toolchain to link
+/// the crate under test.
+fn install_object_target(dir: &Path, name: &str, markers: &str) -> PathBuf {
+    let dest = dir.join(name);
+    let cc = std::env::var("CC").unwrap_or_else(|_| "cc".to_string());
+    let out = Command::new(&cc)
+        .arg(format!("-DCXG_BUILD_MARKERS=\"{markers}\""))
+        .arg("-o")
+        .arg(&dest)
+        .arg(fixtures().join("toy_instrumented.c"))
+        .output()
+        .unwrap_or_else(|e| panic!("running {cc} to build the fixture: {e}"));
+    assert!(
+        out.status.success(),
+        "{cc} failed to build the fixture:\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     make_executable(&dest);
     dest
+}
+
+/// The compiled fixture with the markers a sanitizer-linked build carries, so
+/// the instrumentation preflight sees an instrumented target.
+fn install_instrumented_target(dir: &Path, name: &str) -> PathBuf {
+    install_object_target(dir, name, "__asan_init __asan_report_load1")
 }
 
 fn make_executable(path: &Path) {
@@ -386,7 +408,7 @@ fn require_instrumentation_turns_that_refutation_into_an_honest_skip() {
 #[test]
 fn require_instrumentation_still_runs_an_instrumented_build() {
     let dir = tempfile::tempdir().unwrap();
-    let bin = install_instrumented_target(dir.path(), "toy_defective.sh");
+    let bin = install_instrumented_target(dir.path(), "toy_defective");
 
     let out = scan(
         dir.path(),
@@ -398,6 +420,44 @@ fn require_instrumentation_still_runs_an_instrumented_build() {
     let row = out.single();
     assert_eq!(row.status, "confirmed");
     assert_eq!(row.findings, 1);
+}
+
+/// s14 item 2, end to end. A script that merely *mentions* a sanitizer symbol
+/// is not an instrumented build: before this fix the marker scan read the
+/// comment as a symbol, the preflight passed, and the probe reported a
+/// refutation it could not have earned -- a false all-clear, which is the one
+/// thing the preflight exists to prevent. This is the exact shape s14 found
+/// against a Node CLI bundle (row F5).
+#[test]
+fn a_script_that_mentions_a_marker_is_not_an_instrumented_build() {
+    let dir = tempfile::tempdir().unwrap();
+    let bin = install_target(dir.path(), "toy_defective.sh");
+    let mut body = std::fs::read_to_string(&bin).unwrap();
+    body.push_str("\n# Detected symbols include __asan_init and __ubsan_handle_type_mismatch.\n");
+    std::fs::write(&bin, body).unwrap();
+    make_executable(&bin);
+
+    // What the template is told.
+    let echoed = scan(dir.path(), "env-echo.sh", &[], &cli_scope(&bin));
+    assert!(
+        echoed
+            .single()
+            .detail
+            .contains("CERT_X_GEN_TARGET_INSTRUMENTATION=none"),
+        "detail was {:?}",
+        echoed.single().detail
+    );
+
+    // ...and what the preflight does about it.
+    let out = scan(
+        dir.path(),
+        "cli-probe-contract.sh",
+        &["--require-instrumentation"],
+        &cli_scope(&bin),
+    );
+    let row = out.single();
+    assert_eq!(row.status, "skipped");
+    assert_eq!(row.detail, "no-instrumentation-detected");
 }
 
 /// A target that is not there at all gets its own reason, so "skipped" never
@@ -451,7 +511,7 @@ fn the_template_is_told_what_instrumentation_the_build_carries() {
         out.single().detail
     );
 
-    let instrumented = install_instrumented_target(dir.path(), "toy_asan.sh");
+    let instrumented = install_instrumented_target(dir.path(), "toy_asan");
     let out = scan(dir.path(), "env-echo.sh", &[], &cli_scope(&instrumented));
     assert!(
         out.single()
@@ -501,11 +561,7 @@ fn an_asan_only_template_is_skipped_when_the_build_has_no_asan() {
     let dir = tempfile::tempdir().unwrap();
     // A build with *some* instrumentation, so the target-level preflight lets
     // it through and the oracle check is what decides.
-    let bin = install_target(dir.path(), "toy_defective.sh");
-    let mut body = std::fs::read_to_string(&bin).unwrap();
-    body.push_str("\n# build markers: __llvm_profile_write_file\n");
-    std::fs::write(&bin, body).unwrap();
-    make_executable(&bin);
+    let bin = install_object_target(dir.path(), "toy_defective", "__llvm_profile_write_file");
 
     let out = scan(
         dir.path(),
@@ -523,7 +579,7 @@ fn an_asan_only_template_is_skipped_when_the_build_has_no_asan() {
 #[test]
 fn an_asan_only_template_runs_when_the_build_carries_asan() {
     let dir = tempfile::tempdir().unwrap();
-    let bin = install_instrumented_target(dir.path(), "toy_defective.sh");
+    let bin = install_instrumented_target(dir.path(), "toy_defective");
 
     let out = scan(
         dir.path(),
