@@ -726,10 +726,15 @@ pub struct TemplateMetadata {
 
     /// Oracles the template relies on to decide something is wrong, from
     /// `@oracles`. Vocabulary: `asan` `ubsan` `msan` `tsan` `signal` `exit`
-    /// `assert` `timeout` `diff` `property` `detector`. cxg does not implement
-    /// these -- the template observes the target -- but knowing which one a
-    /// template depends on lets cxg refuse to run it against a build that
-    /// cannot support it.
+    /// `exception` `assert` `timeout` `diff` `property` `detector`. Knowing
+    /// which one a template depends on lets cxg refuse to run it against a
+    /// build that cannot support it.
+    ///
+    /// The template observes the target for all of these but one: `exception`
+    /// is implemented by cxg, which matches the target output the template
+    /// hands back in `metadata.target_output` against the per-language shape
+    /// of an escaped exception. A template declares it the same way as any
+    /// other; nothing changes for a template that does not.
     #[serde(default)]
     pub oracles: Vec<String>,
 

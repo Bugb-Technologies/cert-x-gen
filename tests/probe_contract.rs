@@ -20,8 +20,14 @@ fn fixtures() -> PathBuf {
 /// fixed behaviour from its own filename, so `toy_defective.sh` is the twin
 /// with the planted defect and any other name is the corrected one.
 fn install_target(dir: &Path, name: &str) -> PathBuf {
+    install_fixture_as(dir, "toy.sh", name)
+}
+
+/// Copy any fixture script into `dir` under a chosen name. Several fixtures
+/// pick their behaviour from their own filename, so the name is the knob.
+fn install_fixture_as(dir: &Path, fixture: &str, name: &str) -> PathBuf {
     let dest = dir.join(name);
-    std::fs::copy(fixtures().join("toy.sh"), &dest).expect("copy fixture");
+    std::fs::copy(fixtures().join(fixture), &dest).expect("copy fixture");
     make_executable(&dest);
     dest
 }
@@ -717,6 +723,100 @@ fn oracle_gating_is_off_without_the_preflight_flag() {
     // The fixture prints an ASan-shaped report, so this one does confirm --
     // the point is only that cxg did not refuse to run it.
     assert!(out.single().declared_by_template);
+}
+
+// ---------------------------------------------------------------------------
+// s14 item 4 -- the `exception` oracle
+// ---------------------------------------------------------------------------
+
+/// Both real defects s14 found exited **1** with no crash signal, so `signal`
+/// was silent and `exit` fired on the correct non-zero exits too. cxg's own
+/// `exception` oracle is what tells them apart: it reads the target's output,
+/// not its exit status.
+#[test]
+fn the_exception_oracle_confirms_a_python_traceback() {
+    let dir = tempfile::tempdir().unwrap();
+    let bin = install_fixture_as(dir.path(), "exception-fixture.sh", "app_python.sh");
+
+    let out = scan(
+        dir.path(),
+        "cli-probe-exception.sh",
+        &[],
+        &cli_scope(&bin),
+    );
+
+    let row = out.single();
+    assert_eq!(row.status, "confirmed", "detail was {:?}", row.detail);
+    assert_eq!(row.findings, 1);
+    assert_eq!(out.findings, 1, "the finding reaches the report, not just the ledger");
+    assert!(
+        row.detail.contains("oracle=exception(python-traceback)"),
+        "detail was {:?}",
+        row.detail
+    );
+    assert!(
+        row.detail.contains("target-exit=1"),
+        "the exception did not need a crash exit: {:?}",
+        row.detail
+    );
+    assert!(
+        !row.declared_by_template,
+        "cxg adjudicated; the template declared no status"
+    );
+}
+
+/// The same for a Node unhandled rejection, which is the other shape s14 hit.
+#[test]
+fn the_exception_oracle_confirms_a_node_unhandled_rejection() {
+    let dir = tempfile::tempdir().unwrap();
+    let bin = install_fixture_as(dir.path(), "exception-fixture.sh", "app_node.js");
+
+    let out = scan(dir.path(), "cli-probe-exception.sh", &[], &cli_scope(&bin));
+
+    let row = out.single();
+    assert_eq!(row.status, "confirmed", "detail was {:?}", row.detail);
+    assert_eq!(row.findings, 1);
+    assert!(
+        row.detail.contains("oracle=exception(node-unhandled-rejection)"),
+        "detail was {:?}",
+        row.detail
+    );
+}
+
+/// ...and the discrimination that makes the oracle worth having: a program
+/// that reports a problem correctly and exits 1 is **not** confirmed, though
+/// the `exit` oracle cannot tell it from the two above.
+#[test]
+fn a_correct_nonzero_exit_is_not_confirmed_by_the_exception_oracle() {
+    let dir = tempfile::tempdir().unwrap();
+    let bin = install_fixture_as(dir.path(), "exception-fixture.sh", "app_clean.sh");
+
+    let out = scan(dir.path(), "cli-probe-exception.sh", &[], &cli_scope(&bin));
+
+    let row = out.single();
+    assert_eq!(row.status, "refuted", "detail was {:?}", row.detail);
+    assert_eq!(row.findings, 0);
+    assert_eq!(out.findings, 0);
+}
+
+/// `exception` needs nothing from the build, so it is one of the oracles that
+/// gets an interpreted target tested at all under --require-instrumentation
+/// (s14 item 1 and item 4 meeting).
+#[test]
+fn the_exception_oracle_runs_under_require_instrumentation() {
+    let dir = tempfile::tempdir().unwrap();
+    let bin = install_fixture_as(dir.path(), "exception-fixture.sh", "app_python.sh");
+
+    let out = scan(
+        dir.path(),
+        "cli-probe-exception.sh",
+        &["--require-instrumentation"],
+        &cli_scope(&bin),
+    );
+
+    let row = out.single();
+    assert_eq!(row.status, "confirmed", "detail was {:?}", row.detail);
+    assert!(row.detail.contains("python-traceback"), "detail was {:?}", row.detail);
 }
 
 // ---------------------------------------------------------------------------

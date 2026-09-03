@@ -277,7 +277,29 @@ impl Executor {
                     .execute_single_template(template.as_ref(), target, &job.context)
                     .await
                 {
-                    Ok((template_findings, report)) => {
+                    Ok((mut template_findings, mut report)) => {
+                        // cxg's own oracle: an unhandled exception in the
+                        // target's output is a defect the template's exit and
+                        // signal oracles cannot see.
+                        if let Some((finding, detail)) = Self::exception_oracle_finding(
+                            target,
+                            template.metadata(),
+                            &template_findings,
+                            &report,
+                        ) {
+                            tracing::info!(
+                                "Exception oracle fired for template {} against {}: {}",
+                                template.id(),
+                                target.address,
+                                detail
+                            );
+                            template_findings.push(finding);
+                            report.detail = Some(match report.detail.take() {
+                                Some(existing) => format!("{}; {}", existing, detail),
+                                None => detail,
+                            });
+                        }
+
                         let findings_count = template_findings.len();
 
                         // Update progress
@@ -438,6 +460,82 @@ impl Executor {
         }
 
         None
+    }
+
+    /// cxg's own `exception` oracle: did an unhandled language-level exception
+    /// escape the target?
+    ///
+    /// Returns the finding to record and the detail to append, or `None` when
+    /// the oracle does not apply. It applies only when all of:
+    ///
+    /// * the template declared `@oracles: exception` -- cxg never volunteers a
+    ///   verdict a template did not ask for;
+    /// * the template reported no findings of its own and declared no status
+    ///   of its own -- a template that reached its own verdict keeps it, which
+    ///   is the existing contract;
+    /// * the template handed back the target's output in
+    ///   `metadata.target_output` -- cxg runs the template, the template runs
+    ///   the target, so the output has to come back through the report.
+    ///
+    /// The match is on the output, never on the exit status: the two real
+    /// defects s14 found exited **1** with no signal, which is what a
+    /// deliberate, correct non-zero exit looks like too (s14 report §5).
+    fn exception_oracle_finding(
+        target: &crate::types::Target,
+        metadata: &crate::types::TemplateMetadata,
+        findings: &[Finding],
+        report: &crate::engine::common::TemplateReport,
+    ) -> Option<(Finding, String)> {
+        const EVIDENCE_MAX_CHARS: usize = 2000;
+        const DETAIL_MAX_CHARS: usize = 160;
+
+        if !metadata
+            .oracles
+            .iter()
+            .any(|o| o.trim().eq_ignore_ascii_case("exception"))
+        {
+            return None;
+        }
+        if !findings.is_empty() || report.status.is_some() {
+            return None;
+        }
+
+        let output = report.target_output.as_deref()?;
+        let kind = crate::engine::common::detect_unhandled_exception(output)?;
+
+        let first_line = output
+            .lines()
+            .map(str::trim)
+            .find(|l| !l.is_empty())
+            .unwrap_or_default();
+        let exit = match report.target_exit_code {
+            Some(rc) => format!(" target-exit={}", rc),
+            None => String::new(),
+        };
+        let detail = format!(
+            "oracle=exception({}){} {}",
+            kind.label(),
+            exit,
+            crate::engine::common::truncate_chars(first_line, DETAIL_MAX_CHARS)
+        );
+
+        let mut evidence = crate::types::Evidence::new();
+        evidence.matched_patterns.push(kind.label().to_string());
+        evidence.response = Some(crate::engine::common::truncate_chars(
+            output,
+            EVIDENCE_MAX_CHARS,
+        ));
+
+        let finding = Finding::new(
+            target.address.as_str(),
+            metadata.id.as_str(),
+            metadata.severity,
+            "Unhandled exception escaped the target",
+            detail.as_str(),
+        )
+        .with_evidence(evidence);
+
+        Some((finding, detail))
     }
 
     /// Build a ledger row from a completed execution.
@@ -753,6 +851,131 @@ mod tests {
         );
         assert_eq!(record.status, ExecutionStatus::Refuted);
         assert!(!record.declared_by_template);
+    }
+
+    fn report_with_target_output(output: &str, rc: i32) -> TemplateReport {
+        TemplateReport {
+            target_output: Some(output.to_string()),
+            target_exit_code: Some(rc),
+            ..TemplateReport::default()
+        }
+    }
+
+    const PY_TRACEBACK: &str = "Traceback (most recent call last):\n  File \"/tmp/app.py\", line 12, in <module>\n    main()\nValueError: synthetic\n";
+
+    /// s14 item 4. A traceback and a deliberate `exit 1` are the same thing to
+    /// the `exit` oracle; they are not the same thing.
+    #[test]
+    fn the_exception_oracle_confirms_a_traceback_and_not_a_clean_nonzero_exit() {
+        let metadata = metadata_with(&["exception"], &["cli"]);
+
+        let (finding, detail) = Executor::exception_oracle_finding(
+            &cli_target(),
+            &metadata,
+            &[],
+            &report_with_target_output(PY_TRACEBACK, 1),
+        )
+        .expect("a traceback is an escaped exception");
+        assert!(
+            detail.starts_with("oracle=exception(python-traceback) target-exit=1"),
+            "detail was {detail:?}"
+        );
+        assert_eq!(finding.template_id, metadata.id);
+        assert!(finding
+            .evidence
+            .matched_patterns
+            .contains(&"python-traceback".to_string()));
+        assert!(finding
+            .evidence
+            .response
+            .as_deref()
+            .unwrap_or_default()
+            .contains("ValueError: synthetic"));
+
+        assert!(
+            Executor::exception_oracle_finding(
+                &cli_target(),
+                &metadata,
+                &[],
+                &report_with_target_output("error: no such file: /tmp/nope\n", 1),
+            )
+            .is_none(),
+            "a correct non-zero exit is not a defect"
+        );
+    }
+
+    #[test]
+    fn the_exception_oracle_reads_a_node_unhandled_rejection() {
+        let node = "node:internal/process/promises:288\n            triggerUncaughtException(err, true /* fromPromise */);\n[UnhandledPromiseRejection: synthetic]\n";
+        let (_, detail) = Executor::exception_oracle_finding(
+            &cli_target(),
+            &metadata_with(&["exception", "exit"], &["cli"]),
+            &[],
+            &report_with_target_output(node, 1),
+        )
+        .expect("an unhandled rejection is an escaped exception");
+        assert!(
+            detail.contains("exception(node-unhandled-rejection)"),
+            "detail was {detail:?}"
+        );
+    }
+
+    /// cxg never volunteers a verdict a template did not ask for, and never
+    /// overrides one it reached itself.
+    #[test]
+    fn the_exception_oracle_applies_only_where_the_template_asked_for_it() {
+        let declared = metadata_with(&["exception"], &["cli"]);
+        let report = report_with_target_output(PY_TRACEBACK, 1);
+
+        assert!(
+            Executor::exception_oracle_finding(
+                &cli_target(),
+                &metadata_with(&["exit", "signal"], &["cli"]),
+                &[],
+                &report,
+            )
+            .is_none(),
+            "the template did not declare the oracle"
+        );
+
+        let own_finding = Finding::new(
+            "/opt/build/toy",
+            "probe",
+            crate::types::Severity::High,
+            "the template's own finding",
+            "found by the template itself",
+        );
+        assert!(
+            Executor::exception_oracle_finding(
+                &cli_target(),
+                &declared,
+                std::slice::from_ref(&own_finding),
+                &report,
+            )
+            .is_none(),
+            "the template already reported the defect"
+        );
+
+        let declared_status = TemplateReport {
+            status: Some(ExecutionStatus::Refuted),
+            ..report_with_target_output(PY_TRACEBACK, 1)
+        };
+        assert!(
+            Executor::exception_oracle_finding(&cli_target(), &declared, &[], &declared_status)
+                .is_none(),
+            "a template that declared its own status keeps it"
+        );
+
+        assert!(
+            Executor::exception_oracle_finding(
+                &cli_target(),
+                &declared,
+                &[],
+                &TemplateReport::default(),
+            )
+            .is_none(),
+            "no target output means nothing to match"
+        );
     }
 
     #[test]

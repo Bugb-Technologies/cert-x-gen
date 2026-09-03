@@ -96,7 +96,7 @@ pub struct ParsedMetadata {
     /// Declared as: `# @allow_nonzero_exit: true`
     pub allow_nonzero_exit: bool,
     /// Oracles the template relies on to decide something is wrong.
-    /// Declared as: `# @oracles: asan, signal, exit`
+    /// Declared as: `# @oracles: asan, signal, exit` (also: `exception`)
     pub oracles: Vec<String>,
     /// Target kinds the template accepts. Empty means no declaration, and a
     /// template with no declaration runs everywhere -- today's behaviour.
@@ -976,6 +976,124 @@ pub fn unsupported_oracles(declared: &[String], instrumentation: &[String]) -> O
     }
 }
 
+/// An unhandled language-level exception cxg recognised in a target's output.
+///
+/// Fieldless on purpose: it names *what was seen*, and everything else about
+/// the execution already has a home in the ledger row.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExceptionKind {
+    /// `Traceback (most recent call last):` -- CPython.
+    PythonTraceback,
+    /// A rejected promise nobody handled -- Node.
+    NodeUnhandledRejection,
+    /// An exception that escaped to the top level -- Node.
+    NodeUncaughtException,
+    /// `Exception in thread "main" ...` -- the JVM.
+    JavaUncaughtException,
+    /// `panic: ...` plus a goroutine dump -- Go.
+    GoPanic,
+    /// `thread '...' panicked at ...` -- Rust.
+    RustPanic,
+}
+
+impl ExceptionKind {
+    /// Stable machine-readable label, as it appears in the ledger detail.
+    pub fn label(self) -> &'static str {
+        match self {
+            ExceptionKind::PythonTraceback => "python-traceback",
+            ExceptionKind::NodeUnhandledRejection => "node-unhandled-rejection",
+            ExceptionKind::NodeUncaughtException => "node-uncaught-exception",
+            ExceptionKind::JavaUncaughtException => "java-uncaught-exception",
+            ExceptionKind::GoPanic => "go-panic",
+            ExceptionKind::RustPanic => "rust-panic",
+        }
+    }
+}
+
+/// Substrings that identify a Node stack as an escaped exception rather than
+/// an ordinary error message the program chose to print.
+const NODE_UNHANDLED_REJECTION_MARKERS: &[&str] = &[
+    "UnhandledPromiseRejection",
+    "node:internal/process/promises",
+    "fromPromise",
+];
+const NODE_UNCAUGHT_MARKERS: &[&str] = &[
+    "triggerUncaughtException",
+    "node:internal/process/execution",
+    "node:internal/modules",
+];
+
+/// Did an unhandled language-level exception escape the target?
+///
+/// This is the one oracle cxg implements itself, and it exists because neither
+/// `exit` nor `signal` can express what an interpreted target does when it
+/// falls over: a Python traceback or a Node stack exits **1** with no crash
+/// signal, so `signal` is silent and `exit` fires on every deliberate non-zero
+/// exit too -- including the correct ones (s14 report §5). The discrimination
+/// is a per-language string match, and doing it once here beats every template
+/// re-implementing it slightly differently.
+///
+/// Deliberately keyed on the **output alone**, never on the exit status: an
+/// escaped exception is an escaped exception whatever the runtime exits with,
+/// and a non-zero exit on its own is exactly what this must not be confused
+/// with.
+pub fn detect_unhandled_exception(output: &str) -> Option<ExceptionKind> {
+    if output.is_empty() {
+        return None;
+    }
+
+    // Python: the traceback header, at the start of its own line so a mention
+    // of the phrase in prose is not a crash.
+    if has_line_starting_with(output, "Traceback (most recent call last):") {
+        return Some(ExceptionKind::PythonTraceback);
+    }
+
+    // Node: the runtime's own frames are what separate an escaped exception
+    // from an error message the program printed and exited on.
+    if NODE_UNHANDLED_REJECTION_MARKERS
+        .iter()
+        .any(|m| output.contains(m))
+    {
+        return Some(ExceptionKind::NodeUnhandledRejection);
+    }
+    if NODE_UNCAUGHT_MARKERS.iter().any(|m| output.contains(m))
+        || (output.contains("node:internal/") && has_line_starting_with(output, "at "))
+    {
+        return Some(ExceptionKind::NodeUncaughtException);
+    }
+
+    if has_line_starting_with(output, "Exception in thread \"") {
+        return Some(ExceptionKind::JavaUncaughtException);
+    }
+    if has_line_starting_with(output, "panic: ") && output.contains("goroutine ") {
+        return Some(ExceptionKind::GoPanic);
+    }
+    if has_line_starting_with(output, "thread '") && output.contains("panicked at") {
+        return Some(ExceptionKind::RustPanic);
+    }
+
+    None
+}
+
+/// Is `needle` at the start of any line, ignoring that line's indentation?
+///
+/// Stack traces are indented; the markers that identify them are not prose.
+fn has_line_starting_with(haystack: &str, needle: &str) -> bool {
+    haystack.lines().any(|line| line.trim_start().starts_with(needle))
+}
+
+/// Take at most `max` characters, never splitting a UTF-8 character.
+///
+/// Interpreted CLIs print box drawing and ANSI escapes, so byte-slicing their
+/// output is how a template ends up emitting invalid JSON (s14 report
+/// §4.1(e)). cxg does its own truncation on character boundaries.
+pub fn truncate_chars(text: &str, max: usize) -> String {
+    match text.char_indices().nth(max) {
+        Some((byte_idx, _)) => format!("{}...", &text[..byte_idx]),
+        None => text.to_string(),
+    }
+}
+
 /// Can this template reach a verdict on a build that carries no
 /// instrumentation at all?
 ///
@@ -1240,6 +1358,15 @@ pub struct TemplateReport {
     pub detail: Option<String>,
     /// Exit code of the template process, when the engine observed it
     pub exit_code: Option<i32>,
+    /// Output the template captured from the **target** and handed back for
+    /// cxg's own oracles to read, from `metadata.target_output`. Absent for
+    /// every template that does not offer it, which is every template written
+    /// before the `exception` oracle existed.
+    pub target_output: Option<String>,
+    /// Status the **target** exited with, as the template observed it, from
+    /// `metadata.target_exit_code`. Reported alongside an `exception` verdict
+    /// so the operator can see the exception did not need a crash exit.
+    pub target_exit_code: Option<i32>,
 }
 
 /// Extract a template-declared status from its JSON output.
@@ -1269,6 +1396,12 @@ pub fn parse_template_report(stdout: &str) -> TemplateReport {
     }
     if let Some(d) = meta.get("detail").and_then(|v| v.as_str()) {
         report.detail = Some(d.to_string());
+    }
+    if let Some(o) = meta.get("target_output").and_then(|v| v.as_str()) {
+        report.target_output = Some(o.to_string());
+    }
+    if let Some(rc) = meta.get("target_exit_code").and_then(|v| v.as_i64()) {
+        report.target_exit_code = Some(rc as i32);
     }
     report
 }
@@ -1400,6 +1533,82 @@ mod tests {
 
         assert_eq!(unsupported_oracles(&[], &[]), None);
         assert_eq!(unsupported_oracles(&["signal".to_string()], &[]), None);
+    }
+
+    /// s14 item 4 / §5. The oracle has to separate an exception that escaped
+    /// from a non-zero exit the program chose, because both real defects s14
+    /// found exited 1 with no crash signal.
+    #[test]
+    fn recognises_an_escaped_exception_in_each_runtime() {
+        let python = "Traceback (most recent call last):\n  \
+                      File \"/tmp/app.py\", line 12, in <module>\n    main()\n\
+                      ValueError: synthetic\n";
+        assert_eq!(
+            detect_unhandled_exception(python),
+            Some(ExceptionKind::PythonTraceback)
+        );
+
+        let node_rejection = "node:internal/process/promises:288\n            \
+                              triggerUncaughtException(err, true /* fromPromise */);\n\
+                              [UnhandledPromiseRejection: synthetic]\n";
+        assert_eq!(
+            detect_unhandled_exception(node_rejection),
+            Some(ExceptionKind::NodeUnhandledRejection)
+        );
+
+        let node_uncaught = "file:///tmp/app.js:3\n  throw new Error('synthetic');\n  ^\n\
+                             Error: synthetic\n    at file:///tmp/app.js:3:9\n\
+                                 at ModuleJob.run (node:internal/modules/esm/module_job:271:25)\n";
+        assert_eq!(
+            detect_unhandled_exception(node_uncaught),
+            Some(ExceptionKind::NodeUncaughtException)
+        );
+
+        let java = "Exception in thread \"main\" java.lang.IllegalStateException: synthetic\n\
+                    \tat App.main(App.java:7)\n";
+        assert_eq!(
+            detect_unhandled_exception(java),
+            Some(ExceptionKind::JavaUncaughtException)
+        );
+
+        let go = "panic: synthetic\n\ngoroutine 1 [running]:\nmain.main()\n";
+        assert_eq!(detect_unhandled_exception(go), Some(ExceptionKind::GoPanic));
+
+        let rust = "thread 'main' panicked at src/main.rs:4:5:\nsynthetic\n";
+        assert_eq!(detect_unhandled_exception(rust), Some(ExceptionKind::RustPanic));
+    }
+
+    /// The distinction the `exit` oracle cannot draw: these all exit non-zero
+    /// and none of them is a defect.
+    #[test]
+    fn a_deliberate_error_exit_is_not_an_exception() {
+        for output in [
+            "error: no such file or directory: /tmp/nope\n",
+            "usage: tool <command> [options]\n",
+            "validation failed: 3 rules did not pass\n",
+            "",
+            // Prose that mentions a traceback is not a traceback.
+            "This tool prints a Traceback (most recent call last): header when it crashes.\n",
+        ] {
+            assert_eq!(
+                detect_unhandled_exception(output),
+                None,
+                "output {output:?} must not read as an escaped exception"
+            );
+        }
+    }
+
+    /// s14 §4.1(e): interpreted CLIs print box drawing and ANSI escapes, and a
+    /// byte-level cut through one of those is how a template ends up emitting
+    /// invalid JSON. cxg cuts on character boundaries.
+    #[test]
+    fn truncation_never_splits_a_character() {
+        let text = "┌───┐ tidy output";
+        assert_eq!(truncate_chars(text, 100), text);
+
+        let cut = truncate_chars(text, 3);
+        assert_eq!(cut, "┌──...");
+        assert!(std::str::from_utf8(cut.as_bytes()).is_ok());
     }
 
     /// s14 item 1: which templates `--require-instrumentation` may let through

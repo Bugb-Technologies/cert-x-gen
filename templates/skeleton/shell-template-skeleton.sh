@@ -17,7 +17,14 @@
 #                               runs against every kind, which is the default.
 #   @oracles: asan, signal      How this template decides something is wrong.
 #                               Vocabulary: asan ubsan msan tsan signal exit
-#                               assert timeout diff property detector.
+#                               exception assert timeout diff property detector.
+#                               Declaring only build-independent ones (exit,
+#                               signal, timeout, exception) also lets the
+#                               template run under --require-instrumentation
+#                               against a target carrying no instrumentation.
+#                               `exception` is cxg's own: hand the target's
+#                               output back in metadata.target_output and cxg
+#                               decides whether an exception escaped.
 #   @allow_nonzero_exit: true   This template exits non-zero on purpose (a probe
 #                               that provokes a crash does); keep its stdout.
 #

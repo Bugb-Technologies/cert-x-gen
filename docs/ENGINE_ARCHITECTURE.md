@@ -289,7 +289,7 @@ instead:
 
 `no-instrumentation-detected` is decided per template, not per target. A
 template that declares only oracles needing nothing from the build — `exit`,
-`signal`, `timeout` — runs anyway and reaches a real verdict; one
+`signal`, `timeout`, `exception` — runs anyway and reaches a real verdict; one
 that declares a sanitizer oracle, or declares none at all, is still skipped. An
 absent declaration says nothing about how the template decides, and the flag
 exists to stop cxg guessing.
@@ -316,8 +316,37 @@ Parsed exactly like the existing `@`-annotations, all optional:
 | Annotation | Example | Effect |
 | --- | --- | --- |
 | `@allow_nonzero_exit` | `true` | The template exits non-zero on purpose. A probe that successfully provokes a crash naturally does; without this cxg discards its stdout and the finding is lost |
-| `@oracles` | `asan, signal, exit` | How the template decides something is wrong. Vocabulary: `asan` `ubsan` `msan` `tsan` `signal` `exit` `assert` `timeout` `diff` `property` `detector` |
+| `@oracles` | `asan, signal, exit` | How the template decides something is wrong. Vocabulary: `asan` `ubsan` `msan` `tsan` `signal` `exit` `exception` `assert` `timeout` `diff` `property` `detector` |
 | `@target_kinds` | `cli` | Which kinds the template accepts. **Absent means every kind** — do not add it for completeness, only when the template genuinely cannot handle other kinds |
+
+#### The `exception` oracle
+
+Every oracle but this one is the template's own observation. `exception` is
+cxg's: an unhandled language-level exception escaping the target is a defect
+that neither `signal` nor `exit` can name — a Python traceback or a Node
+unhandled rejection exits **1** with no crash signal, so `signal` never fires
+and `exit` fires just as loudly on a program correctly reporting a bad
+argument.
+
+A template that declares it runs the target, then hands the output back:
+
+```json
+{"findings": [], "metadata": {"target_output": "...", "target_exit_code": 1}}
+```
+
+cxg matches that output against the shape of an escaped exception — a CPython
+`Traceback (most recent call last):` block, a Node stack carrying
+`UnhandledPromiseRejection` or the runtime's own `node:internal/` frames, a JVM
+`Exception in thread "..."`, a Go `panic:` with a goroutine dump, a Rust
+`thread '...' panicked at` — and, when one matches, records the execution
+`confirmed` with `oracle=exception(<kind>)` and a finding carrying the output
+as evidence. The match is on the output only, never the exit status.
+
+It applies only when the template declared `@oracles: exception`, reported no
+findings of its own, and declared no status of its own: a template that reached
+its own verdict keeps it. It needs nothing from the build, so it also runs
+under `--require-instrumentation` against a target whose instrumentation is
+`none` — which is every interpreted CLI.
 
 ### Declaring an execution status
 

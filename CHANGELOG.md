@@ -38,10 +38,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `# @oracles:` and `# @target_kinds:` template annotations. A declared target-kind mismatch
   is recorded as `skipped` rather than run. An absent `@target_kinds` accepts every kind, so
   no existing template changes behaviour.
+- `# @oracles: exception` — the one oracle cxg implements itself. A Python traceback or a Node
+  unhandled rejection exits 1 with no crash signal, so `signal` never fires and `exit` fires on
+  every correct non-zero exit too. A template that declares `exception` hands the target's
+  output back in `{"metadata": {"target_output": ..., "target_exit_code": ...}}` and cxg
+  matches the per-language shape of an escaped exception (CPython, Node, JVM, Go, Rust),
+  recording `confirmed` with `oracle=exception(<kind>)` and a finding carrying the evidence.
+  Both new metadata fields are optional, and a template that declares no `exception` oracle is
+  unaffected.
 
 ### Fixed
 - A template that outran its execution timeout kept running unsupervised: the timeout stopped
   awaiting the child but never killed it. `execute_command` now sets `kill_on_drop`.
+- `--require-instrumentation` skipped **every** template against a target carrying no
+  instrumentation, including templates whose oracles need nothing from the build. An
+  interpreted CLI can never detect instrumentation, so the flag made cxg refuse to test one at
+  all. A template declaring only build-independent oracles (`exit`, `signal`, `timeout`,
+  `exception`) now runs and reaches a real verdict; one declaring a sanitizer oracle, or
+  declaring none, is still skipped with `no-instrumentation-detected`.
+- The instrumentation marker scan read any file, so a shebang script or JS bundle that merely
+  *mentioned* `__asan_init` — in a comment or its own documentation — was classified as an
+  instrumented build and the preflight passed. The scan now runs only on compiled objects
+  (ELF, Mach-O, PE, static archives); everything else reports `none`.
 
 ## [1.3.0] - 2026-08-13
 
