@@ -976,6 +976,28 @@ pub fn unsupported_oracles(declared: &[String], instrumentation: &[String]) -> O
     }
 }
 
+/// Can this template reach a verdict on a build that carries no
+/// instrumentation at all?
+///
+/// True only when the template **declared** oracles and every one of them is
+/// build-independent (`exit`, `signal`, `timeout`, `exception`, `assert`,
+/// `diff`, `property`, `detector`). Such a template needs nothing from the
+/// build, so `--require-instrumentation` has no reason to refuse it -- which
+/// is what lets an interpreted CLI, whose instrumentation is always `none`,
+/// be tested at all (s14 report §4.1(a)).
+///
+/// An **absent** declaration is false, deliberately: a template that never
+/// said how it decides may well be reading a sanitizer report, and the whole
+/// point of the flag is to refuse to guess. A template that wants through
+/// says so.
+pub fn oracles_are_build_independent(declared: &[String]) -> bool {
+    !declared.is_empty()
+        && declared.iter().all(|o| {
+            let o = o.trim().to_lowercase();
+            !BUILD_DEPENDENT_ORACLES.iter().any(|(name, _)| *name == o)
+        })
+}
+
 /// Inspect a local executable and report which instrumentation it carries.
 ///
 /// Returns e.g. `["asan", "debug-info"]`. An **empty** vec is the important
@@ -1378,6 +1400,28 @@ mod tests {
 
         assert_eq!(unsupported_oracles(&[], &[]), None);
         assert_eq!(unsupported_oracles(&["signal".to_string()], &[]), None);
+    }
+
+    /// s14 item 1: which templates `--require-instrumentation` may let through
+    /// against a build carrying nothing.
+    #[test]
+    fn build_independence_is_declared_never_assumed() {
+        let s = |v: &[&str]| v.iter().map(|o| o.to_string()).collect::<Vec<_>>();
+
+        // Every oracle works on any build: let it through.
+        assert!(oracles_are_build_independent(&s(&["exit"])));
+        assert!(oracles_are_build_independent(&s(&["exit", "signal", "timeout"])));
+        assert!(oracles_are_build_independent(&s(&["exception"])));
+        assert!(oracles_are_build_independent(&s(&[" EXIT ", "Timeout"])));
+
+        // One sanitizer oracle is enough to keep the gate closed: the template
+        // might be reading the report cxg knows is not there.
+        assert!(!oracles_are_build_independent(&s(&["asan"])));
+        assert!(!oracles_are_build_independent(&s(&["exit", "asan"])));
+        assert!(!oracles_are_build_independent(&s(&["ubsan", "msan", "tsan"])));
+
+        // Absent is not a promise.
+        assert!(!oracles_are_build_independent(&[]));
     }
 
     #[test]

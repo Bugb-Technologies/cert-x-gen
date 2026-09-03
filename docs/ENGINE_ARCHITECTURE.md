@@ -282,10 +282,17 @@ instead:
 
 | Reason | Meaning |
 | --- | --- |
-| `no-instrumentation-detected` | the build carries no marker cxg can read, so it could not have shown the defect |
+| `no-instrumentation-detected` | the build carries no marker cxg can read, so it could not have shown the defect. Applied **per template**: one that declares only build-independent oracles still runs |
 | `target-not-found` | there is no binary at that path at all |
 | `oracle-unavailable(asan)` | the template's only oracles are sanitizers this build does not carry (see `@oracles`) |
 | `target-kind-mismatch(kind=…, accepts=…)` | the template declared `@target_kinds` and this is not one of them (applies with or without the flag) |
+
+`no-instrumentation-detected` is decided per template, not per target. A
+template that declares only oracles needing nothing from the build — `exit`,
+`signal`, `timeout` — runs anyway and reaches a real verdict; one
+that declares a sanitizer oracle, or declares none at all, is still skipped. An
+absent declaration says nothing about how the template decides, and the flag
+exists to stop cxg guessing.
 
 The marker scan runs on **compiled objects only** — ELF, Mach-O, PE, static
 archives. A shebang script, a JS bundle, a Python console-script wrapper or a

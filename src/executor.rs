@@ -22,6 +22,11 @@ pub struct Executor {
     semaphore: Arc<Semaphore>,
 }
 
+/// The preflight reason that a *template* can still be let through: the build
+/// carries no instrumentation, which only matters to a template whose oracles
+/// need some. Distinct from `target-not-found`, where nothing can run.
+const NO_INSTRUMENTATION: &str = "no-instrumentation-detected";
+
 impl Executor {
     /// Create a new executor
     pub async fn new(config: Arc<Config>) -> Result<Self> {
@@ -146,26 +151,38 @@ impl Executor {
         // only evidence of absence if the build could have shown the defect.
         // With --require-instrumentation, refuse honestly instead of running a
         // probe whose refutation cxg could not have earned.
-        if let Some(reason) = Self::preflight_skip_reason(target, &job.context) {
+        //
+        // A target-level reason does not always mean *nothing* can run against
+        // this target. `target-not-found` does -- there is no build to probe.
+        // `no-instrumentation-detected` does not: a template whose oracles all
+        // work on any build (exit, signal, timeout, exception) can still earn
+        // its verdict here, and blanket-skipping it made cxg refuse to test
+        // interpreted CLIs at all, since those always detect `none`
+        // (s14 report §4.1(a)). Carry the reason into the per-template loop
+        // and let those through.
+        let preflight_reason = Self::preflight_skip_reason(target, &job.context);
+        if let Some(reason) = &preflight_reason {
             tracing::warn!(
-                "Skipping target {} under --require-instrumentation: {}",
+                "Target {} did not pass the instrumentation preflight: {}",
                 target.address,
                 reason
             );
-            for template in &job.templates {
-                records.push(ExecutionRecord {
-                    target: target.address.clone(),
-                    target_kind: target.protocol.to_string(),
-                    template_id: template.id().to_string(),
-                    status: ExecutionStatus::Skipped,
-                    declared_by_template: false,
-                    findings: 0,
-                    exit_code: None,
-                    detail: Some(reason.clone()),
-                    duration_ms: 0,
-                });
+            if reason != NO_INSTRUMENTATION {
+                for template in &job.templates {
+                    records.push(ExecutionRecord {
+                        target: target.address.clone(),
+                        target_kind: target.protocol.to_string(),
+                        template_id: template.id().to_string(),
+                        status: ExecutionStatus::Skipped,
+                        declared_by_template: false,
+                        findings: 0,
+                        exit_code: None,
+                        detail: Some(reason.clone()),
+                        duration_ms: 0,
+                    });
+                }
+                return Ok((findings, records));
             }
-            return Ok((findings, records));
         }
 
         // What this build can reveal, read once per target and reused by every
@@ -188,6 +205,39 @@ impl Executor {
                 }
 
                 let started = std::time::Instant::now();
+
+                // The target carries no instrumentation and the operator asked
+                // for the preflight: only a template whose oracles all work on
+                // any build gets to run.
+                if let Some(reason) = &preflight_reason {
+                    if !crate::engine::common::oracles_are_build_independent(
+                        &template.metadata().oracles,
+                    ) {
+                        if let Some(progress) = get_progress() {
+                            progress.template_done(&target.address, template.id(), 0);
+                        }
+                        tracing::info!(
+                            "Skipping template {} for target {}: {}",
+                            template.id(),
+                            target.address,
+                            reason
+                        );
+                        return (
+                            Vec::new(),
+                            ExecutionRecord {
+                                target: target.address.clone(),
+                                target_kind: target.protocol.to_string(),
+                                template_id: template.id().to_string(),
+                                status: ExecutionStatus::Skipped,
+                                declared_by_template: false,
+                                findings: 0,
+                                exit_code: None,
+                                detail: Some(reason.clone()),
+                                duration_ms: 0,
+                            },
+                        );
+                    }
+                }
 
                 // A template that has declared it cannot handle this target, or
                 // cannot reach a verdict on this build, is recorded as skipped
@@ -337,7 +387,7 @@ impl Executor {
 
         let detected = crate::engine::common::detect_instrumentation(path);
         if detected.is_empty() {
-            Some("no-instrumentation-detected".to_string())
+            Some(NO_INSTRUMENTATION.to_string())
         } else {
             tracing::debug!(
                 "Target {} carries instrumentation: {}",

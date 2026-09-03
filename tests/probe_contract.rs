@@ -479,6 +479,118 @@ fn a_missing_cli_target_is_skipped_as_not_found() {
     assert_eq!(row.detail, "target-not-found");
 }
 
+/// s14 item 1. `--require-instrumentation` used to be decided at *target*
+/// level, so a target detecting no instrumentation had **every** template
+/// skipped -- including templates whose oracles need nothing from the build.
+/// On an interpreted CLI, which can never detect instrumentation, that left
+/// the operator a choice between running the flag and testing nothing, or
+/// dropping it and accepting unearned refutations from every sanitizer
+/// template in the set. A template declaring only build-independent oracles
+/// now runs and reaches a real verdict.
+#[test]
+fn a_build_independent_template_runs_under_require_instrumentation() {
+    let dir = tempfile::tempdir().unwrap();
+    // No instrumentation, and (being a script) no way to acquire any: the
+    // shape of every interpreted CLI target.
+    let bin = install_target(dir.path(), "toy_defective.sh");
+
+    let out = scan(
+        dir.path(),
+        "cli-probe-exit-only.sh",
+        &["--require-instrumentation"],
+        &cli_scope(&bin),
+    );
+
+    let row = out.single();
+    assert_eq!(row.status, "confirmed", "detail was {:?}", row.detail);
+    assert_eq!(row.findings, 1);
+    assert!(
+        row.detail.contains("instrumentation=none"),
+        "the template still learns the build carries nothing: {:?}",
+        row.detail
+    );
+}
+
+/// ...and the same template earns a refutation, not a skip, when the target
+/// handles the probe input cleanly. The verdict is real either way.
+#[test]
+fn a_build_independent_template_can_refute_under_require_instrumentation() {
+    let dir = tempfile::tempdir().unwrap();
+    let bin = install_target(dir.path(), "toy_silent.sh");
+
+    let out = scan(
+        dir.path(),
+        "cli-probe-exit-only.sh",
+        &["--require-instrumentation"],
+        &cli_scope(&bin),
+    );
+
+    let row = out.single();
+    assert_eq!(row.status, "refuted", "detail was {:?}", row.detail);
+    assert_eq!(row.findings, 0);
+}
+
+/// The guarantee the fall-through must not weaken: a template that declares a
+/// sanitizer oracle is still refused on a build that carries no sanitizer, and
+/// still with the target-level reason.
+#[test]
+fn a_sanitizer_template_is_still_skipped_on_an_uninstrumented_build() {
+    let dir = tempfile::tempdir().unwrap();
+    let bin = install_target(dir.path(), "toy_defective.sh");
+
+    let out = scan(
+        dir.path(),
+        "cli-probe-asan-only.sh",
+        &["--require-instrumentation"],
+        &cli_scope(&bin),
+    );
+
+    let row = out.single();
+    assert_eq!(row.status, "skipped");
+    assert_eq!(row.detail, "no-instrumentation-detected");
+    assert!(!row.declared_by_template, "cxg refused before it ran");
+}
+
+/// A template that declared no oracles at all says nothing about how it
+/// decides, so the preflight keeps refusing it: absent is not a promise, and
+/// the flag exists precisely to stop cxg guessing. This is what every template
+/// written before the annotation existed does.
+#[test]
+fn an_undeclared_template_is_still_skipped_on_an_uninstrumented_build() {
+    let dir = tempfile::tempdir().unwrap();
+    let bin = install_target(dir.path(), "toy_defective.sh");
+
+    let out = scan(
+        dir.path(),
+        "env-echo.sh",
+        &["--require-instrumentation"],
+        &cli_scope(&bin),
+    );
+
+    let row = out.single();
+    assert_eq!(row.status, "skipped");
+    assert_eq!(row.detail, "no-instrumentation-detected");
+}
+
+/// The fall-through is only for `no-instrumentation-detected`: a target that
+/// is not there at all cannot run anything, whatever a template declares.
+#[test]
+fn a_missing_target_skips_even_a_build_independent_template() {
+    let dir = tempfile::tempdir().unwrap();
+    let missing = dir.path().join("no_such_binary");
+
+    let out = scan(
+        dir.path(),
+        "cli-probe-exit-only.sh",
+        &["--require-instrumentation"],
+        &cli_scope(&missing),
+    );
+
+    let row = out.single();
+    assert_eq!(row.status, "skipped");
+    assert_eq!(row.detail, "target-not-found");
+}
+
 /// The preflight is off unless asked for, and never gates a network host.
 #[test]
 fn require_instrumentation_does_not_gate_a_network_target() {
