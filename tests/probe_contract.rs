@@ -8,6 +8,12 @@
 //! about. What is under test is cxg's plumbing -- does the flag reach the
 //! template, is the verdict recorded, is the evidence kept -- not memory-error
 //! detection, which is the sanitizer's job.
+//!
+//! The fixtures are shell scripts and Unix toy binaries, so the whole file is
+//! gated to Unix -- on Windows there is no interpreter to run them and every
+//! case would fail on the fixture, not on the code under test.
+
+#![cfg(unix)]
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
