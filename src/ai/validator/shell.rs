@@ -16,14 +16,18 @@ pub fn validate(code: &str) -> Result<Vec<TemplateDiagnostic>> {
         }
     }
 
+    // A `@target_kinds: cli` template carries an ESC sequence as probe payload
+    // rather than as decoration, so the escape-code rules below read it that way.
+    let cli_target = super::common::declares_cli_target_kind(code);
+
     // Check for CERT-X-GEN JSON contract structure
     diagnostics.extend(check_json_contract(code));
 
     // Check for problematic output statements
-    diagnostics.extend(check_output_statements(code));
+    diagnostics.extend(check_output_statements(code, cli_target));
 
     // Check for ANSI colors/escape codes (will break JSON)
-    diagnostics.extend(check_ansi_colors(code));
+    diagnostics.extend(check_ansi_colors(code, cli_target));
 
     // Check for error handling
     if !code.contains("set -e") && !code.contains("set -o errexit") {
@@ -106,13 +110,12 @@ fn check_json_contract(code: &str) -> Vec<TemplateDiagnostic> {
 }
 
 /// Check for problematic output statements that break JSON
-fn check_output_statements(code: &str) -> Vec<TemplateDiagnostic> {
+fn check_output_statements(code: &str, cli_target: bool) -> Vec<TemplateDiagnostic> {
     let mut diagnostics = Vec::new();
 
     // Patterns that indicate human-readable output
-    let problematic_patterns = vec![
+    let mut problematic_patterns = vec![
         ("echo -e", "echo with escape sequences (colors) detected"),
-        ("printf.*\\\\033", "ANSI escape sequences detected"),
         (
             "log_finding",
             "log_finding function may output human text instead of collecting JSON",
@@ -123,6 +126,11 @@ fn check_output_statements(code: &str) -> Vec<TemplateDiagnostic> {
         ),
         ("usage()", "usage() function called may output help text"),
     ];
+    // Same reasoning as `check_ansi_colors`: in a CLI template a `printf` of an
+    // ESC sequence builds the probe, it does not colourise the report.
+    if !cli_target {
+        problematic_patterns.push(("printf.*\\\\033", "ANSI escape sequences detected"));
+    }
 
     for (pattern_str, msg) in problematic_patterns {
         if let Ok(re) = regex::Regex::new(pattern_str) {
@@ -189,36 +197,48 @@ fn check_output_statements(code: &str) -> Vec<TemplateDiagnostic> {
 }
 
 /// Check for ANSI color codes that break JSON
-fn check_ansi_colors(code: &str) -> Vec<TemplateDiagnostic> {
+///
+/// `cli_target` is true when the template declares `@target_kinds: cli`. For
+/// such a template a raw escape sequence is the **payload** of a
+/// terminal-escape-injection probe (baseline class B08), not decoration, so
+/// the two raw-escape patterns are not evidence of colourised output. The
+/// decorative colour *variables* still are, and are still reported.
+fn check_ansi_colors(code: &str, cli_target: bool) -> Vec<TemplateDiagnostic> {
     let mut diagnostics = Vec::new();
 
-    // Check for color variable definitions
-    let color_patterns = vec![
-        ("RED=", "RED color variable"),
-        ("GREEN=", "GREEN color variable"),
-        ("YELLOW=", "YELLOW color variable"),
-        ("NC=", "NC (no color) variable"),
-        ("\\033[", "ANSI escape code"),
-        ("\\e[", "ANSI escape code"),
-    ];
+    // Colour *variable* definitions. Anchored to the start of a name, because
+    // a bare substring test for "RED=" also fires on `FIRED=`, `REQUIRED=`,
+    // `EXPIRED=` and `DELIVERED=` -- ordinary identifiers that merely end in
+    // those three letters, and nothing to do with colour.
+    let colour_var = regex::Regex::new(r"(?:^|[\s;&|(])(RED|GREEN|YELLOW|NC)=")
+        .expect("colour-variable pattern is a literal and always compiles");
 
-    for (pattern, name) in color_patterns {
-        if code.contains(pattern) {
-            if let Some(line_num) = code.lines().position(|l| l.contains(pattern)) {
-                diagnostics.push(
-                    TemplateDiagnostic::error(
-                        "shell.ansi_colors",
-                        format!(
-                            "{} detected. ANSI color codes will break JSON output. \
-                                Remove all color formatting from shell templates.",
-                            name
-                        ),
-                    )
-                    .with_location(line_num + 1, None),
-                );
-                break; // Only report once
-            }
+    // Raw escape introducers. These are not identifiers, so a substring test is
+    // the right test for them.
+    let escape_literals: &[&str] = if cli_target { &[] } else { &["\\033[", "\\e["] };
+
+    let hit = code.lines().enumerate().find_map(|(idx, line)| {
+        if let Some(caps) = colour_var.captures(line) {
+            return Some((idx, format!("{} color variable", &caps[1])));
         }
+        escape_literals
+            .iter()
+            .find(|lit| line.contains(**lit))
+            .map(|_| (idx, "ANSI escape code".to_string()))
+    });
+
+    if let Some((line_num, name)) = hit {
+        diagnostics.push(
+            TemplateDiagnostic::error(
+                "shell.ansi_colors",
+                format!(
+                    "{} detected. ANSI color codes will break JSON output. \
+                        Remove all color formatting from shell templates.",
+                    name
+                ),
+            )
+            .with_location(line_num + 1, None),
+        );
     }
 
     // Check for ASCII art / box drawing
@@ -296,6 +316,109 @@ mod tests {
         let code = "#!/bin/bash\n# @id: probe\nset -e\necho hello\n";
         let diags = validate(code).unwrap();
         assert!(diags.iter().any(|d| d.code == "shell.missing_target_host"));
+    }
+
+    /// The terminal-escape baseline class (B08) probes a CLI by *sending* an
+    /// ESC-introduced sequence and checking whether the target echoes the raw
+    /// byte back. `shell.ansi_colors` is an `error`, so before this exemption
+    /// the most CLI-native class in the baseline could never be saved.
+    #[test]
+    fn a_declared_cli_template_may_carry_an_esc_sequence_as_probe_payload() {
+        let code = concat!(
+            "#!/bin/bash\n",
+            "# @id: cli-baseline-b08-terminal-escape\n",
+            "# @target_kinds: cli\n",
+            "BIN=\"$CERT_X_GEN_TARGET_HOST\"\n",
+            "PROBE=\"$(printf 'safe\\033[31mRED')\"\n",
+            "\"$BIN\" banner \"$PROBE\"\n",
+        );
+        let diags = validate(code).unwrap();
+        assert!(
+            !diags.iter().any(|d| d.code == "shell.ansi_colors"),
+            "the ESC byte IS the payload: {:?}",
+            diags.iter().map(|d| &d.code).collect::<Vec<_>>()
+        );
+        assert!(
+            !diags
+                .iter()
+                .any(|d| d.code == "shell.human_readable_output"),
+            "the same false positive, one rule over: {:?}",
+            diags.iter().map(|d| &d.code).collect::<Vec<_>>()
+        );
+    }
+
+    /// The exemption is bought by the declaration, not by the escape sequence:
+    /// a network template that colourises its output is still an error, and a
+    /// CLI template that defines decorative colour *variables* still is too.
+    #[test]
+    fn an_undeclared_template_with_the_same_escape_is_still_an_error() {
+        let code = concat!(
+            "#!/bin/bash\n",
+            "# @id: some-network-probe\n",
+            "BIN=\"$CERT_X_GEN_TARGET_HOST\"\n",
+            "PROBE=\"$(printf 'safe\\033[31mRED')\"\n",
+        );
+        let diags = validate(code).unwrap();
+        assert!(diags.iter().any(|d| d.code == "shell.ansi_colors"));
+    }
+
+    #[test]
+    fn a_cli_template_that_actually_colourises_is_still_an_error() {
+        let code = concat!(
+            "#!/bin/bash\n",
+            "# @id: probe\n",
+            "# @target_kinds: cli\n",
+            "RED='red'\n",
+            "BIN=\"$CERT_X_GEN_TARGET_HOST\"\n",
+        );
+        let diags = validate(code).unwrap();
+        assert!(
+            diags.iter().any(|d| d.code == "shell.ansi_colors"),
+            "decorative colour variables are still decoration: {:?}",
+            diags.iter().map(|d| &d.code).collect::<Vec<_>>()
+        );
+    }
+
+    /// `RED=` was matched as a bare substring, so any identifier ending in
+    /// those letters was reported as a colour variable. Four of the fourteen
+    /// CLI Security Baseline templates failed on `CXG_PROBES_DELIVERED=` and
+    /// `FIRED=` -- names with no connection to colour at all.
+    #[test]
+    fn an_identifier_merely_ending_in_a_colour_name_is_not_a_colour_variable() {
+        for code in [
+            "#!/bin/bash\n# @id: p\nCXG_PROBES_DELIVERED=0\nHOST=\"$CERT_X_GEN_TARGET_HOST\"\n",
+            "#!/bin/bash\n# @id: p\nFIRED=\"yes\"\nHOST=\"$CERT_X_GEN_TARGET_HOST\"\n",
+            "#!/bin/bash\n# @id: p\nREQUIRED=1\nHOST=\"$CERT_X_GEN_TARGET_HOST\"\n",
+            "#!/bin/bash\n# @id: p\nEXPIRED=1\nHOST=\"$CERT_X_GEN_TARGET_HOST\"\n",
+            "#!/bin/bash\n# @id: p\nSYNC=1\nHOST=\"$CERT_X_GEN_TARGET_HOST\"\n",
+        ] {
+            let diags = validate(code).unwrap();
+            assert!(
+                !diags.iter().any(|d| d.code == "shell.ansi_colors"),
+                "false positive on {:?}",
+                code.lines().nth(2).unwrap()
+            );
+        }
+    }
+
+    /// ...and the rule still catches an actual colour variable, however it is
+    /// introduced.
+    #[test]
+    fn a_real_colour_variable_is_still_caught_in_each_position() {
+        for line in [
+            "RED='\\033[0;31m'",
+            "  GREEN='x'",
+            "export YELLOW='x'",
+            "true; NC='x'",
+        ] {
+            let code = format!("#!/bin/bash\n# @id: p\n{}\n", line);
+            let diags = validate(&code).unwrap();
+            assert!(
+                diags.iter().any(|d| d.code == "shell.ansi_colors"),
+                "missed a real colour variable in {:?}",
+                line
+            );
+        }
     }
 
     #[test]
