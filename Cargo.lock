@@ -439,6 +439,7 @@ dependencies = [
  "nix",
  "nom",
  "num_cpus",
+ "object 0.37.3",
  "openssl",
  "parking_lot",
  "pest",

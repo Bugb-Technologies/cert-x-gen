@@ -3,11 +3,16 @@
  * of toy.sh. NOT a real vulnerability and not derived from any advisory.
  *
  * It exists because an instrumentation marker only means something inside a
- * *compiled object*: since s14 item 2, cxg reports `none` for a shebang
- * script however many marker strings it contains, so a test that needs an
- * instrumented target needs a real object file. The markers are carried as an
- * ordinary string constant, which is where a sanitizer-linked build carries
- * them too (its symbol table).
+ * *compiled object*: cxg reports `none` for a shebang script however many
+ * marker strings it contains (s14 item 2), so a test that needs an
+ * instrumented target needs a real object file.
+ *
+ * The markers themselves are NOT in this file. cxg reads the symbol table, so
+ * a marker has to be a real symbol: the harness generates a companion
+ * translation unit defining the ones a given test wants and links it in. A
+ * marker spelled out in a string constant is prose, and a build that carries
+ * only that carries no instrumentation -- which is the whole reason the
+ * detector reads symbols. See tests/probe_contract.rs:install_object_target.
  *
  * Contract, identical to toy.sh:
  *   toy --label <text>   store a label in a notional 16-byte buffer
@@ -17,19 +22,12 @@
  * report and exit 134 -- the shape a real ASan crash has. Any other name is
  * bounds-checked and truncates.
  *
- * Build markers are injected by the test harness:
- *   cc -DCXG_BUILD_MARKERS='"__asan_init __asan_report_load1"' toy_instrumented.c
+ * Built by the test harness:
+ *   cc -o toy_defective toy_instrumented.c [cxg_markers.c]
  */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#ifndef CXG_BUILD_MARKERS
-#define CXG_BUILD_MARKERS "none"
-#endif
-
-/* Referenced from main() so no optimisation level can drop it. */
-const char cxg_build_markers[] = "cxg-build-markers: " CXG_BUILD_MARKERS;
 
 #define BUFSZ 16
 
@@ -66,10 +64,6 @@ int main(int argc, char **argv) {
 
     if (getenv("TOY_DEFECTIVE") != NULL) {
         is_defective = strcmp(getenv("TOY_DEFECTIVE"), "1") == 0;
-    }
-    if (getenv("CXG_SHOW_BUILD_MARKERS") != NULL) {
-        printf("%s\n", cxg_build_markers);
-        return 0;
     }
 
     if (argc >= 3 && strcmp(argv[1], "--label") == 0) {
