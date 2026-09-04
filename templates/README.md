@@ -6,6 +6,20 @@ These skeletons are used by:
 - `cxg template create` - Scaffold new templates in any of the 12 supported languages
 - `cxg ai generate` - Provide format guidance to LLMs when generating templates
 
+## In-tree packs
+
+| Directory | What it is |
+|---|---|
+| `skeleton/` | The per-language skeletons described above |
+| `cli-baseline/` | **CLI Security Baseline** — fourteen black-box checks for a command-line tool, plus their shared probe library. See [`cli-baseline/README.md`](cli-baseline/README.md) |
+
+`cli-baseline/` is the one detection pack that lives here rather than in the
+templates repository below, because it is the reference implementation of a
+published specification and this repository's own test suite proves it: every
+class must confirm on a flawed synthetic twin and refute on the fixed one
+(`cargo test --test cli_baseline_pack`). A pack whose correctness is a build
+gate has to ship with the build.
+
 ## Detection Templates
 
 Detection templates (the actual security checks) are maintained in a separate repository:

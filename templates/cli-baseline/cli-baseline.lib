@@ -1,0 +1,508 @@
+#!/usr/bin/env bash
+# cli-baseline.lib -- the shared probe library for the CLI Security Baseline pack.
+#
+# NOT A TEMPLATE. Its extension is deliberately not one cxg recognises
+# (`src/template/engine.rs:is_valid_template_file` and the `template validate`
+# walk in `src/main.rs` both list extensions), so neither `cxg scan` nor
+# `cxg template validate` picks it up as a check to run. Every template in this
+# directory sources it as its first act:
+#
+#     . "$(dirname "$0")/cli-baseline.lib" || { ... }
+#
+# which works because the shell engine runs a template in place --
+# `bash <template-path> <address> <port> --json` (`src/engine/shell/mod.rs`) --
+# so `$0` is the template's own path and this file is its sibling.
+#
+# ---------------------------------------------------------------------------
+# WHY THIS FILE EXISTS
+#
+# The four s16 proof templates copy-pasted their `emit`, lab setup and canary
+# preamble. That is tolerable for four and wrong for fourteen: the preamble is
+# where the pack's honesty rules live, and fourteen copies of a rule is fourteen
+# chances to get one of them subtly different.
+#
+# ---------------------------------------------------------------------------
+# THE FOUR STATUSES, AND WHAT EACH ONE PROMISES
+#
+#   confirmed  an observable no correct implementation can produce was seen.
+#   refuted    the probe was DELIVERED to the target and the target handled it.
+#   skipped    this check could not be earned here -- wrong target kind, no
+#              attack surface found, or the oracle it needs is unavailable.
+#   errored    the lab or the control run failed; nothing was learned.
+#
+# `cxg_refute` REFUSES to report a refutation unless at least one probe actually
+# reached the target, and downgrades itself to `skipped(no-probe-delivered)`
+# otherwise. A refutation is a claim -- "I exercised this and there is no
+# defect" -- and a template that found no surface to probe has not earned it.
+# This is the s16 2.1 honesty rule made mechanical, in one place, for all
+# fourteen classes.
+#
+# ---------------------------------------------------------------------------
+# SAFETY
+#
+# Every probe this library helps build is confined to a `mktemp -d` lab that is
+# removed on exit. Canaries are inert text files. Nothing here reproduces a CVE,
+# downloads anything, opens a socket, or writes outside the lab.
+
+# ---------------------------------------------------------------------------
+# Probe-contract inputs (s15 phases 0-3).
+# ---------------------------------------------------------------------------
+CXG_BIN="${CERT_X_GEN_TARGET_HOST:-}"
+CXG_KIND="${CERT_X_GEN_TARGET_KIND:-}"
+CXG_INSTR="${CERT_X_GEN_TARGET_INSTRUMENTATION:-unknown}"
+CXG_ARGV="${CERT_X_GEN_ARGV:-}"
+CXG_STDIN_FILE="${CERT_X_GEN_STDIN_FILE:-}"
+CXG_INPUT_DIR="${CERT_X_GEN_INPUT_DIR:-}"
+
+# Set by cxg_run/cxg_run_files; read by the adjudication helpers.
+CXG_RC=0
+CXG_OUT=""
+CXG_PROBES_DELIVERED=0
+CXG_LAB=""
+CXG_HELP_TEXT=""
+CXG_HELP_LOADED=0
+
+# How long any single target invocation may take. A baseline probe that hangs
+# is a B12 observation, not a reason to wedge the whole scan.
+CXG_TIMEOUT="${CXG_BASELINE_TIMEOUT:-10}"
+
+# ---------------------------------------------------------------------------
+# The JSON contract.
+# ---------------------------------------------------------------------------
+
+# cxg_emit <status> <detail> [findings-json]
+#
+# JSON is built by python3 with json.dumps rather than by hand. s14 4.1(e) is
+# the story of a template hand-rolling JSON and cutting a UTF-8 glyph in half,
+# and this pack deliberately sends control bytes and high-bit text at targets,
+# so it is the last place that should be interpolating strings into JSON.
+cxg_emit() {
+    CXG_F="${3:-[]}" CXG_S="$1" CXG_D="$2" CXG_I="$CXG_INSTR" \
+    CXG_TO="${CXG_TARGET_OUTPUT:-}" python3 -c '
+import json, os
+detail = os.environ["CXG_D"]
+try:
+    findings = json.loads(os.environ["CXG_F"])
+except ValueError as exc:                      # a malformed finding must not
+    findings = []                              # become a silent zero-finding
+    detail += " (finding-json-invalid: %s)" % exc
+
+meta = {"status": os.environ["CXG_S"],
+        "detail": detail,
+        "instrumentation": os.environ["CXG_I"]}
+
+# `target_output` is how cxg reaches its OWN oracles (s15 commit 12): the
+# template runs the target, so only the template can hand the output back for
+# cxg to match an escaped exception against.
+if os.environ["CXG_TO"]:
+    meta["target_output"] = os.environ["CXG_TO"][:8000]
+
+print(json.dumps({"findings": findings, "metadata": meta}))'
+}
+
+# Set by a template that wants cxg to apply its own oracles to what the target
+# printed. Left empty by templates that reach their verdict entirely alone.
+CXG_TARGET_OUTPUT=""
+
+# The four verdicts. Each exits the template, so a call site reads as a
+# terminal statement rather than as a branch that has to remember to return.
+#
+# Exit 3 on a confirmation is the pack's convention for "I found something",
+# which every template tolerates via `@allow_nonzero_exit: true`.
+cxg_confirm() { cxg_emit confirmed "$1" "$2"; exit 3; }
+cxg_error()   { cxg_emit errored   "$1"; exit 0; }
+cxg_skip()    { cxg_emit skipped   "$1"; exit 0; }
+
+# cxg_refute <detail>
+#
+# The honesty gate. A refutation asserts the target was exercised, so it is
+# only available once a probe has actually been delivered.
+cxg_refute() {
+    if [ "$CXG_PROBES_DELIVERED" -eq 0 ]; then
+        cxg_emit skipped "no-probe-delivered (nothing was sent to the target, so a refutation would be unearned): $1"
+        exit 0
+    fi
+    cxg_emit refuted "$1 probes=$CXG_PROBES_DELIVERED"
+    exit 0
+}
+
+# cxg_finding <severity> <confidence> <title> <description> <cwe-csv> \
+#             <request> <response> <patterns-csv> <data-json>
+#
+# Prints one finding as a single-element JSON array, ready for cxg_confirm.
+#
+# `response` is rendered with control bytes ESCAPED. The pack sends ESC
+# sequences at targets on purpose (B08), and a report that carried them raw
+# would be a second injection vector aimed at whoever reads it -- the same
+# discipline B08 asks of the target under test.
+cxg_finding() {
+    CXG_SEV="$1" CXG_CONF="$2" CXG_TITLE="$3" CXG_DESC="$4" CXG_CWE="$5" \
+    CXG_REQ="$6" CXG_RESP="$7" CXG_PAT="$8" CXG_DATA="${9:-{\}}" python3 -c '
+import json, os
+
+def visible(s):
+    return "".join(
+        c if (31 < ord(c) < 127 or c in "\n\t") else "\\x%02x" % ord(c)
+        for c in s
+    )
+
+cwe = [c.strip() for c in os.environ["CXG_CWE"].split(",") if c.strip()]
+pat = [p.strip() for p in os.environ["CXG_PAT"].split(",") if p.strip()]
+try:
+    data = json.loads(os.environ["CXG_DATA"])
+except ValueError:
+    data = {"note": "data-json-invalid"}
+
+print(json.dumps([{
+    "severity":    os.environ["CXG_SEV"],
+    "confidence":  int(os.environ["CXG_CONF"]),
+    "title":       os.environ["CXG_TITLE"],
+    "description": os.environ["CXG_DESC"],
+    "cwe_ids":     cwe,
+    "evidence": {
+        "request":          os.environ["CXG_REQ"],
+        "response":         visible(os.environ["CXG_RESP"][:1200]),
+        "matched_patterns": pat,
+        "data":             data,
+    },
+}]))'
+}
+
+# ---------------------------------------------------------------------------
+# Guards and lab setup.
+# ---------------------------------------------------------------------------
+
+# cxg_require_cli_target
+#
+# Belt-and-braces behind `@target_kinds: cli`. cxg already refuses to run a
+# CLI template against a network target (s16 4.4), but a template is also run
+# directly by developers, and a baseline check should never guess at what it is
+# pointed at.
+cxg_require_cli_target() {
+    [ "$CXG_KIND" = "cli" ] || cxg_skip "not-a-cli-target(kind=${CXG_KIND:-none})"
+    [ -n "$CXG_BIN" ]       || cxg_error "no-target-path"
+    [ -x "$CXG_BIN" ]       || cxg_error "target-not-executable($CXG_BIN)"
+}
+
+# cxg_lab <slug>
+#
+# Builds the hermetic lab, cds into it, and arranges for its removal. Every
+# probe runs with the lab as its working directory, so a target that writes
+# relative to cwd -- which many do -- writes inside the sandbox.
+cxg_lab() {
+    CXG_LAB="$(mktemp -d "${TMPDIR:-/tmp}/cxg-${1:-baseline}.XXXXXX")" \
+        || cxg_error "lab-setup-failed"
+    # shellcheck disable=SC2064  # $CXG_LAB must expand now, not at trap time
+    trap "rm -rf '$CXG_LAB'" EXIT
+    cd "$CXG_LAB" || cxg_error "lab-cd-failed"
+}
+
+# cxg_nonce <prefix>
+#
+# A value no correct run of any target can produce, so seeing it in output is
+# proof rather than inference.
+cxg_nonce() {
+    printf '%s-%s' "$1" "$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
+}
+
+# ---------------------------------------------------------------------------
+# Driving the target.
+# ---------------------------------------------------------------------------
+
+# cxg_run <args...>
+#
+# Runs the target with stdout+stderr combined into CXG_OUT and the status in
+# CXG_RC, and counts the delivery. `cxg_refute` is unlocked by this counter,
+# so a template that never calls this can never claim a refutation.
+cxg_run() {
+    CXG_OUT="$(cxg_timeout "$CXG_TIMEOUT" "$CXG_BIN" "$@" 2>&1)"
+    CXG_RC=$?
+    CXG_PROBES_DELIVERED=$((CXG_PROBES_DELIVERED + 1))
+    return 0
+}
+
+# cxg_run_files <stdout-path> <stderr-path> <args...>
+#
+# The byte-exact variant: some classes (B08 above all) must inspect raw bytes,
+# which command substitution cannot preserve -- `$(...)` strips trailing
+# newlines and the value has to survive as a shell string.
+cxg_run_files() {
+    local out="$1" err="$2"
+    shift 2
+    cxg_timeout "$CXG_TIMEOUT" "$CXG_BIN" "$@" >"$out" 2>"$err"
+    CXG_RC=$?
+    CXG_PROBES_DELIVERED=$((CXG_PROBES_DELIVERED + 1))
+    return 0
+}
+
+# cxg_run_stdin <stdin-path> <args...>
+cxg_run_stdin() {
+    local infile="$1"
+    shift
+    CXG_OUT="$(cxg_timeout "$CXG_TIMEOUT" "$CXG_BIN" "$@" <"$infile" 2>&1)"
+    CXG_RC=$?
+    CXG_PROBES_DELIVERED=$((CXG_PROBES_DELIVERED + 1))
+    return 0
+}
+
+# cxg_timeout <seconds> <cmd...>
+#
+# `timeout` is GNU coreutils and is absent from a stock macOS, which is a
+# first-class development platform for this repo. Falls back to a watchdog
+# subshell that reproduces the one behaviour the pack depends on: exit 124 when
+# the child outlives its budget.
+cxg_timeout() {
+    local secs="$1"
+    shift
+    if command -v timeout >/dev/null 2>&1; then
+        timeout "$secs" "$@"
+        return $?
+    fi
+    if command -v gtimeout >/dev/null 2>&1; then
+        gtimeout "$secs" "$@"
+        return $?
+    fi
+    "$@" &
+    local child=$!
+    (
+        sleep "$secs"
+        kill -TERM "$child" 2>/dev/null
+        sleep 1
+        kill -KILL "$child" 2>/dev/null
+    ) >/dev/null 2>&1 &
+    local watchdog=$!
+    local rc=0
+    wait "$child" 2>/dev/null || rc=$?
+    kill "$watchdog" 2>/dev/null
+    wait "$watchdog" 2>/dev/null || true
+    # 143 is SIGTERM, which for this fallback means the watchdog fired.
+    [ "$rc" -eq 143 ] && rc=124
+    return "$rc"
+}
+
+# cxg_control <expected-substring> <args...>
+#
+# A baseline check must know the target works before it can read a clean probe
+# result as a refutation. If the control fails, the template `errored`s: it has
+# learned nothing about the class either way, and saying so is not the same as
+# saying the target is fine.
+cxg_control() {
+    local expect="$1"
+    shift
+    local out rc
+    out="$(cxg_timeout "$CXG_TIMEOUT" "$CXG_BIN" "$@" 2>&1)"
+    rc=$?
+    if [ "$rc" -ne 0 ] || ! printf '%s' "$out" | grep -qF -- "$expect"; then
+        cxg_error "control-run-failed(exit=$rc expected='$expect')"
+    fi
+    return 0
+}
+
+# ---------------------------------------------------------------------------
+# Attack-surface discovery.
+#
+# A baseline is pointed at a binary, not at a hand-written invocation, so it has
+# to find its own way in. `--help` is the one channel every conventional CLI
+# offers, and parsing it is honest black-box behaviour.
+#
+# When discovery finds nothing the template SKIPS. That is the whole point: a
+# check that could not find a surface to probe has not refuted anything, and
+# saying `refuted` there would be exactly the unearned verdict this pack exists
+# to avoid.
+# ---------------------------------------------------------------------------
+
+# cxg_help_text -- the target's help output, fetched once and cached.
+cxg_help_text() {
+    if [ "$CXG_HELP_LOADED" -eq 0 ]; then
+        CXG_HELP_LOADED=1
+        local probe
+        for probe in --help help -h; do
+            CXG_HELP_TEXT="$(cxg_timeout "$CXG_TIMEOUT" "$CXG_BIN" "$probe" 2>&1)"
+            # Usage text is usage text whatever the exit status: plenty of CLIs
+            # print help and exit non-zero.
+            if printf '%s' "$CXG_HELP_TEXT" | grep -qiE 'usage|commands?:|options?:'; then
+                break
+            fi
+            CXG_HELP_TEXT=""
+        done
+        # Last resort: a bare invocation, which many CLIs answer with usage.
+        if [ -z "$CXG_HELP_TEXT" ]; then
+            CXG_HELP_TEXT="$(cxg_timeout "$CXG_TIMEOUT" "$CXG_BIN" 2>&1)"
+        fi
+    fi
+    printf '%s' "$CXG_HELP_TEXT"
+}
+
+# cxg_subcommands -- candidate subcommand names, one per line.
+#
+# Matches the near-universal "  name   description" shape of a help listing,
+# and drops the option-looking and punctuation-looking tokens.
+cxg_subcommands() {
+    cxg_help_text | python3 -c '
+import re, sys
+
+# The near-universal shape of a help listing is
+#
+#     <indent> name [<arg>] [--opt] <2+ spaces> description
+#
+# so: an indented lower-case token, optionally followed by argument
+# placeholders, then a run of whitespace wide enough to be a column separator,
+# then the description. Requiring the wide separator is what keeps prose out.
+NAME = re.compile(r"^[ \t]{1,8}([a-z][a-z0-9][a-z0-9_.-]*)\b(.*)$")
+SEP = re.compile(r"(?:[ ]{2,}|\t)\S")
+NOT_A_COMMAND = {"usage", "options", "option", "commands", "command",
+                 "arguments", "args", "flags", "environment", "examples",
+                 "example", "see", "note", "notes", "where", "for", "the"}
+
+seen, out = set(), []
+for line in sys.stdin.read().splitlines():
+    m = NAME.match(line)
+    if not m:
+        continue
+    name, rest = m.group(1), m.group(2)
+    if not SEP.search(rest):
+        continue
+    if name in seen or name in NOT_A_COMMAND:
+        continue
+    seen.add(name)
+    out.append(name)
+print("\n".join(out))'
+}
+
+# cxg_pick_subcommands <extended-regex> [max]
+#
+# EVERY discovered subcommand whose name matches, one per line, capped so a
+# large CLI cannot make one template run for ever.
+#
+# Plural on purpose. A baseline probes the surface it found, not the first
+# thing that looked plausible: the s16 recipes say "in every argument that
+# plausibly reaches a shell" and "through every argument the tool echoes", and
+# a template that gave up after one guess would refute on the strength of
+# having tested the wrong subcommand.
+#
+# Prints nothing when there is no candidate, which the caller must treat as a
+# SKIP -- never as clean.
+#
+# Callers must drive the result with a `while read` fed by a HEREDOC, not by a
+# pipe: a pipe puts the loop in a subshell, where the `exit` inside
+# `cxg_confirm` would end only that subshell and the template would fall
+# through to its refutation with a finding in hand.
+cxg_pick_subcommands() {
+    cxg_subcommands | grep -E "^($1)$" | head -"${2:-8}"
+}
+
+# cxg_pick_subcommand <extended-regex>  -- the first match only.
+cxg_pick_subcommand() {
+    cxg_pick_subcommands "$1" 1
+}
+
+# cxg_operator_argv <token> <payload>
+#
+# The operator override. `--arg` (s15 phase 2) is the documented channel for
+# telling a template exactly how to invoke a target it cannot discover. When
+# the supplied argv contains the token, the payload replaces it; otherwise the
+# payload is appended. Prints nothing when the operator supplied no argv.
+#
+# CERT_X_GEN_ARGV is newline-separated, one argument per line, so an argument
+# containing spaces survives.
+cxg_operator_argv() {
+    local token="$1" payload="$2"
+    [ -n "$CXG_ARGV" ] || return 1
+    CXG_TOKEN="$token" CXG_PAYLOAD="$payload" CXG_A="$CXG_ARGV" python3 -c '
+import os
+args = [a for a in os.environ["CXG_A"].split("\n") if a != ""]
+tok, pay = os.environ["CXG_TOKEN"], os.environ["CXG_PAYLOAD"]
+if any(tok in a for a in args):
+    args = [a.replace(tok, pay) for a in args]
+else:
+    args = args + [pay]
+print("\n".join(args))'
+}
+
+# cxg_argv_to_array <newline-separated>  ->  fills the global CXG_ARGS array
+cxg_argv_to_array() {
+    CXG_ARGS=()
+    local line
+    while IFS= read -r line; do
+        [ -n "$line" ] && CXG_ARGS+=("$line")
+    done <<EOF
+$1
+EOF
+}
+
+# cxg_seed_corpus
+#
+# Plants a few benign, conventionally-named files in the lab so a
+# file-oriented target has something valid to work on. A baseline that cannot
+# make the target succeed once cannot read a quiet probe as a refutation, and
+# handing it a working input is the cheapest way to earn that.
+#
+# Deliberately plain: one line of text, and a `notes/` subdirectory because a
+# tool with a data root usually keeps one relative to its working directory.
+cxg_seed_corpus() {
+    mkdir -p notes
+    local f
+    for f in notes/greeting greeting greeting.txt data.txt; do
+        printf 'benign control note\n' >"$f"
+    done
+    printf '{}\n' >notes/config.json
+}
+
+# The names cxg_working_arg tries, in order. They pair with cxg_seed_corpus.
+CXG_CORPUS_ARGS="greeting
+greeting.txt
+notes/greeting
+data.txt
+./greeting"
+
+# cxg_working_arg <subcommand>
+#
+# The first seeded name for which `<bin> <subcommand> <name>` exits 0 -- the
+# template's control invocation. Prints nothing when the target accepts none of
+# them, which the caller must treat as a SKIP: a probe whose control never
+# worked has not exercised anything, and calling that `refuted` would be the
+# unearned verdict this pack exists to avoid.
+cxg_working_arg() {
+    local sub="$1" candidate
+    while IFS= read -r candidate; do
+        [ -n "$candidate" ] || continue
+        if cxg_timeout "$CXG_TIMEOUT" "$CXG_BIN" "$sub" "$candidate" >/dev/null 2>&1; then
+            printf '%s' "$candidate"
+            return 0
+        fi
+    done <<EOF
+$CXG_CORPUS_ARGS
+EOF
+    return 1
+}
+
+# cxg_control_alive
+#
+# The weakest control there is, and the only one that is truly generic: the
+# target runs and says something. A binary that cannot even do this is not a
+# target the baseline has tested.
+cxg_control_alive() {
+    local out
+    out="$(cxg_help_text)"
+    [ -n "$out" ] || cxg_error "target-produced-no-output-at-all"
+}
+
+# ---------------------------------------------------------------------------
+# Oracle availability.
+# ---------------------------------------------------------------------------
+
+# cxg_require_instrumentation <marker> [<marker>...]
+#
+# For the B11-B14 classes. cxg's own preflight already skips a sanitizer
+# template on an uninstrumented build when `--require-instrumentation` is set;
+# this makes the template honest even when the operator did NOT pass the flag,
+# which is the case where s16 2.1's false negative would otherwise appear.
+cxg_require_instrumentation() {
+    local want found=0
+    for want in "$@"; do
+        case ",$CXG_INSTR," in
+            *",$want,"*) found=1 ;;
+        esac
+    done
+    [ "$found" -eq 1 ] || cxg_skip "no-instrumentation-detected(have=${CXG_INSTR:-none} need=$*)"
+}
