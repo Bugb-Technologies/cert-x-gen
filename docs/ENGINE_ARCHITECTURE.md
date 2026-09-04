@@ -303,11 +303,70 @@ nothing. An **interpreted CLI therefore always detects `none`** — see
 `@oracles` below for how a template whose oracles do not need a sanitizer still
 runs against one.
 
-cxg **inspects and refuses; it does not build the target.** Doing that
-honestly needs a per-project build recipe, and half-doing it produces exactly
-the confident false refutations this feature exists to prevent. Build the
-target with your language's instrumented profile — for C/C++,
-`-fsanitize=address -g`.
+`cxg scan` **inspects and refuses; it never builds the target.** Building runs
+the project's own build system — `build.rs`, `configure`, arbitrary `Makefile`
+recipes — as the invoking user, which is a different trust decision from
+reading a file, and it costs minutes and gigabytes. Both belong to a verb an
+operator types, not a flag a scan turns on. Build the target with your
+language's instrumented profile — for C/C++, `-fsanitize=address -g` — or use
+the build assist below.
+
+### `cxg build --instrument`
+
+```bash
+cxg build --instrument --project . --bin cxg --sanitizer address --manifest /tmp/m.json
+```
+
+The deliberate opt-in on the other side of that line. It detects the build
+system, asks **rustc** what the target can do rather than guessing, builds into
+a private target directory, **re-reads the produced binary**, and prints one
+JSON manifest. Cargo/Rust is the only back end today; every other recognised
+build system skips with `build-system-not-implemented`.
+
+**There is no path from "I could not instrument this" to "here is a binary."**
+Every precondition failure is a `skipped` carrying a machine-readable reason:
+
+| Reason | Meaning |
+| --- | --- |
+| `unknown-build-system` | no marker file matched, and the tree is not guessed at. The manifest lists what was looked for |
+| `build-system-not-implemented(cmake)` | recognised, no back end yet |
+| `nightly-toolchain-unavailable(install: …)` | `-Zsanitizer` is nightly-only and there is no stable equivalent |
+| `sanitizer-unsupported-on-target` | rustc's own `supported-sanitizers` for this triple does not list it — MSan and LSan are absent on `aarch64-apple-darwin`. Asking for **UBSan** lands here with a note: `-Zsanitizer=undefined` does not exist on *any* Rust target |
+| `sanitizer-not-verifiable(cfi)` | rustc supports it, but no symbol marker distinguishes the build, and cxg does not report instrumentation it cannot read back out of the artefact |
+| `binary-target-ambiguous(pass --bin NAME)` | several binary targets and no way to know which is the CLI under test |
+| `instrumented-build-failed(exit=N)` | with the last 20 lines of the build log |
+| **`build-produced-no-instrumentation(wanted=… detected=…)`** | the build reported success and the artefact does not carry what was asked for |
+
+That last row is the one the design turns on. A build that accepted the flags
+and silently dropped them — a `Makefile` that assigns rather than appends
+`CFLAGS`, or a shell that exported `CARGO_ENCODED_RUSTFLAGS` — still links,
+still runs, and is indistinguishable from an instrumented build until you look
+at the artefact. So cxg looks, with the same symbol-table scan the preflight
+uses, and skips rather than handing a scan a binary it could not vouch for.
+
+**Rust specifics.** `-Zsanitizer` needs nightly; `--target <host triple>` is
+passed even when not cross-compiling, so `RUSTFLAGS` does not reach the build
+scripts and proc-macro crates cargo compiles *and runs* on the host; the target
+directory is never the project's own, because `RUSTFLAGS` is part of cargo's
+fingerprint. Rust has **no UBSan**, so the integer class is carried by
+`-C overflow-checks=on`, which cxg passes on every instrumented build and which
+the detector reports as the `rust-overflow-checks` label (see the `overflow`
+oracle below). Budget several gigabytes per instrumented project.
+
+### `--instrumented-manifest`: provenance beats inspection
+
+```bash
+cxg scan --scope cli://$BIN --require-instrumentation --instrumented-manifest /tmp/m.json
+```
+
+Where cxg built the binary it does not have to re-derive what the binary
+carries: it passed the flags and read the artefact back before it was willing
+to call the build instrumented. That record is better evidence than a second
+sniff of the same file — it survives stripping and a copy away from the build
+tree — so a manifest is believed in preference to inspection, for the binary it
+names and no other. A manifest recording a *skipped* build is an error, not a
+silent no-op. **Omit the flag and a scan behaves exactly as it did before this
+existed.**
 
 ### Template annotations
 
@@ -316,7 +375,7 @@ Parsed exactly like the existing `@`-annotations, all optional:
 | Annotation | Example | Effect |
 | --- | --- | --- |
 | `@allow_nonzero_exit` | `true` | The template exits non-zero on purpose. A probe that successfully provokes a crash naturally does; without this cxg discards its stdout and the finding is lost |
-| `@oracles` | `asan, signal, exit` | How the template decides something is wrong. Vocabulary: `asan` `ubsan` `msan` `tsan` `signal` `exit` `exception` `assert` `timeout` `diff` `property` `detector` |
+| `@oracles` | `asan, signal, exit` | How the template decides something is wrong. Vocabulary: `asan` `ubsan` `msan` `tsan` `overflow` `signal` `exit` `exception` `assert` `timeout` `diff` `property` `detector` |
 | `@target_kinds` | `cli` | Which kinds the template accepts. **Absent means every kind** — do not add it for completeness, only when the template genuinely cannot handle other kinds |
 
 #### The `exception` oracle
@@ -347,6 +406,34 @@ findings of its own, and declared no status of its own: a template that reached
 its own verdict keeps it. It needs nothing from the build, so it also runs
 under `--require-instrumentation` against a target whose instrumentation is
 `none` — which is every interpreted CLI.
+
+#### The `overflow` oracle — the Rust integer class
+
+**Rust has no UBSan.** `-Zsanitizer=undefined` is not in rustc's vocabulary on
+any target, on any nightly, so a baseline class that declares `ubsan` is
+declaring something unreachable on every Rust build there will ever be. The
+equivalent check is `-C overflow-checks=on`, which turns an integer wrap into a
+panic; compile it out and the same program returns the same wrong number and
+exits **0**.
+
+That makes it exactly as build-dependent as a sanitizer, so `overflow` is a
+build-dependent oracle mapped to the `rust-overflow-checks` instrumentation
+label. A template's overflow branch is therefore gated the same way an ASan
+branch is and cannot claim a verdict on a build where the check was never
+compiled in.
+
+The label is read from the symbol table like every other: the check compiles in
+a call to `core::panicking::panic_const::panic_const_{add,sub,mul,neg,shl,shr}_overflow`,
+and those symbols are present if and only if the flag was passed. (`div` and
+the by-zero panics are emitted either way — they are hard errors, not overflow
+checks.) A build with the check on but no fallible arithmetic left after
+const-folding carries no such symbol and reads as uninstrumented, which is the
+safe direction: the template skips rather than claims.
+
+Reaching instead for a build-*independent* oracle such as `exception` would
+make the whole template read as build-independent and let it run — and refute —
+on an uninstrumented build, quietly undoing the preflight. That is why the
+integer class needs its own build-dependent oracle rather than borrowing one.
 
 ### Declaring an execution status
 

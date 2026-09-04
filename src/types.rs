@@ -2,7 +2,7 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::net::{IpAddr, SocketAddr};
 use std::path::PathBuf;
 use std::time::Duration;
@@ -303,6 +303,19 @@ pub struct Context {
     /// result that reads as a refutation but is not evidence.
     #[serde(default)]
     pub require_instrumentation: bool,
+    /// Instrumentation **provenance**: for each binary cxg itself built, the
+    /// labels it verified in the produced artefact, keyed by that binary's
+    /// path.
+    ///
+    /// Populated only by `cxg scan --instrumented-manifest`, and empty
+    /// otherwise -- which is the case that behaves exactly as cxg did before
+    /// this existed. Where a record is present it is used **in preference to
+    /// re-inspecting the file**: cxg passed the flags and read the artefact
+    /// back at build time, and that is better evidence than sniffing the same
+    /// artefact again later. Inspection stays for binaries cxg did not build,
+    /// which is where it belongs.
+    #[serde(default)]
+    pub instrumentation_provenance: BTreeMap<String, Vec<String>>,
 }
 
 impl Default for Context {
@@ -324,6 +337,7 @@ impl Default for Context {
             probe_input_dir: None,
             probe_env: Vec::new(),
             require_instrumentation: false,
+            instrumentation_provenance: BTreeMap::new(),
         }
     }
 }

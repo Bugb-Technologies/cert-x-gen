@@ -17,6 +17,7 @@
 // Core modules
 pub mod ai;
 pub mod banner;
+pub mod build;
 pub mod config;
 pub mod core;
 pub mod csrf;

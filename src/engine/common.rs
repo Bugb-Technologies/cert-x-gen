@@ -438,7 +438,7 @@ pub fn build_env_vars(target: &Target, context: &Context) -> Result<HashMap<Stri
     // Tell the template what the build can actually reveal, so a probe never
     // has to guess whether "nothing happened" means "nothing is wrong".
     if matches!(target.protocol, crate::types::Protocol::Cli) {
-        let detected = detect_instrumentation(Path::new(&target.address));
+        let detected = instrumentation_for(Path::new(&target.address), context);
         env_vars.insert(
             "CERT_X_GEN_TARGET_INSTRUMENTATION".to_string(),
             if detected.is_empty() {
@@ -857,6 +857,53 @@ const INSTRUMENTATION_MARKERS: &[(&str, &str)] = &[
     ("__llvm_profile", "profile"),
 ];
 
+/// Symbols a **Rust** build carries when `-C overflow-checks=on` compiled the
+/// integer checks in, and the label cxg reports for them.
+///
+/// This is the Rust integer class, and it needs its own table for two reasons.
+///
+/// It needs to exist at all because **Rust has no UBSan**:
+/// `-Zsanitizer=undefined` is not in rustc's vocabulary on any target, so
+/// `ubsan` is unreachable on every Rust build there will ever be. The
+/// equivalent check is `-C overflow-checks=on`, which turns the wrap into a
+/// panic -- and compile it out and the same program returns the same wrong
+/// number and exits 0, which is exactly the silent false negative the
+/// preflight exists to refuse. It is therefore build-dependent in precisely
+/// the way a sanitizer is, and [`BUILD_DEPENDENT_ORACLES`] maps the `overflow`
+/// oracle onto this label.
+///
+/// It needs to be **matched as a substring** rather than a prefix because
+/// these are Rust items, so the symbol is mangled and the name is buried:
+/// `__RNvNtNtCs..._4core9panicking11panic_const24panic_const_mul_overflow`
+/// under v0, `_ZN4core9panicking11panic_const24panic_const_mul_overflowE`
+/// under the legacy scheme. A substring is still a fact about the symbol
+/// table, which is the property that matters -- prose cannot get in there.
+///
+/// The six listed are exactly the ones the flag gates, verified by compiling
+/// the same source both ways: `panic_const_div_overflow`,
+/// `panic_const_div_by_zero` and `panic_const_rem_by_zero` are emitted either
+/// way, because those are hard errors rather than overflow checks, and
+/// including them would report every Rust build as carrying the check.
+///
+/// The failure direction is **under**-reporting, which is the safe one: a
+/// build with the check on but no fallible arithmetic left after const-folding
+/// carries no such symbol and reads as uninstrumented, so a template gated on
+/// `overflow` skips rather than claims. Toolchains older than the
+/// `panic_const` family (pre-1.79) route the panic through a shared function
+/// with a string argument and likewise read as uninstrumented.
+const RUST_OVERFLOW_CHECK_MARKERS: &[&str] = &[
+    "panic_const_add_overflow",
+    "panic_const_sub_overflow",
+    "panic_const_mul_overflow",
+    "panic_const_neg_overflow",
+    "panic_const_shl_overflow",
+    "panic_const_shr_overflow",
+];
+
+/// The label [`RUST_OVERFLOW_CHECK_MARKERS`] reports, and the instrumentation
+/// `cxg build --instrument` records for `-C overflow-checks=on`.
+pub const RUST_OVERFLOW_CHECKS_LABEL: &str = "rust-overflow-checks";
+
 /// Section names that mean the build carries DWARF debug info, and so can
 /// report a file and a line rather than a bare address.
 ///
@@ -1134,6 +1181,41 @@ pub fn oracles_are_build_independent(declared: &[String]) -> bool {
         })
 }
 
+/// What instrumentation this target carries, preferring **provenance** over
+/// inspection.
+///
+/// When cxg built the binary itself -- `cxg build --instrument`, whose manifest
+/// the operator handed back with `cxg scan --instrumented-manifest` -- it does
+/// not have to re-derive the answer from the artefact. It passed the flags, it
+/// read the produced binary back before it was willing to call the build
+/// instrumented, and that record is strictly better evidence than a second
+/// sniff of the same file: it survives stripping, it survives a binary copied
+/// away from the build tree, and it can record a build fact no scan of the
+/// artefact could recover.
+///
+/// Falls back to [`detect_instrumentation`] for every binary cxg did not
+/// build, which is the overwhelmingly common case and the one that must keep
+/// behaving exactly as it did before this existed. A manifest naming some
+/// *other* binary changes nothing here.
+pub fn instrumentation_for(path: &Path, context: &Context) -> Vec<String> {
+    if !context.instrumentation_provenance.is_empty() {
+        let key = path
+            .canonicalize()
+            .unwrap_or_else(|_| path.to_path_buf())
+            .to_string_lossy()
+            .to_string();
+        if let Some(recorded) = context.instrumentation_provenance.get(&key) {
+            tracing::debug!(
+                "Target {:?} instrumentation comes from a build manifest: {}",
+                path,
+                recorded.join(",")
+            );
+            return recorded.clone();
+        }
+    }
+    detect_instrumentation(path)
+}
+
 /// Inspect a local executable and report which instrumentation it carries.
 ///
 /// Returns e.g. `["asan", "debug-info"]`. An **empty** vec is the important
@@ -1286,6 +1368,15 @@ fn scan_thin_object<'data, R: object::ReadRef<'data>>(
             if !found.contains(*label) && name.starts_with(marker.trim_start_matches('_')) {
                 found.insert((*label).to_string());
             }
+        }
+        // Rust's overflow checks are mangled Rust items, so the marker is in
+        // the middle of the symbol rather than at its start.
+        if !found.contains(RUST_OVERFLOW_CHECKS_LABEL)
+            && RUST_OVERFLOW_CHECK_MARKERS
+                .iter()
+                .any(|marker| name.contains(marker))
+        {
+            found.insert(RUST_OVERFLOW_CHECKS_LABEL.to_string());
         }
     };
     for symbol in object.symbols() {
@@ -1530,6 +1621,55 @@ pub(crate) mod object_fixtures {
         format!("extern void {symbol}(void);\nvoid (*const cxg_marker_ref)(void) = {symbol};\n")
     }
 
+    /// Compile a tiny Rust source into a **real** executable and hand back its
+    /// path.
+    ///
+    /// Rust's overflow checks are the one instrumentation label that only a
+    /// Rust build can carry, so its fixture has to be a Rust build. `rustc` is
+    /// not an extra dependency by any measure: it is compiling this test.
+    pub(crate) fn compile_rust(
+        dir: &Path,
+        name: &str,
+        source: &str,
+        flags: &[&str],
+    ) -> std::path::PathBuf {
+        let src = dir.join(format!("{name}.rs"));
+        std::fs::write(&src, source).expect("writing the fixture source");
+
+        let out = dir.join(name);
+        let rustc = std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string());
+        let built = std::process::Command::new(&rustc)
+            .args(flags)
+            .arg("-o")
+            .arg(&out)
+            .arg(&src)
+            .output()
+            .unwrap_or_else(|e| panic!("running {rustc}: {e}"));
+
+        assert!(
+            built.status.success(),
+            "compiling the {name} fixture failed:\nstdout: {}\nstderr: {}",
+            String::from_utf8_lossy(&built.stdout),
+            String::from_utf8_lossy(&built.stderr),
+        );
+        out
+    }
+
+    /// A Rust source whose arithmetic **can** overflow, so the compiler has to
+    /// emit the check when it is asked for.
+    ///
+    /// Every operand comes from the process's own argv, which no constant
+    /// folding can see through: a program the optimiser can evaluate carries
+    /// no check either way and would prove nothing.
+    pub(crate) fn rust_fallible_arithmetic() -> String {
+        "fn main() {\n\
+         \x20   let n: i32 = std::env::args().count() as i32;\n\
+         \x20   let m: i32 = std::env::args().skip(1).count() as i32;\n\
+         \x20   println!(\"{} {} {}\", n + m, n - m, n * m);\n\
+         }\n"
+        .to_string()
+    }
+
     /// A C source with no marker in it at all, sized by `padding` bytes of
     /// ballast so two otherwise identical fixtures differ on disk.
     pub(crate) fn no_markers(padding: usize) -> String {
@@ -1543,7 +1683,9 @@ mod tests {
     use crate::types::{Context, Protocol, Target};
 
     #[cfg(unix)]
-    use super::object_fixtures::{compile_c, no_markers, references};
+    use super::object_fixtures::{
+        compile_c, compile_rust, no_markers, references, rust_fallible_arithmetic,
+    };
 
     #[test]
     fn build_env_vars_reports_target_kind_for_network_targets() {
@@ -1998,6 +2140,169 @@ mod tests {
         assert!(
             detect_instrumentation(&object).is_empty(),
             "a marker in a string constant is prose, not a build capability"
+        );
+    }
+
+    /// **The Rust integer class.** Rust has no UBSan, so the only thing that
+    /// makes an integer overflow observable is `-C overflow-checks=on`, and
+    /// the only honest way to gate a template's overflow branch is to know
+    /// whether that flag was passed. It is a real, readable build fact: the
+    /// check compiles in a call to `core::panicking::panic_const::*_overflow`,
+    /// which is a symbol.
+    ///
+    /// Both directions, on the same source, because one alone proves nothing:
+    /// a detector that always said yes would let a template refute on a build
+    /// where the same program returns the same wrong number and exits 0.
+    #[cfg(unix)]
+    #[test]
+    fn detects_rust_overflow_checks_only_when_the_flag_compiled_them_in() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = rust_fallible_arithmetic();
+
+        let with = compile_rust(
+            dir.path(),
+            "checks_on",
+            &source,
+            &["-C", "overflow-checks=on"],
+        );
+        assert!(
+            detect_instrumentation(&with).contains(&RUST_OVERFLOW_CHECKS_LABEL.to_string()),
+            "a build compiled with -C overflow-checks=on carries the check: {:?}",
+            detect_instrumentation(&with)
+        );
+
+        let without = compile_rust(
+            dir.path(),
+            "checks_off",
+            &source,
+            &["-C", "overflow-checks=off"],
+        );
+        assert!(
+            !detect_instrumentation(&without).contains(&RUST_OVERFLOW_CHECKS_LABEL.to_string()),
+            "a build with the check compiled OUT must not report it -- that is the false \
+             all-clear the preflight exists to refuse: {:?}",
+            detect_instrumentation(&without)
+        );
+    }
+
+    /// `overflow` is build-dependent, so a template that can only decide that
+    /// way is refused on a build that compiled the check out -- and allowed on
+    /// one that did not.
+    #[test]
+    fn the_overflow_oracle_is_gated_on_the_rust_overflow_check_label() {
+        let declared = vec!["overflow".to_string()];
+        assert_eq!(
+            unsupported_oracles(&declared, &["asan".to_string()]),
+            Some(vec!["overflow".to_string()]),
+            "an ASan-only build cannot decide the integer class"
+        );
+        assert_eq!(
+            unsupported_oracles(
+                &declared,
+                &["asan".to_string(), RUST_OVERFLOW_CHECKS_LABEL.to_string()]
+            ),
+            None
+        );
+        assert!(
+            !oracles_are_build_independent(&declared),
+            "overflow must not read as build-independent: that would let a template refute the \
+             integer class on a build where the check was never compiled in"
+        );
+    }
+
+    /// **Provenance beats inspection.** Where cxg built the binary itself it
+    /// already read the artefact back, and that record is authoritative.
+    #[test]
+    fn a_build_manifest_is_believed_in_preference_to_re_inspecting_the_binary() {
+        let dir = tempfile::tempdir().unwrap();
+        let binary = dir.path().join("toy");
+        std::fs::write(
+            &binary,
+            b"#!/bin/sh
+exit 0
+",
+        )
+        .unwrap();
+        let key = binary.canonicalize().unwrap().to_string_lossy().to_string();
+
+        // Inspection alone reports nothing for this file.
+        assert!(detect_instrumentation(&binary).is_empty());
+
+        let mut context = Context::default();
+        context.instrumentation_provenance.insert(
+            key,
+            vec!["asan".to_string(), RUST_OVERFLOW_CHECKS_LABEL.to_string()],
+        );
+        assert_eq!(
+            instrumentation_for(&binary, &context),
+            vec!["asan".to_string(), RUST_OVERFLOW_CHECKS_LABEL.to_string()]
+        );
+    }
+
+    /// The additive contract: a manifest naming some *other* binary changes
+    /// nothing, and no manifest at all is exactly today's behaviour.
+    #[test]
+    fn provenance_applies_only_to_the_binary_its_manifest_names() {
+        let dir = tempfile::tempdir().unwrap();
+        let binary = dir.path().join("toy");
+        std::fs::write(
+            &binary,
+            b"#!/bin/sh
+exit 0
+",
+        )
+        .unwrap();
+
+        let mut context = Context::default();
+        assert_eq!(
+            instrumentation_for(&binary, &context),
+            detect_instrumentation(&binary),
+            "with no manifest, provenance must not change a single answer"
+        );
+
+        context
+            .instrumentation_provenance
+            .insert("/some/other/binary".to_string(), vec!["asan".to_string()]);
+        assert!(
+            instrumentation_for(&binary, &context).is_empty(),
+            "a manifest for another binary must not vouch for this one"
+        );
+    }
+
+    /// End to end at the wire level: a manifest reaches the template as
+    /// `CERT_X_GEN_TARGET_INSTRUMENTATION`, which is what a gated branch reads.
+    #[test]
+    fn build_env_vars_reports_the_instrumentation_a_manifest_recorded() {
+        let dir = tempfile::tempdir().unwrap();
+        let binary = dir.path().join("toy");
+        std::fs::write(
+            &binary,
+            b"#!/bin/sh
+exit 0
+",
+        )
+        .unwrap();
+        let key = binary.canonicalize().unwrap().to_string_lossy().to_string();
+
+        let target = Target::new(binary.to_string_lossy().to_string(), Protocol::Cli);
+        let mut context = Context::default();
+        assert_eq!(
+            build_env_vars(&target, &context)
+                .unwrap()
+                .get("CERT_X_GEN_TARGET_INSTRUMENTATION")
+                .unwrap(),
+            "none"
+        );
+
+        context
+            .instrumentation_provenance
+            .insert(key, vec!["asan".to_string(), "debug-info".to_string()]);
+        assert_eq!(
+            build_env_vars(&target, &context)
+                .unwrap()
+                .get("CERT_X_GEN_TARGET_INSTRUMENTATION")
+                .unwrap(),
+            "asan,debug-info"
         );
     }
 

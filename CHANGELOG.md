@@ -9,6 +9,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+**The instrumentation component — building a target that can earn its verdict**
+- **`cxg build --instrument`** — a new verb that produces an *instrumented* build of a
+  compiled target, so the CLI Security Baseline's low-level classes reach real
+  `confirmed`/`refuted` verdicts instead of an honest skip. It detects the build system,
+  asks **rustc** what the target can do rather than guessing, builds into a private target
+  directory, **re-reads the binary it just produced**, and prints one JSON manifest.
+  Cargo/Rust is the only back end; every other recognised build system skips with
+  `build-system-not-implemented`.
+  `cxg scan` is untouched: it still inspects and refuses, and never builds anything.
+  Building runs the project's own build system as the invoking user and costs minutes and
+  gigabytes, which is why it is a verb rather than a scan flag.
+- **There is no path from "I could not instrument this" to "here is a binary."** Every
+  precondition failure is a `skipped` with a machine-readable reason —
+  `unknown-build-system`, `build-system-not-implemented(...)`,
+  `nightly-toolchain-unavailable(...)`, `sanitizer-unsupported-on-target`,
+  `sanitizer-not-verifiable(...)`, `binary-target-ambiguous(pass --bin NAME)`,
+  `rust-src-missing(...)`, `instrumented-build-failed(exit=N)` with the last 20 log lines,
+  and **`build-produced-no-instrumentation(wanted=… detected=…)`** for a build that reported
+  success and produced an artefact carrying none of what it was asked for.
+- **`rust-overflow-checks` instrumentation label and the `overflow` oracle.** Rust has no
+  UBSan — `-Zsanitizer=undefined` does not exist on any target — so the integer class
+  (CWE-190) is carried by `-C overflow-checks=on`, which cxg passes on every instrumented
+  build. The detector reads it from the symbol table
+  (`core::panicking::panic_const::panic_const_*_overflow`), and `overflow` is a
+  *build-dependent* oracle, so a template's overflow branch cannot claim a verdict on a
+  build where the check was compiled out.
+- **`cxg scan --instrumented-manifest <path>`** — provenance beats inspection. Where cxg
+  built the binary itself it already read the artefact back, and that record is used in
+  preference to re-sniffing the file, for the binary the manifest names and no other. A
+  manifest recording a *skipped* build is an error rather than a silent no-op. Omit the flag
+  and a scan behaves exactly as it did before.
+- Toolchain cost, stated plainly: **nightly Rust is required** for `-Zsanitizer`
+  (`rustup toolchain install nightly`). There is no stable equivalent. Where it is missing,
+  `cxg build` skips with an actionable reason and the proof tests explain themselves and
+  pass rather than failing a build over it.
+
 **The probe contract — driving a local binary and recording an honest verdict**
 - `--scope cli:///path/to/binary` — a scan target can be a locally-built executable rather
   than a network host. `CERT_X_GEN_TARGET_HOST` carries the binary path and the new
