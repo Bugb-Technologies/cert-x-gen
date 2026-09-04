@@ -650,16 +650,22 @@ mod tests {
         assert_eq!(Executor::preflight_skip_reason(&net, &context), None);
     }
 
+    /// Real compiled objects on both sides, because the preflight's whole job
+    /// is to tell one build from another: a file that merely *spells*
+    /// `__asan_init` is not an ASan build, and reading it as one is the false
+    /// all-clear this flag exists to refuse.
+    #[cfg(unix)]
     #[test]
     fn the_preflight_skips_an_uninstrumented_build_and_passes_an_instrumented_one() {
+        use crate::engine::common::object_fixtures::{compile_c, no_markers, references};
+
         let dir = tempfile::tempdir().unwrap();
         let context = crate::types::Context {
             require_instrumentation: true,
             ..crate::types::Context::default()
         };
 
-        let stripped = dir.path().join("toy_stripped");
-        std::fs::write(&stripped, b"\x7fELF\x02\x01\x01\x00no markers at all").unwrap();
+        let stripped = compile_c(dir.path(), "toy_stripped", &no_markers(16), &["-c"]);
         assert_eq!(
             Executor::preflight_skip_reason(
                 &Target::new(stripped.to_string_lossy().to_string(), Protocol::Cli),
@@ -668,16 +674,34 @@ mod tests {
             Some("no-instrumentation-detected".to_string())
         );
 
-        let instrumented = dir.path().join("toy_asan");
-        // A compiled object, because that is the only shape the marker scan
-        // reads (s14 item 2): a script saying `__asan_init` is not a build.
-        std::fs::write(&instrumented, b"\x7fELF\x02\x01\x01\x00__asan_init").unwrap();
+        let instrumented = compile_c(dir.path(), "toy_asan", &references("__asan_init"), &["-c"]);
         assert_eq!(
             Executor::preflight_skip_reason(
                 &Target::new(instrumented.to_string_lossy().to_string(), Protocol::Cli),
                 &context
             ),
             None
+        );
+    }
+
+    /// A shebang script is not a build, whatever symbols it names -- the s14
+    /// shape, and the one half of the pair that needs no toolchain.
+    #[test]
+    fn the_preflight_skips_a_script_that_merely_names_a_sanitizer() {
+        let dir = tempfile::tempdir().unwrap();
+        let context = crate::types::Context {
+            require_instrumentation: true,
+            ..crate::types::Context::default()
+        };
+
+        let script = dir.path().join("interp-cli");
+        std::fs::write(&script, b"#!/usr/bin/env node\n// calls __asan_init\n").unwrap();
+        assert_eq!(
+            Executor::preflight_skip_reason(
+                &Target::new(script.to_string_lossy().to_string(), Protocol::Cli),
+                &context
+            ),
+            Some("no-instrumentation-detected".to_string())
         );
     }
 

@@ -5,6 +5,7 @@
 use crate::error::{Error, Result};
 use crate::types::{Context, Finding, Severity, Target, TemplateLanguage, TemplateMetadata};
 use regex::Regex;
+use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::Path;
@@ -856,12 +857,14 @@ const INSTRUMENTATION_MARKERS: &[(&str, &str)] = &[
     ("__llvm_profile", "profile"),
 ];
 
-/// Byte sequences that mean the build carries DWARF debug info, and so can
+/// Section names that mean the build carries DWARF debug info, and so can
 /// report a file and a line rather than a bare address.
 ///
-/// `.debug_info` is the ELF section name; `__debug_info` is the Mach-O one. A
-/// sibling `.dSYM` bundle is checked separately -- that is where `dsymutil`
-/// puts macOS debug info, outside the executable entirely.
+/// `.debug_info` is the ELF section name; `__debug_info` is the Mach-O one.
+/// Two other homes are checked separately, because macOS puts the DWARF
+/// outside the executable: a sibling `.dSYM` bundle, which is where `dsymutil`
+/// writes it, and the `N_OSO` stab entries rustc leaves pointing at the `.o`
+/// files it kept it in.
 const DEBUG_INFO_MARKERS: &[&str] = &[".debug_info", "__debug_info", ".debug_line"];
 
 /// Magic numbers that begin a real compiled object: ELF, every Mach-O flavour
@@ -869,7 +872,8 @@ const DEBUG_INFO_MARKERS: &[&str] = &[".debug_info", "__debug_info", ".debug_lin
 /// and a static archive.
 ///
 /// Only a file that starts with one of these can *carry* instrumentation, so
-/// only such a file is worth scanning for markers. See [`is_object_file`].
+/// only such a file is worth handing to an object parser. See
+/// [`is_object_file`].
 const OBJECT_MAGICS: &[&[u8]] = &[
     b"\x7fELF",                // ELF (Linux, BSD)
     &[0xFE, 0xED, 0xFA, 0xCE], // Mach-O 32-bit, big endian
@@ -895,13 +899,12 @@ const OBJECT_MAGIC_PEEK: usize = 8;
 /// would report a refutation the build could never have earned.
 ///
 /// A text file cannot carry a sanitizer runtime, so nothing is lost by
-/// refusing to scan it.
+/// refusing to parse it. This is the cheap pre-check only: the parse in
+/// [`detect_instrumentation`] is what actually decides, and a file that gets
+/// past the magic but is not a readable object still reports nothing.
 fn is_object_file(header: &[u8]) -> bool {
     OBJECT_MAGICS.iter().any(|magic| header.starts_with(magic))
 }
-
-/// How much of the file is read at a time while scanning for markers.
-const SCAN_CHUNK: usize = 1 << 20;
 
 /// Oracles that only work if the *build* carries the matching instrumentation,
 /// mapped to the instrumentation label [`detect_instrumentation`] reports.
@@ -909,11 +912,24 @@ const SCAN_CHUNK: usize = 1 << 20;
 /// Everything outside this list -- `signal`, `exit`, `assert`, `timeout`,
 /// `diff`, `property`, `detector` -- works on any build, so a template that
 /// declares one of those always has a way to reach a verdict.
+///
+/// `overflow` is here because **Rust has no UBSan**: `-Zsanitizer=undefined`
+/// does not exist on any target, and the Rust equivalent for the integer class
+/// is `-C overflow-checks=on`, which turns the wrap into a panic. That panic
+/// is an oracle exactly as much as an ASan report is, and exactly as
+/// build-dependent -- compile the check out and the same program returns the
+/// same wrong number and exits 0. Listing it here is what stops a template's
+/// overflow branch from claiming a verdict on a build where the check was
+/// never compiled in. The alternative -- reaching for a build-INDEPENDENT
+/// oracle such as `exception` -- would make
+/// [`oracles_are_build_independent`] true for the whole template and let it
+/// run, and refute, on an uninstrumented build, quietly undoing the preflight.
 const BUILD_DEPENDENT_ORACLES: &[(&str, &str)] = &[
     ("asan", "asan"),
     ("ubsan", "ubsan"),
     ("msan", "msan"),
     ("tsan", "tsan"),
+    ("overflow", "rust-overflow-checks"),
 ];
 
 /// Does a template's `@target_kinds` declaration accept this target?
@@ -1126,20 +1142,28 @@ pub fn oracles_are_build_independent(declared: &[String]) -> bool {
 /// absence. `--require-instrumentation` turns that into an honest `skipped`
 /// instead of a false refutation.
 ///
-/// Detection is a byte-level scan of the file: the markers appear in the
-/// symbol table (or the dynamic symbol table, for a stripped binary that links
-/// a sanitizer runtime), so no external tool is needed and the result is the
-/// same on ELF and Mach-O.
+/// Detection reads the **symbol table** -- and the dynamic symbol table, which
+/// is where a stripped binary's reference to a shared sanitizer runtime
+/// survives -- so no external tool is needed and the result is the same on ELF
+/// and Mach-O.
 ///
-/// The scan only runs on a **compiled object** ([`is_object_file`]). Anything
-/// else -- a shebang script, a JS bundle, a source file, a corpus entry --
-/// reports `none` however many marker strings it contains. Those strings are
-/// symbol names in an object and prose everywhere else, and reading prose as
-/// instrumentation fails in the dangerous direction: the preflight passes and
-/// cxg reports a refutation the build could never have earned. Within an
-/// object the scan stays a heuristic in the safe direction only -- a byte
-/// sequence that is not really a symbol makes cxg *run* the probe rather than
-/// skip it.
+/// It has to be the symbol table rather than the file's bytes, and cxg's own
+/// binary is the proof. A byte scan cannot tell a linker reference from a
+/// string constant that merely spells one, and cxg carries
+/// [`INSTRUMENTATION_MARKERS`] as string literals: an ordinary `cargo build`
+/// of cxg read as carrying asan, ubsan, msan, tsan, sancov, libfuzzer *and*
+/// profile, on a build that links no sanitizer runtime at all. That is a false
+/// ALL-CLEAR -- the preflight passes and cxg reports a refutation the build
+/// could never have earned, which is the one failure
+/// `--require-instrumentation` exists to prevent. It is not special to cxg:
+/// any binary that names sanitizers in its own text -- a security scanner, a
+/// fuzzing wrapper, a build tool's help output -- trips the same way. A symbol
+/// table cannot contain prose.
+///
+/// The scan only runs on a **compiled object** ([`is_object_file`]), and a
+/// file that does not parse as one reports nothing. Anything else -- a shebang
+/// script, a JS bundle, a source file, a corpus entry -- reports `none`
+/// however many marker strings it contains.
 pub fn detect_instrumentation(path: &Path) -> Vec<String> {
     if let Some(cached) = instrumentation_cache_get(path) {
         return cached;
@@ -1150,8 +1174,7 @@ pub fn detect_instrumentation(path: &Path) -> Vec<String> {
 }
 
 fn detect_instrumentation_uncached(path: &Path) -> Vec<String> {
-    use std::collections::BTreeSet;
-    use std::io::{Read, Seek};
+    use std::io::Read;
 
     let mut found: BTreeSet<String> = BTreeSet::new();
 
@@ -1160,7 +1183,7 @@ fn detect_instrumentation_uncached(path: &Path) -> Vec<String> {
     };
 
     // Only a compiled object can carry instrumentation. Deciding this from the
-    // file's magic *before* scanning is what stops a script that mentions
+    // file's magic *before* parsing is what stops a script that mentions
     // `__asan_init` in a comment from reading as an ASan build -- a false
     // all-clear, which is exactly what the preflight exists to prevent.
     let mut header = [0u8; OBJECT_MAGIC_PEEK];
@@ -1179,10 +1202,6 @@ fn detect_instrumentation_uncached(path: &Path) -> Vec<String> {
         );
         return Vec::new();
     }
-    if file.seek(std::io::SeekFrom::Start(0)).is_err() {
-        return Vec::new();
-    }
-
     // Debug info can live outside the executable: dsymutil writes a sibling
     // `<binary>.dSYM` bundle, so it is found even for a binary that is
     // otherwise stripped.
@@ -1192,76 +1211,118 @@ fn detect_instrumentation_uncached(path: &Path) -> Vec<String> {
         found.insert("debug-info".to_string());
     }
 
-    // The longest marker, minus one, is how much of each chunk must be carried
-    // into the next so a marker straddling a chunk boundary is still seen.
-    let overlap = INSTRUMENTATION_MARKERS
-        .iter()
-        .map(|(m, _)| m.len())
-        .chain(DEBUG_INFO_MARKERS.iter().map(|m| m.len()))
-        .max()
-        .unwrap_or(1)
-        .saturating_sub(1);
-
-    let mut buf = vec![0u8; SCAN_CHUNK + overlap];
-    let mut carried = 0usize;
-    loop {
-        let read = match file.read(&mut buf[carried..]) {
-            Ok(0) => break,
-            Ok(n) => n,
-            Err(_) => break,
-        };
-        let filled = carried + read;
-        let window = &buf[..filled];
-
-        for (marker, label) in INSTRUMENTATION_MARKERS {
-            if !found.contains(*label) && contains_bytes(window, marker.as_bytes()) {
-                found.insert((*label).to_string());
-            }
-        }
-        if !found.contains("debug-info")
-            && DEBUG_INFO_MARKERS
-                .iter()
-                .any(|m| contains_bytes(window, m.as_bytes()))
-        {
-            found.insert("debug-info".to_string());
-        }
-
-        if filled <= overlap {
-            break;
-        }
-        let tail = filled - overlap;
-        buf.copy_within(tail..filled, 0);
-        carried = overlap;
-    }
+    // `ReadCache` reads the pieces the parser asks for rather than the whole
+    // file, and does its own positioning: an instrumented binary is routinely
+    // hundreds of megabytes, and its symbol table is a small part of that.
+    let cache = object::ReadCache::new(file);
+    scan_object_image(&cache, path, &mut found);
 
     found.into_iter().collect()
 }
 
-/// Substring search over raw bytes.
+/// Record the instrumentation one file's object image carries.
 ///
-/// Anchors on the needle's first byte before comparing, so scanning a
-/// multi-megabyte binary for a handful of markers stays cheap.
-fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
-    if needle.is_empty() || needle.len() > haystack.len() {
-        return false;
-    }
-    let first = needle[0];
-    let last_start = haystack.len() - needle.len();
-    let mut cursor = 0usize;
-    while cursor <= last_start {
-        let Some(offset) = haystack[cursor..=last_start]
-            .iter()
-            .position(|&b| b == first)
-        else {
-            return false;
-        };
-        let start = cursor + offset;
-        if &haystack[start..start + needle.len()] == needle {
-            return true;
+/// A Mach-O universal binary is a wrapper around several real images. The
+/// question being asked is about the file as a whole -- "could this build have
+/// shown a defect" -- so every slice is scanned and the answers are unioned.
+fn scan_object_image<'data, R: object::ReadRef<'data>>(
+    data: R,
+    path: &Path,
+    found: &mut BTreeSet<String>,
+) {
+    use object::read::macho::{FatArch, MachOFatFile32, MachOFatFile64};
+
+    match object::FileKind::parse(data) {
+        Ok(object::FileKind::MachOFat32) => {
+            if let Ok(fat) = MachOFatFile32::parse(data) {
+                for arch in fat.arches() {
+                    if let Ok(slice) = arch.data(data) {
+                        scan_thin_object(slice, path, found);
+                    }
+                }
+            }
         }
-        cursor = start + 1;
+        Ok(object::FileKind::MachOFat64) => {
+            if let Ok(fat) = MachOFatFile64::parse(data) {
+                for arch in fat.arches() {
+                    if let Ok(slice) = arch.data(data) {
+                        scan_thin_object(slice, path, found);
+                    }
+                }
+            }
+        }
+        Ok(_) => scan_thin_object(data, path, found),
+        Err(_) => {
+            tracing::debug!(
+                "Target {:?} does not parse as an object; reporting no instrumentation",
+                path
+            );
+        }
     }
-    false
+}
+
+/// Record the instrumentation a single (non-universal) object image carries.
+fn scan_thin_object<'data, R: object::ReadRef<'data>>(
+    data: R,
+    path: &Path,
+    found: &mut BTreeSet<String>,
+) {
+    use object::{Object, ObjectSection, ObjectSymbol};
+
+    let Ok(object) = object::File::parse(data) else {
+        tracing::debug!(
+            "Target {:?} does not parse as an object; reporting no instrumentation",
+            path
+        );
+        return;
+    };
+
+    // Mach-O prefixes C symbols with an underscore and ELF does not, so the
+    // comparison is on the underscore-stripped name; the marker matches as a
+    // prefix so `__ubsan_handle` covers `__ubsan_handle_add_overflow`.
+    let mut note = |name: &str| {
+        let name = name.trim_start_matches('_');
+        for (marker, label) in INSTRUMENTATION_MARKERS {
+            if !found.contains(*label) && name.starts_with(marker.trim_start_matches('_')) {
+                found.insert((*label).to_string());
+            }
+        }
+    };
+    for symbol in object.symbols() {
+        if let Ok(name) = symbol.name() {
+            note(name);
+        }
+    }
+    // A stripped binary keeps its DYNAMIC symbols, and that is where the
+    // reference to a shared sanitizer runtime survives.
+    for symbol in object.dynamic_symbols() {
+        if let Ok(name) = symbol.name() {
+            note(name);
+        }
+    }
+
+    if found.contains("debug-info") {
+        return;
+    }
+    // Debug info is a SECTION, for the same reason the markers are symbols: a
+    // section table entry is a fact about the build, a byte sequence somewhere
+    // in the file is not.
+    for section in object.sections() {
+        if let Ok(name) = section.name() {
+            if DEBUG_INFO_MARKERS.contains(&name) {
+                found.insert("debug-info".to_string());
+                return;
+            }
+        }
+    }
+    // rustc on macOS leaves the DWARF in the `.o` files and records where each
+    // one was with an `N_OSO` stab entry, so a Rust debug build has neither a
+    // `__debug_info` section nor a `.dSYM` and still symbolicates to file and
+    // line. `object_map()` is that stab list; a non-empty one is debug info by
+    // reference, which is the capability the label names.
+    if !object.object_map().objects().is_empty() {
+        found.insert("debug-info".to_string());
+    }
 }
 
 /// Cache key: a binary is only re-scanned if it changed on disk.
@@ -1410,10 +1471,79 @@ pub fn parse_template_report(stdout: &str) -> TemplateReport {
     report
 }
 
+/// Real object-file fixtures for the instrumentation preflight's tests.
+///
+/// Shared by this module's tests and `executor`'s, because both of them assert
+/// on what a build carries and neither may do so against a made-up file.
+///
+/// Unix only: Windows has no `cc`, and the suite runs there.
+#[cfg(all(test, unix))]
+pub(crate) mod object_fixtures {
+    use std::path::Path;
+
+    /// Compile a tiny C source into a **real** object file and hand back its
+    /// path.
+    ///
+    /// The detector reads a symbol table, so a fixture has to be a real
+    /// object. A magic number followed by the marker spelled out in the file's
+    /// bytes -- what these tests used to build -- is precisely the shape the
+    /// detector now refuses to believe, and refusing it is the fix: cxg's own
+    /// binary has that shape, and used to read as carrying all seven
+    /// sanitizers.
+    ///
+    /// `cc` is not an extra dependency: cargo already needs a C toolchain to
+    /// link this crate, the same argument `tests/fixtures/cli-baseline/build.sh`
+    /// makes. Unix only, because Windows has no `cc` and the suite runs there.
+    pub(crate) fn compile_c(
+        dir: &Path,
+        name: &str,
+        source: &str,
+        flags: &[&str],
+    ) -> std::path::PathBuf {
+        let src = dir.join(format!("{name}.c"));
+        std::fs::write(&src, source).expect("writing the fixture source");
+
+        let out = dir.join(name);
+        let cc = std::env::var("CC").unwrap_or_else(|_| "cc".to_string());
+        let built = std::process::Command::new(&cc)
+            .args(flags)
+            .arg("-o")
+            .arg(&out)
+            .arg(&src)
+            .output()
+            .unwrap_or_else(|e| panic!("running {cc}: {e}"));
+
+        assert!(
+            built.status.success(),
+            "compiling the {name} fixture failed:\nstdout: {}\nstderr: {}",
+            String::from_utf8_lossy(&built.stdout),
+            String::from_utf8_lossy(&built.stderr),
+        );
+        out
+    }
+
+    /// A C source that *references* one symbol, so the compiled object carries
+    /// it as an undefined entry in its symbol table -- the same entry a build
+    /// linked against a sanitizer runtime carries, and the thing the detector
+    /// reads.
+    pub(crate) fn references(symbol: &str) -> String {
+        format!("extern void {symbol}(void);\nvoid (*const cxg_marker_ref)(void) = {symbol};\n")
+    }
+
+    /// A C source with no marker in it at all, sized by `padding` bytes of
+    /// ballast so two otherwise identical fixtures differ on disk.
+    pub(crate) fn no_markers(padding: usize) -> String {
+        format!("const char cxg_ballast[{padding}] = {{1}};\nint main(void) {{ return 0; }}\n")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::types::{Context, Protocol, Target};
+
+    #[cfg(unix)]
+    use super::object_fixtures::{compile_c, no_markers, references};
 
     #[test]
     fn build_env_vars_reports_target_kind_for_network_targets() {
@@ -1642,26 +1772,29 @@ mod tests {
         assert!(!oracles_are_build_independent(&[]));
     }
 
+    #[cfg(unix)]
     #[test]
     fn detects_a_sanitizer_marker_and_reports_nothing_without_one() {
         let dir = tempfile::tempdir().unwrap();
 
-        let instrumented = dir.path().join("with_asan");
-        std::fs::write(&instrumented, b"\x7fELF....__asan_init....rest").unwrap();
+        let instrumented = compile_c(dir.path(), "with_asan", &references("__asan_init"), &["-c"]);
         assert_eq!(detect_instrumentation(&instrumented), vec!["asan"]);
 
-        let bare = dir.path().join("no_markers");
-        std::fs::write(&bare, b"\x7fELF....just some bytes....").unwrap();
+        let bare = compile_c(dir.path(), "no_markers", &no_markers(16), &["-c"]);
         assert!(
             detect_instrumentation(&bare).is_empty(),
             "an empty result is the signal that a refutation would not be evidence"
         );
     }
 
+    #[cfg(unix)]
     #[test]
     fn detects_each_known_instrumentation_label() {
         let dir = tempfile::tempdir().unwrap();
         for (marker, label) in [
+            ("__asan_init", "asan"),
+            // The table's marker is the `__ubsan_handle` prefix; a real build
+            // carries the per-check symbols underneath it.
             ("__ubsan_handle_add_overflow", "ubsan"),
             ("__msan_init", "msan"),
             ("__tsan_init", "tsan"),
@@ -1669,11 +1802,7 @@ mod tests {
             ("LLVMFuzzerTestOneInput", "libfuzzer"),
             ("__llvm_profile_write_file", "profile"),
         ] {
-            let path = dir.path().join(label);
-            // A real object, because only an object is scanned at all.
-            let mut body = b"\x7fELF\x02\x01\x01\x00".to_vec();
-            body.extend_from_slice(marker.as_bytes());
-            std::fs::write(&path, &body).unwrap();
+            let path = compile_c(dir.path(), label, &references(marker), &["-c"]);
             assert_eq!(
                 detect_instrumentation(&path),
                 vec![label.to_string()],
@@ -1682,52 +1811,130 @@ mod tests {
         }
     }
 
+    /// A `-g` build carries the DWARF in its own section table, which is what
+    /// the detector reads -- `.debug_info` on ELF, `__debug_info` on Mach-O.
+    #[cfg(unix)]
     #[test]
     fn detects_debug_info_from_a_dwarf_section_name() {
         let dir = tempfile::tempdir().unwrap();
 
-        let elf = dir.path().join("elf_with_dwarf");
-        std::fs::write(&elf, b"\x7fELF....debug_info....").unwrap();
-        assert_eq!(detect_instrumentation(&elf), vec!["debug-info"]);
+        let with_dwarf = compile_c(dir.path(), "with_dwarf", &no_markers(16), &["-c", "-g"]);
+        assert_eq!(detect_instrumentation(&with_dwarf), vec!["debug-info"]);
 
-        let macho = dir.path().join("macho_with_dwarf");
-        std::fs::write(&macho, b"\xcf\xfa\xed\xfe....__debug_info....").unwrap();
-        assert_eq!(detect_instrumentation(&macho), vec!["debug-info"]);
+        let without = compile_c(dir.path(), "without_dwarf", &no_markers(16), &["-c", "-g0"]);
+        assert!(
+            detect_instrumentation(&without).is_empty(),
+            "a build compiled without -g carries no debug info to report"
+        );
     }
 
     /// dsymutil puts macOS debug info in a sibling bundle, outside the
     /// executable, so a stripped-looking binary can still resolve file:line.
+    #[cfg(unix)]
     #[test]
     fn detects_debug_info_from_a_sibling_dsym_bundle() {
         let dir = tempfile::tempdir().unwrap();
+
+        // Two marker-free objects of different sizes: the cache is keyed on
+        // the binary's own size and mtime, so the second one is what forces a
+        // re-read now that the sibling bundle exists.
+        let first = compile_c(dir.path(), "first", &no_markers(16), &["-c"]);
+        let second = compile_c(dir.path(), "second", &no_markers(4096), &["-c"]);
+
         let bin = dir.path().join("toy");
-        std::fs::write(&bin, b"\xcf\xfa\xed\xfeno markers here").unwrap();
+        std::fs::copy(&first, &bin).unwrap();
         assert!(detect_instrumentation(&bin).is_empty());
 
         std::fs::create_dir(dir.path().join("toy.dSYM")).unwrap();
-        // The cache is keyed on the binary's own size and mtime, so touch it
-        // to force a re-read now that its sibling exists.
-        std::fs::write(&bin, b"\xcf\xfa\xed\xfeno markers here either").unwrap();
+        std::fs::copy(&second, &bin).unwrap();
         assert_eq!(detect_instrumentation(&bin), vec!["debug-info"]);
     }
 
-    /// The scan reads the file in chunks, carrying an overlap so a marker
-    /// lying across a chunk boundary is still found.
+    /// rustc on macOS emits no `__debug_info` section and no `.dSYM`: it
+    /// leaves the DWARF in the `.o` files and records where each one was with
+    /// an `N_OSO` stab entry. Symbolication still works -- an ASan report off
+    /// such a build carries file and line -- so the build *has* the capability
+    /// `debug-info` names, and not reporting it under-reports the build.
+    ///
+    /// The C toolchain produces the same shape, which is what this pins: the
+    /// linked binary's own section table has no DWARF, and the assertion holds
+    /// with the sibling bundle deliberately removed so the stabs are the only
+    /// evidence left.
+    #[cfg(target_os = "macos")]
     #[test]
-    fn finds_a_marker_that_straddles_a_read_boundary() {
+    fn detects_debug_info_from_macos_oso_stab_entries() {
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("big");
+        let bin = compile_c(dir.path(), "linked", &no_markers(16), &["-g"]);
 
-        let marker = b"__asan_init";
-        // Place the marker so it starts a few bytes before the first boundary.
-        let prefix_len = SCAN_CHUNK - 4;
-        let mut bytes = vec![b'.'; prefix_len];
-        bytes[..4].copy_from_slice(b"\x7fELF");
-        bytes.extend_from_slice(marker);
-        bytes.extend(std::iter::repeat_n(b'.', SCAN_CHUNK));
-        std::fs::write(&path, &bytes).unwrap();
+        // Modern clang runs dsymutil itself when it links from a temporary
+        // object. Take the bundle away: the stabs are then the only debug
+        // info left, which is exactly the Rust build's situation.
+        let dsym = dir.path().join("linked.dSYM");
+        if dsym.exists() {
+            std::fs::remove_dir_all(&dsym).unwrap();
+        }
 
+        assert_eq!(detect_instrumentation(&bin), vec!["debug-info"]);
+    }
+
+    /// The symbol table lives wherever the linker put it, which on a real
+    /// binary is megabytes into the file. Nothing about the detector may
+    /// depend on a marker being near the start.
+    #[cfg(unix)]
+    #[test]
+    fn finds_a_marker_far_into_a_large_object() {
+        let dir = tempfile::tempdir().unwrap();
+
+        let mut source = String::from("const char cxg_ballast[2097152] = {1};\n");
+        source.push_str(&references("__asan_init"));
+        let path = compile_c(dir.path(), "big", &source, &["-c"]);
+
+        assert!(
+            std::fs::metadata(&path).unwrap().len() > 1 << 20,
+            "the fixture has to be big enough for its symbol table to be far in"
+        );
         assert_eq!(detect_instrumentation(&path), vec!["asan"]);
+    }
+
+    /// A universal binary is a wrapper around several real images, and the
+    /// question -- could this build have shown a defect -- is about the file
+    /// the operator named. Every slice is read, and the answers are unioned.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn reads_every_slice_of_a_universal_binary() {
+        let dir = tempfile::tempdir().unwrap();
+
+        // A different marker per slice, so the assertion is that *both* were
+        // read and not merely that the first one was.
+        let intel = compile_c(
+            dir.path(),
+            "slice_x86_64",
+            &references("__asan_init"),
+            &["-c", "-arch", "x86_64"],
+        );
+        let arm = compile_c(
+            dir.path(),
+            "slice_arm64",
+            &references("__tsan_init"),
+            &["-c", "-arch", "arm64"],
+        );
+
+        let fat = dir.path().join("universal");
+        let joined = std::process::Command::new("lipo")
+            .arg("-create")
+            .arg("-output")
+            .arg(&fat)
+            .arg(&intel)
+            .arg(&arm)
+            .output()
+            .expect("running lipo");
+        assert!(
+            joined.status.success(),
+            "lipo failed: {}",
+            String::from_utf8_lossy(&joined.stderr)
+        );
+
+        assert_eq!(detect_instrumentation(&fat), vec!["asan", "tsan"]);
     }
 
     /// s14 item 2. A script that merely *mentions* a sanitizer symbol -- in a
@@ -1749,15 +1956,49 @@ mod tests {
             detect_instrumentation(&script).is_empty(),
             "a shebang script is never an instrumented build, whatever it says"
         );
+    }
 
-        // Same bytes, this time inside a compiled object: still detected.
-        let object = dir.path().join("with_asan.o");
-        std::fs::write(
-            &object,
-            b"\x7fELF\x02\x01\x01\x00__asan_init __ubsan_handle_type_mismatch",
-        )
-        .unwrap();
+    /// The same two symbols as the script above, this time genuinely
+    /// referenced by a compiled object: both are reported.
+    #[cfg(unix)]
+    #[test]
+    fn the_same_markers_inside_a_real_object_are_detected() {
+        let dir = tempfile::tempdir().unwrap();
+
+        let mut source = references("__asan_init");
+        source.push_str(
+            "extern void __ubsan_handle_type_mismatch(void);\n\
+             void (*const cxg_marker_ref2)(void) = __ubsan_handle_type_mismatch;\n",
+        );
+        let object = compile_c(dir.path(), "with_asan_ubsan", &source, &["-c"]);
+
         assert_eq!(detect_instrumentation(&object), vec!["asan", "ubsan"]);
+    }
+
+    /// An object whose *strings* spell every marker, and whose symbol table
+    /// references none of them, carries no instrumentation. This is cxg's own
+    /// binary in miniature, and the whole point of reading symbols: the byte
+    /// scan this replaced reported an ordinary `cargo build` of cxg as
+    /// carrying asan, ubsan, msan, tsan, sancov, libfuzzer and profile, and
+    /// `--require-instrumentation` -- the flag whose entire purpose is to stop
+    /// that -- let it through.
+    #[cfg(unix)]
+    #[test]
+    fn an_object_that_only_names_the_markers_carries_no_instrumentation() {
+        let dir = tempfile::tempdir().unwrap();
+
+        let source = "const char *const cxg_marker_table[] = {\n\
+             \"__asan_init\", \"__asan_report_load1\", \"__ubsan_handle\",\n\
+             \"__msan_init\", \"__tsan_init\", \"__sanitizer_cov\",\n\
+             \"LLVMFuzzerTestOneInput\", \"__llvm_profile\",\n\
+             \".debug_info\", \"__debug_info\", \".debug_line\",\n\
+             };\nint main(void) { return 0; }\n";
+        let object = compile_c(dir.path(), "names_only", source, &["-c"]);
+
+        assert!(
+            detect_instrumentation(&object).is_empty(),
+            "a marker in a string constant is prose, not a build capability"
+        );
     }
 
     /// The same rule for a plain source file and for a Python console-script
@@ -1810,15 +2051,6 @@ mod tests {
     #[test]
     fn build_env_vars_reports_instrumentation_only_for_cli_targets() {
         let dir = tempfile::tempdir().unwrap();
-        let bin = dir.path().join("toy_asan");
-        std::fs::write(&bin, b"\x7fELF__asan_init and .debug_info").unwrap();
-
-        let cli = Target::new(bin.to_string_lossy().to_string(), Protocol::Cli);
-        let env = build_env_vars(&cli, &Context::default()).unwrap();
-        assert_eq!(
-            env.get("CERT_X_GEN_TARGET_INSTRUMENTATION").unwrap(),
-            "asan,debug-info"
-        );
 
         let bare = dir.path().join("toy_stripped");
         std::fs::write(&bare, b"nothing to see").unwrap();
@@ -1832,6 +2064,28 @@ mod tests {
         let net = Target::with_port("example.com", 443, Protocol::Https);
         let env = build_env_vars(&net, &Context::default()).unwrap();
         assert!(!env.contains_key("CERT_X_GEN_TARGET_INSTRUMENTATION"));
+    }
+
+    /// The value a template reads is what the build actually carries, taken
+    /// from a real object rather than from a file that merely spells the
+    /// markers out.
+    #[cfg(unix)]
+    #[test]
+    fn build_env_vars_reports_the_instrumentation_a_real_build_carries() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin = compile_c(
+            dir.path(),
+            "toy_asan",
+            &references("__asan_init"),
+            &["-c", "-g"],
+        );
+
+        let cli = Target::new(bin.to_string_lossy().to_string(), Protocol::Cli);
+        let env = build_env_vars(&cli, &Context::default()).unwrap();
+        assert_eq!(
+            env.get("CERT_X_GEN_TARGET_INSTRUMENTATION").unwrap(),
+            "asan,debug-info"
+        );
     }
 
     #[test]

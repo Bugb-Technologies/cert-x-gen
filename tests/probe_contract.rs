@@ -38,26 +38,37 @@ fn install_fixture_as(dir: &Path, fixture: &str, name: &str) -> PathBuf {
     dest
 }
 
-/// Compile the C twin of the fixture (`toy_instrumented.c`) into `dir`, with
-/// `markers` carried as an ordinary string constant.
+/// Compile the C twin of the fixture (`toy_instrumented.c`) into `dir`,
+/// carrying `markers` as real symbols.
 ///
-/// It has to be a *compiled object*: since s14 item 2 the marker scan runs
-/// only on ELF/Mach-O/PE, so a shebang script that merely says `__asan_init`
-/// reports `none`. A real sanitizer-linked build carries the same bytes in its
-/// symbol table; this carries them in `__cstring`, which the byte-level scan
-/// reads identically. The detector itself is unit-tested against every marker
-/// in src/engine/common.rs.
+/// It has to be a *compiled object*: since s14 item 2 the preflight looks only
+/// at ELF/Mach-O/PE, so a shebang script that merely says `__asan_init`
+/// reports `none`. And the markers have to be **symbols**: cxg reads the
+/// symbol table, precisely so that a binary which only *names* a sanitizer --
+/// cxg's own binary, a fuzzing wrapper, any tool that documents these strings
+/// -- is not mistaken for an instrumented build. So the marker names are
+/// emitted as a companion translation unit that defines them, and that is
+/// linked in.
 ///
 /// `cc` is not an extra dependency: cargo already needs a C toolchain to link
 /// the crate under test.
-fn install_object_target(dir: &Path, name: &str, markers: &str) -> PathBuf {
+fn install_object_target(dir: &Path, name: &str, markers: &[&str]) -> PathBuf {
     let dest = dir.join(name);
+
+    let mut source =
+        String::from("/* Generated: the symbols a sanitizer-linked build carries. */\n");
+    for marker in markers {
+        source.push_str(&format!("void {marker}(void) {{}}\n"));
+    }
+    let markers_c = dir.join(format!("{name}_markers.c"));
+    std::fs::write(&markers_c, source).expect("writing the marker translation unit");
+
     let cc = std::env::var("CC").unwrap_or_else(|_| "cc".to_string());
     let out = Command::new(&cc)
-        .arg(format!("-DCXG_BUILD_MARKERS=\"{markers}\""))
         .arg("-o")
         .arg(&dest)
         .arg(fixtures().join("toy_instrumented.c"))
+        .arg(&markers_c)
         .output()
         .unwrap_or_else(|e| panic!("running {cc} to build the fixture: {e}"));
     assert!(
@@ -69,10 +80,10 @@ fn install_object_target(dir: &Path, name: &str, markers: &str) -> PathBuf {
     dest
 }
 
-/// The compiled fixture with the markers a sanitizer-linked build carries, so
+/// The compiled fixture with the symbols a sanitizer-linked build carries, so
 /// the instrumentation preflight sees an instrumented target.
 fn install_instrumented_target(dir: &Path, name: &str) -> PathBuf {
-    install_object_target(dir, name, "__asan_init __asan_report_load1")
+    install_object_target(dir, name, &["__asan_init", "__asan_report_load1"])
 }
 
 fn make_executable(path: &Path) {
@@ -725,7 +736,7 @@ fn an_asan_only_template_is_skipped_when_the_build_has_no_asan() {
     let dir = tempfile::tempdir().unwrap();
     // A build with *some* instrumentation, so the target-level preflight lets
     // it through and the oracle check is what decides.
-    let bin = install_object_target(dir.path(), "toy_defective", "__llvm_profile_write_file");
+    let bin = install_object_target(dir.path(), "toy_defective", &["__llvm_profile_write_file"]);
 
     let out = scan(
         dir.path(),

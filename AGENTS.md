@@ -27,6 +27,18 @@ This file is the project's committed home for project-intrinsic agent knowledge:
 - `cxg template validate` gates `cxg ai generate`'s save path and `cxg template add`, but
   **not** `cxg scan` — a template can run fine and still fail validation.
 
+## Instrumentation preflight
+
+- `detect_instrumentation` (`src/engine/common.rs`) reads the **symbol table**, never the
+  file's bytes. A binary that merely *names* a sanitizer is not an instrumented build --
+  cxg's own binary carries `INSTRUMENTATION_MARKERS` as string literals, and the byte scan
+  this replaced reported an ordinary `cargo build` of cxg as carrying all seven sanitizers,
+  which made `--require-instrumentation` pass on a build that could show nothing.
+- A fixture for anything in that path must therefore be a **real compiled object**, not a
+  magic number followed by a marker string. `engine::common::object_fixtures` builds them
+  with `cc`; every test that uses one is `#[cfg(unix)]`, because the suite runs on Windows
+  and there is no `cc` there.
+
 ## Maintaining this file
 
 Keep this file for knowledge useful to almost every future agent session in this project.

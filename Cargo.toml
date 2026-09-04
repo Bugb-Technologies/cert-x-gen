@@ -34,6 +34,12 @@ async-trait = "0.1"
 tempfile = "3.8"
 # Embed the pentest Python orchestrator into the binary at compile time
 include_dir = "0.7"
+# Object-file parsing for the instrumentation preflight: the sanitizer markers
+# are SYMBOL names, and only a symbol table can tell a linker reference from a
+# string constant that merely spells one. Already in the graph transitively
+# (backtrace -> object, see Cargo.lock), at the same version and with no extra
+# features, so this is not a new supply-chain entry.
+object = { version = "0.37", default-features = false, features = ["read", "std"] }
 
 # CLI parsing
 clap = { version = "4.4", features = ["derive", "env", "color"] }
