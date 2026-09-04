@@ -1003,6 +1003,44 @@ pub enum PentestAction {
         )]
         allow_raw_socket: bool,
 
+        /// Permit native gRPC over HTTP/2, for services with no gRPC-Web proxy in
+        /// front of them. Requires grpcio. The call carries the identity's
+        /// --header values as gRPC metadata; cxg cannot borrow the browser
+        /// session on this transport.
+        // @g.comment -- "Permission, distinct from the substrate capability that says a native gRPC call is POSSIBLE from this process. cxg.grpc dials a host:port from outside the browser where no same-origin policy contains it, so an operator opts into that reach rather than inheriting it from --target-type. Without it, hypotheses whose route is a gRPC method go to review_only_threats instead of consuming a template slot they could never conclude."
+        // @g.comment -- "NOT the switch for gRPC-Web, which is an ordinary HTTP POST cxg.raw already sends on every run with no flag. This covers a BARE gRPC service, which nothing in cxg could reach at all before."
+        #[arg(
+            long,
+            help_heading = "Probe execution",
+            display_order = 9,
+            help = "Permit native gRPC (HTTP/2) probes against bare gRPC services"
+        )]
+        allow_grpc: bool,
+
+        /// A protoc-emitted FileDescriptorSet describing the target's gRPC
+        /// services, so probes can send real typed messages and decode responses.
+        /// Produce one with `protoc --descriptor_set_out=out.pb --include_imports`.
+        // @g.comment -- "The operator's own protoc output, and the only descriptor source cxg fully trusts: a service is free to describe itself inaccurately over reflection, so the result records which source produced each decoded field. Optional — without it cxg falls back to empty or raw-byte messages, which still answer an authorization question."
+        #[arg(
+            long,
+            value_name = "FILE",
+            help_heading = "Probe execution",
+            display_order = 10,
+            help = "protoc FileDescriptorSet for typed gRPC messages"
+        )]
+        grpc_descriptor_set: Option<String>,
+
+        /// Do not ask gRPC services to describe themselves over server reflection.
+        /// Without reflection, typed messages need --grpc-descriptor-set.
+        // @g.comment -- "An OFF-switch rather than an on-switch, matching the orchestrator: --allow-grpc is already the deliberate opt-in to gRPC traffic, and reflection is one cached read-only request per service of exactly the kind grpcurl makes by default. This exists for an engagement where every extra request must be accounted for."
+        #[arg(
+            long,
+            help_heading = "Probe execution",
+            display_order = 11,
+            help = "Do not use gRPC server reflection to learn message types"
+        )]
+        no_grpc_reflection: bool,
+
         /// Absolute ceiling on one template's dispatch before it is abandoned and
         /// treated as a dead target. Default 900s. This is a BACKSTOP only —
         /// `--stall-timeout` is what actually catches a frozen app. 0 disables it,

@@ -528,6 +528,9 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
             host_scan_path,
             attacker_origin,
             allow_raw_socket,
+            allow_grpc,
+            grpc_descriptor_set,
+            no_grpc_reflection,
             discover_routes,
             enable_chaining,
             batch_size,
@@ -624,6 +627,17 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
             }
             if allow_raw_socket {
                 args.push("--allow-raw-socket".into());
+            }
+            // @g.comment -- "Pushed only when set, like every other boolean here, so an absent flag leaves the orchestrator's own default in force rather than this layer restating it. --no-grpc-reflection matters most for that rule: reflection defaults ON in the orchestrator, so forwarding a false here would silently disable a default this layer does not own."
+            if allow_grpc {
+                args.push("--allow-grpc".into());
+            }
+            if let Some(v) = grpc_descriptor_set {
+                args.push("--grpc-descriptor-set".into());
+                args.push(v);
+            }
+            if no_grpc_reflection {
+                args.push("--no-grpc-reflection".into());
             }
             if discover_routes {
                 args.push("--discover-routes".into());
