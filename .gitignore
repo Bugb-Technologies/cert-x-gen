@@ -165,3 +165,12 @@ scan_test_plan.md
 # Linux cross-compiled binaries (used for Docker sandbox builds, not for repo)
 cxg-linux
 cxg-linux-build
+
+# CLI Security Baseline fixture twins -- build outputs of
+# tests/fixtures/cli-baseline/build.sh, never sources. One source per program
+# is checked in; twins that could drift apart are worthless as a refutation test.
+tests/fixtures/cli-baseline/notekeeper_defective.py
+tests/fixtures/cli-baseline/notekeeper_fixed.py
+tests/fixtures/cli-baseline/memtoy_defective
+tests/fixtures/cli-baseline/memtoy_fixed
+tests/fixtures/cli-baseline/*.dSYM
