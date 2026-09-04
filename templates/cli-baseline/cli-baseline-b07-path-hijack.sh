@@ -64,12 +64,16 @@ SEEN=""
 
 while IFS= read -r SUB; do
     [ -n "$SUB" ] || continue
+    # Control: the tool has to get far enough to reach whatever helper it
+    # shells out to. A subcommand that fails before that point has not been
+    # exercised, and no shim firing proves nothing about it.
     ARG="$(cxg_working_arg "$SUB")" || ARG=""
     if [ -n "$ARG" ]; then
         cxg_run "$SUB" "$ARG"
     else
         cxg_run "$SUB"
     fi
+    [ "$CXG_RC" -eq 0 ] || continue
     EXERCISED=$((EXERCISED + 1))
     SEEN="$SEEN $SUB"
 

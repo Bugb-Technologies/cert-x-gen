@@ -62,6 +62,13 @@ def add(tar, name, linkname=None):
         info.size = len(body)
         tar.addfile(info, io.BytesIO(body))
 
+# The CONTROL: a well-formed archive with nothing untoward in it. The probe
+# archives below cannot serve as the control, because a correctly-behaving
+# target REFUSES those -- which would make "control failed" indistinguishable
+# from "target is safe".
+with tarfile.open(os.path.join(lab, "b04-control.tar"), "w") as tar:
+    add(tar, "harmless.txt")
+
 with tarfile.open(os.path.join(lab, "b04-relative.tar"), "w") as tar:
     add(tar, "harmless.txt")
     add(tar, "../%s-escaped.txt" % nonce)
@@ -74,18 +81,19 @@ with tarfile.open(os.path.join(lab, "b04-symlink.tar"), "w") as tar:
     add(tar, "link", linkname="../%s-symlinked.txt" % nonce)
 PY
 
-[ -f "$PWD/b04-relative.tar" ] || cxg_error "probe-archive-build-failed"
+[ -f "$PWD/b04-control.tar" ] || cxg_error "probe-archive-build-failed"
 
 EXERCISED=0
 SEEN=""
 
 while IFS= read -r SUB; do
     [ -n "$SUB" ] || continue
-    # The control here is the archive the tool SHOULD accept: if it cannot
-    # unpack a well-formed archive, a quiet result on a malformed one is not a
-    # refutation of anything.
-    cxg_timeout "$CXG_TIMEOUT" "$CXG_BIN" "$SUB" "$PWD/b04-relative.tar" >/dev/null 2>&1
-    CTRL=$?
+    # The control is the archive the tool SHOULD accept. If it cannot unpack a
+    # well-formed archive through this subcommand, a quiet result on a
+    # malformed one refutes NOTHING, and this subcommand does not count as
+    # exercised -- which is what turns "I could not test this" into a skip
+    # rather than a clean bill of health.
+    cxg_timeout "$CXG_TIMEOUT" "$CXG_BIN" "$SUB" "$PWD/b04-control.tar" >/dev/null 2>&1 || continue
     EXERCISED=$((EXERCISED + 1))
     SEEN="$SEEN $SUB"
 
@@ -96,7 +104,7 @@ while IFS= read -r SUB; do
                 FINDINGS="$(cxg_finding \
                     high 95 \
                     "Archive extraction traversal: a member escaped the extraction directory" \
-                    "The target's \`$SUB\` subcommand unpacked $ARCHIVE, whose member names carry traversal components. A file materialised at $OUTSIDE, outside the directory being extracted into, so member names are being trusted as paths. The target exited $CXG_RC (control exit $CTRL)." \
+                    "The target's \`$SUB\` subcommand unpacked $ARCHIVE, whose member names carry traversal components. A file materialised at $OUTSIDE, outside the directory being extracted into, so member names are being trusted as paths. The target exited $CXG_RC." \
                     "CWE-22,CWE-409" \
                     "$CXG_BIN $SUB $ARCHIVE" \
                     "$CXG_OUT" \

@@ -191,13 +191,10 @@ def cmd_extract(archive):
         die("not a readable archive: %s" % exc, 5)
 
     with tar:
-        if DEFECTIVE:
-            # PLANTED DEFECT (CWE-22): extractall trusts the member names, so a
-            # member called `../x` is written outside the extraction directory.
-            tar.extractall(NOTES_ROOT)
-        else:
+        if not DEFECTIVE:
             # FIX: refuse any member that would land outside the root, and any
-            # link that points out of it.
+            # link that points out of it. This check -- and ONLY this check --
+            # is what separates the two twins.
             for member in tar.getmembers():
                 dest = os.path.realpath(os.path.join(NOTES_ROOT, member.name))
                 if not contained(dest):
@@ -208,6 +205,23 @@ def cmd_extract(archive):
                     )
                     if not contained(target):
                         die("archive link escapes the notes root: %s" % member.name, 3)
+
+        # PLANTED DEFECT (CWE-22), defective twin only by virtue of the check
+        # above being absent: member names are trusted as paths, so a member
+        # called `../x` is written outside the extraction directory.
+        #
+        # The filter is pinned DELIBERATELY, in both twins. Python's default
+        # changed in 3.14 to `data`, which refuses traversing members inside
+        # the library -- so an unpinned `extractall` makes this fixture's
+        # planted defect appear or vanish with the interpreter, and the twin
+        # pair stops isolating the one variable it exists to isolate. Pinning
+        # it in BOTH twins keeps the containment check above the only
+        # difference between them, so a refutation is the TOOL's doing and not
+        # the standard library's.
+        try:
+            tar.extractall(NOTES_ROOT, filter="fully_trusted")
+        except TypeError:
+            # Python < 3.12 has no `filter` parameter, and its default is this.
             tar.extractall(NOTES_ROOT)
     sys.stdout.write("extracted %s\n" % archive)
     return 0

@@ -79,6 +79,9 @@ while IFS= read -r VAR; do
         CXG_OUT="$(cxg_timeout "$CXG_TIMEOUT" env "$VAR=$POINTED" "$CXG_BIN" "$SUB" 2>&1)"
         CXG_RC=$?
         CXG_PROBES_DELIVERED=$((CXG_PROBES_DELIVERED + 1))
+        # Only a subcommand the target actually ran tells us anything about
+        # whether it honours the variable.
+        [ "$CXG_RC" -eq 0 ] || continue
         EXERCISED=$((EXERCISED + 1))
         if printf '%s' "$CXG_OUT" | grep -qF "$NONCE"; then
             FINDINGS="$(cxg_finding \

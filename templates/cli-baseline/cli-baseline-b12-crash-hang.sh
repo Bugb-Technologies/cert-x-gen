@@ -114,6 +114,13 @@ adjudicate() { # adjudicate <description> <probe-label>
 
 while IFS= read -r SUB; do
     [ -n "$SUB" ] || continue
+    # NO well-formed control gate here, deliberately, unlike the other
+    # classes. B12's subcommands come from the target's own `--help`, so they
+    # exist; and requiring a well-formed input this template can synthesise
+    # would drop every subcommand whose valid input is not a text file -- an
+    # archive, say -- which is exactly where the interesting crashes live. The
+    # refutation names the subcommands it probed instead, and `cxg_refute`
+    # still refuses to fire unless probes were delivered.
     EXERCISED=$((EXERCISED + 1))
     SEEN="$SEEN $SUB"
     for CASE in $CASES; do

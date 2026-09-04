@@ -74,8 +74,6 @@ while IFS= read -r SUB; do
     ) >/dev/null 2>&1 &
     WATCHDOG=$!
     CXG_PROBES_DELIVERED=$((CXG_PROBES_DELIVERED + 1))
-    EXERCISED=$((EXERCISED + 1))
-    SEEN="$SEEN $SUB"
 
     # Sample repeatedly: the window is however long the child lives.
     #
@@ -107,6 +105,16 @@ print(sum(1 for l in sys.stdin if l.strip()))')"
     kill "$WATCHDOG" 2>/dev/null
     wait "$WATCHDOG" 2>/dev/null || true
     CXG_OUT="$(cat "$PWD/b05-out.txt" 2>/dev/null)"
+
+    # If we never saw even our OWN invocation carrying the credential, the
+    # target exited before the process table could be read and there was no
+    # window in which a leak could have been observed. That is not a
+    # refutation, so this subcommand does not count as exercised.
+    if [ "$HITS" -eq 0 ]; then
+        continue
+    fi
+    EXERCISED=$((EXERCISED + 1))
+    SEEN="$SEEN $SUB"
 
     # Exactly one process carrying it is the invocation this template made, and
     # the operator chose that. More than one means the TARGET handed the
