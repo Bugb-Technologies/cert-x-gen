@@ -1550,7 +1550,10 @@ pub struct ScanArgs {
             "cidr"
         ],
         value_name = "SCOPE",
-        value_delimiter = ',',
+        // No `value_delimiter` here on purpose. Comma splitting for scope
+        // values is done by `expand_scope_entry`, which exempts `cli:` paths
+        // (a binary path may legitimately contain a comma). Letting clap split
+        // first would cut such a path in half before the exemption is reached.
         help_heading = "Target Selection",
         display_order = 1,
         help = "Targets: hosts, CIDRs, URLs, or @files (comma-separated)",
@@ -1676,6 +1679,75 @@ pub struct ScanArgs {
                      Example: '{\"param_name\":\"username\",\"method\":\"POST\"}'"
     )]
     pub context: Option<String>,
+
+    // ===== Probe Input =====
+    #[arg(
+        long = "arg",
+        value_name = "ARG",
+        allow_hyphen_values = true,
+        help_heading = "Probe Input",
+        display_order = 51,
+        help = "Argument to feed the target under test (repeatable)",
+        long_help = "Argument passed through to the target the template drives, not to the \
+                     template itself. Repeat for an argument vector; hyphen-leading values are \
+                     accepted, so the target's own flags can be passed. Delivered to the \
+                     template as CERT_X_GEN_ARGV (a JSON array). Example: \
+                     --arg --label --arg AAAAAAAAAAAAAAAAAAAA"
+    )]
+    pub arg: Vec<String>,
+
+    #[arg(
+        long,
+        value_name = "PATH",
+        help_heading = "Probe Input",
+        display_order = 52,
+        help = "File whose bytes are fed to the target's stdin",
+        long_help = "Path to a file whose bytes the template should feed to the target's stdin. \
+                     Delivered as CERT_X_GEN_STDIN_FILE, canonicalised, so the template does not \
+                     depend on its working directory."
+    )]
+    pub stdin_file: Option<PathBuf>,
+
+    #[arg(
+        long = "input",
+        value_name = "DIR",
+        help_heading = "Probe Input",
+        display_order = 53,
+        help = "Directory of seed inputs (corpus) for the probe",
+        long_help = "Directory of seed inputs the template may iterate over. Delivered as \
+                     CERT_X_GEN_INPUT_DIR. cxg does not mutate or minimise the corpus -- corpus \
+                     search is discovery, and cxg verifies -- it only hands over the directory."
+    )]
+    pub input: Option<PathBuf>,
+
+    #[arg(
+        long,
+        value_name = "K=V",
+        help_heading = "Probe Input",
+        display_order = 54,
+        help = "Environment variable to set on the target (repeatable)",
+        long_help = "Environment variable the template should set on the target process, not on \
+                     itself. Delivered as CERT_X_GEN_TARGET_ENV (a JSON object). Repeatable; a \
+                     repeated key takes its last value. Typical use is sanitizer runtime \
+                     control, e.g. --target-env ASAN_OPTIONS=abort_on_error=1"
+    )]
+    pub target_env: Vec<String>,
+
+    #[arg(
+        long,
+        help_heading = "Probe Input",
+        display_order = 55,
+        help = "Skip cli:// targets whose build carries no instrumentation",
+        long_help = "Instrumentation preflight. For each cli:// target, inspect the binary for \
+                     sanitizer, coverage and debug-info markers before running anything against \
+                     it. If none are present, record every (template, target) execution as \
+                     SKIPPED with the reason no-instrumentation-detected, instead of running the \
+                     probe and reporting a 'no findings' result that looks like a refutation but \
+                     is not evidence. The build cxg wants is the language's instrumented one, \
+                     e.g. clang -fsanitize=address -g; cxg inspects and refuses, it does not \
+                     build the target."
+    )]
+    pub require_instrumentation: bool,
 
     #[arg(
         long,

@@ -1274,6 +1274,8 @@ async fn run_scan(args: cli::ScanArgs, config_path: Option<PathBuf>) -> Result<(
         }
     }
 
+    apply_probe_input(&args, &mut job.context)?;
+
     tracing::info!(
         "Scan job created: {} targets × {} templates = {} total checks",
         job.targets.len(),
@@ -1484,8 +1486,108 @@ fn expand_targets_for_ports(targets: Vec<Target>, ports: &[u16]) -> Vec<Target> 
     expanded
 }
 
+/// Move the probe-input flags onto the scan context.
+///
+/// Every one of these is optional and each is delivered to the template as its
+/// own environment variable, absent unless the flag was passed. Paths are
+/// validated here and canonicalised, so a template never receives a path that
+/// does not resolve or that depends on cxg's working directory -- a probe
+/// silently reading nothing is exactly the kind of quiet wrong answer the
+/// execution ledger exists to prevent.
+fn apply_probe_input(args: &cli::ScanArgs, context: &mut cert_x_gen::types::Context) -> Result<()> {
+    if !args.arg.is_empty() {
+        context.probe_argv = args.arg.clone();
+        tracing::info!(
+            "Probe argv: {} argument(s) delivered as CERT_X_GEN_ARGV",
+            context.probe_argv.len()
+        );
+    }
+
+    if let Some(ref path) = args.stdin_file {
+        if !path.is_file() {
+            return Err(Error::config(format!(
+                "--stdin-file '{}' is not a readable file",
+                path.display()
+            )));
+        }
+        let resolved = path.canonicalize().unwrap_or_else(|_| path.clone());
+        tracing::info!("Probe stdin file: {}", resolved.display());
+        context.probe_stdin_file = Some(resolved);
+    }
+
+    if let Some(ref path) = args.input {
+        if !path.is_dir() {
+            return Err(Error::config(format!(
+                "--input '{}' is not a directory",
+                path.display()
+            )));
+        }
+        let resolved = path.canonicalize().unwrap_or_else(|_| path.clone());
+        tracing::info!("Probe input dir: {}", resolved.display());
+        context.probe_input_dir = Some(resolved);
+    }
+
+    for kv in &args.target_env {
+        // Only the FIRST '=' separates key from value, so a value that is
+        // itself a k=v list (ASAN_OPTIONS=abort_on_error=1) survives intact.
+        let Some((key, value)) = kv.split_once('=') else {
+            return Err(Error::config(format!(
+                "--target-env '{}' is not KEY=VALUE",
+                kv
+            )));
+        };
+        if key.is_empty() {
+            return Err(Error::config(format!(
+                "--target-env '{}' has an empty key",
+                kv
+            )));
+        }
+        context.probe_env.push((key.to_string(), value.to_string()));
+    }
+    if !context.probe_env.is_empty() {
+        tracing::info!(
+            "Probe target environment: {} variable(s) delivered as CERT_X_GEN_TARGET_ENV",
+            context.probe_env.len()
+        );
+    }
+
+    context.require_instrumentation = args.require_instrumentation;
+    if context.require_instrumentation {
+        tracing::info!(
+            "Instrumentation preflight enabled: cli:// targets with no detectable \
+             instrumentation will be skipped rather than reported as no-findings"
+        );
+    }
+
+    Ok(())
+}
+
+/// Resolve a `cli://` path to its canonical form, falling back to the literal.
+///
+/// `cli://toy`, `cli://./toy` and `cli:///abs/path/toy` all name the same
+/// binary, and without this they would be three distinct targets producing
+/// three separate sets of ledger rows for one artifact. A path that does not
+/// resolve is kept verbatim, so the operator sees back what they typed --
+/// the preflight reports that case as `target-not-found`.
+fn canonical_cli_path(path: &str) -> String {
+    std::fs::canonicalize(path)
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| path.to_string())
+}
+
 /// Parse a single target string (supports host:port format)
 fn parse_target_string(target_str: &str) -> Target {
+    // Local CLI/binary target: `cli://<path>` or `cli:<path>` carries a
+    // filesystem path to a locally-built executable, not a network host. Kept
+    // ahead of URL parsing so arbitrary paths (leading slash, no authority)
+    // survive into `Target::address`.
+    if let Some(rest) = target_str
+        .strip_prefix("cli://")
+        .or_else(|| target_str.strip_prefix("cli:"))
+    {
+        return Target::new(canonical_cli_path(rest), Protocol::Cli);
+    }
+
     if let Ok(url) = url::Url::parse(target_str) {
         if let Some(host) = url.host_str() {
             let protocol = match url.scheme().to_lowercase().as_str() {
@@ -1556,6 +1658,15 @@ fn expand_scope_entry(
 ) -> Result<()> {
     let trimmed = entry.trim();
     if trimmed.is_empty() {
+        return Ok(());
+    }
+
+    // A `cli:` entry is a filesystem path, not a list and not a file of
+    // targets. Taken verbatim before any of the splitting below, so a binary
+    // whose path contains a comma is not cut in half, and one that happens to
+    // sit next to a readable file is not read as a target list.
+    if trimmed.starts_with("cli://") || trimmed.starts_with("cli:") {
+        acc.push(trimmed.to_string());
         return Ok(());
     }
 
@@ -4264,7 +4375,77 @@ fn print_scan_summary(results: &cert_x_gen::types::ScanResults) {
         style(results.findings.len()).bold()
     );
     println!();
+
+    print_execution_ledger(results);
+
     println!("{}", style("═".repeat(80)).dim());
+}
+
+/// Rows of the execution ledger printed under the summary before it is elided.
+const LEDGER_ROW_LIMIT: usize = 25;
+
+/// Print the per-(template, target) execution ledger.
+///
+/// Findings tell you what was confirmed. This tells you what was *refuted*,
+/// *skipped* or *errored* -- distinctions a scan reporting zero findings
+/// otherwise cannot express. The full ledger is always in the JSON output;
+/// the terminal shows counts plus a bounded sample of the rows.
+fn print_execution_ledger(results: &cert_x_gen::types::ScanResults) {
+    use cert_x_gen::types::ExecutionStatus;
+    use console::style;
+
+    if results.executions.is_empty() {
+        return;
+    }
+
+    println!("{}", style("Execution Status:").bold());
+    for status in ExecutionStatus::ALL {
+        let count = results
+            .executions
+            .iter()
+            .filter(|e| e.status == status)
+            .count();
+        let label = format!("{}:", status.to_string().to_uppercase());
+        let styled = match status {
+            ExecutionStatus::Confirmed => style(format!("{:<11}{}", label, count)).red(),
+            ExecutionStatus::Refuted => style(format!("{:<11}{}", label, count)).green(),
+            ExecutionStatus::Skipped => style(format!("{:<11}{}", label, count)).yellow(),
+            ExecutionStatus::Errored | ExecutionStatus::TimedOut => {
+                style(format!("{:<11}{}", label, count)).magenta()
+            }
+        };
+        println!("  {}", styled);
+    }
+    println!();
+
+    for e in results.executions.iter().take(LEDGER_ROW_LIMIT) {
+        println!(
+            "  {:<10} {} → {}{}{}",
+            style(e.status.to_string()).bold(),
+            e.template_id,
+            e.target,
+            e.detail
+                .as_ref()
+                .map(|d| format!("  [{}]", d))
+                .unwrap_or_default(),
+            if e.declared_by_template {
+                style("  (template-declared)").dim().to_string()
+            } else {
+                String::new()
+            }
+        );
+    }
+    if results.executions.len() > LEDGER_ROW_LIMIT {
+        println!(
+            "  {}",
+            style(format!(
+                "… and {} more execution(s); the full ledger is in the JSON output",
+                results.executions.len() - LEDGER_ROW_LIMIT
+            ))
+            .dim()
+        );
+    }
+    println!();
 }
 
 /// Run AI command
@@ -4812,5 +4993,193 @@ async fn handle_providers_command(action: cli::ProviderAction) -> Result<()> {
 
             Ok(())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_target_string_accepts_cli_scheme_with_authority() {
+        let target = parse_target_string("cli:///opt/build/toy");
+        assert_eq!(target.protocol, Protocol::Cli);
+        assert_eq!(target.address, "/opt/build/toy");
+        assert_eq!(target.port, None);
+    }
+
+    #[test]
+    fn parse_target_string_accepts_bare_cli_scheme() {
+        let target = parse_target_string("cli:/opt/build/toy");
+        assert_eq!(target.protocol, Protocol::Cli);
+        assert_eq!(target.address, "/opt/build/toy");
+    }
+
+    fn scan_args(extra: &[&str]) -> cli::ScanArgs {
+        let mut argv = vec!["scan"];
+        argv.extend_from_slice(extra);
+        <cli::ScanArgs as clap::Parser>::parse_from(argv)
+    }
+
+    /// A probe argument must be able to be the target's own flag, which means
+    /// clap has to stop treating a hyphen-leading value as a flag of its own.
+    #[test]
+    fn probe_arguments_accept_hyphen_leading_values() {
+        let args = scan_args(&["--arg", "--label", "--arg", "AAAA"]);
+        assert_eq!(args.arg, vec!["--label", "AAAA"]);
+
+        let mut context = cert_x_gen::types::Context::default();
+        apply_probe_input(&args, &mut context).unwrap();
+        assert_eq!(context.probe_argv, vec!["--label", "AAAA"]);
+    }
+
+    /// Only the first '=' separates key from value, so a sanitizer option list
+    /// (which is itself k=v) survives intact.
+    #[test]
+    fn target_env_splits_on_the_first_equals_only() {
+        let args = scan_args(&["--target-env", "ASAN_OPTIONS=abort_on_error=1"]);
+        let mut context = cert_x_gen::types::Context::default();
+        apply_probe_input(&args, &mut context).unwrap();
+        assert_eq!(
+            context.probe_env,
+            vec![("ASAN_OPTIONS".to_string(), "abort_on_error=1".to_string())]
+        );
+    }
+
+    #[test]
+    fn target_env_without_an_equals_is_an_error_not_a_silent_drop() {
+        let args = scan_args(&["--target-env", "NOEQUALS"]);
+        let mut context = cert_x_gen::types::Context::default();
+        let err = apply_probe_input(&args, &mut context)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("NOEQUALS"), "error was {err}");
+    }
+
+    #[test]
+    fn a_missing_stdin_file_is_rejected_before_the_scan_starts() {
+        let args = scan_args(&["--stdin-file", "/definitely/not/here.bin"]);
+        let mut context = cert_x_gen::types::Context::default();
+        let err = apply_probe_input(&args, &mut context)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("not a readable file"), "error was {err}");
+    }
+
+    #[test]
+    fn an_input_path_that_is_not_a_directory_is_rejected() {
+        let file = tempfile::NamedTempFile::new().unwrap();
+        let args = scan_args(&["--input", file.path().to_str().unwrap()]);
+        let mut context = cert_x_gen::types::Context::default();
+        let err = apply_probe_input(&args, &mut context)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("not a directory"), "error was {err}");
+    }
+
+    /// Probe paths are canonicalised so the template never depends on cxg's
+    /// working directory to resolve them.
+    #[test]
+    fn probe_paths_are_canonicalised() {
+        let dir = tempfile::tempdir().unwrap();
+        let stdin_file = dir.path().join("case.bin");
+        std::fs::write(&stdin_file, b"probe").unwrap();
+        let indirect = dir.path().join(".").join("case.bin");
+
+        let args = scan_args(&["--stdin-file", indirect.to_str().unwrap()]);
+        let mut context = cert_x_gen::types::Context::default();
+        apply_probe_input(&args, &mut context).unwrap();
+
+        assert_eq!(
+            context.probe_stdin_file.unwrap(),
+            stdin_file.canonicalize().unwrap()
+        );
+    }
+
+    /// With no probe flags the context is untouched, which is what keeps a
+    /// network scan's template environment byte-identical to before.
+    #[test]
+    fn no_probe_flags_leaves_the_context_empty() {
+        let args = scan_args(&[]);
+        let mut context = cert_x_gen::types::Context::default();
+        apply_probe_input(&args, &mut context).unwrap();
+
+        assert!(context.probe_argv.is_empty());
+        assert!(context.probe_stdin_file.is_none());
+        assert!(context.probe_input_dir.is_none());
+        assert!(context.probe_env.is_empty());
+    }
+
+    /// A1: three spellings of one binary must be one target, not three.
+    #[test]
+    fn cli_target_paths_are_canonicalised_so_spellings_deduplicate() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin = dir.path().join("toy");
+        std::fs::write(&bin, b"#!/bin/sh\n").unwrap();
+        let canonical = bin.canonicalize().unwrap().to_string_lossy().to_string();
+
+        let dotted = dir.path().join(".").join("toy");
+        for spelling in [
+            format!("cli://{}", bin.display()),
+            format!("cli:{}", bin.display()),
+            format!("cli://{}", dotted.display()),
+        ] {
+            let target = parse_target_string(&spelling);
+            assert_eq!(target.protocol, Protocol::Cli);
+            assert_eq!(
+                target.address, canonical,
+                "spelling {spelling} did not canonicalise"
+            );
+        }
+    }
+
+    /// A path that does not resolve is kept verbatim, so the operator sees
+    /// back what they typed rather than a rewritten guess.
+    #[test]
+    fn an_unresolvable_cli_path_is_kept_verbatim() {
+        let target = parse_target_string("cli:///definitely/not/here");
+        assert_eq!(target.address, "/definitely/not/here");
+    }
+
+    /// A2: a `cli:` scope entry is a path, not a comma list and not a file of
+    /// targets, so none of the scope splitting may touch it.
+    #[test]
+    fn a_cli_scope_entry_with_a_comma_is_not_split_in_half() {
+        let mut acc = Vec::new();
+        let mut stack = HashSet::new();
+        expand_scope_entry("cli:///opt/my,build/toy", &mut acc, &mut stack).unwrap();
+        assert_eq!(acc, vec!["cli:///opt/my,build/toy".to_string()]);
+    }
+
+    /// ...and a `cli:` entry that happens to name a readable file is still a
+    /// target, not a list of targets to read.
+    #[test]
+    fn a_cli_scope_entry_is_never_read_as_a_target_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin = dir.path().join("toy");
+        std::fs::write(&bin, b"example.com\nother.example\n").unwrap();
+
+        let mut acc = Vec::new();
+        let mut stack = HashSet::new();
+        let entry = format!("cli://{}", bin.display());
+        expand_scope_entry(&entry, &mut acc, &mut stack).unwrap();
+        assert_eq!(acc, vec![entry]);
+    }
+
+    /// The exemption is narrow: ordinary scope entries still split.
+    #[test]
+    fn ordinary_scope_entries_still_split_on_commas() {
+        let mut acc = Vec::new();
+        let mut stack = HashSet::new();
+        expand_scope_entry("example.com,other.example", &mut acc, &mut stack).unwrap();
+        assert_eq!(acc, vec!["example.com", "other.example"]);
+    }
+
+    #[test]
+    fn parse_target_string_leaves_network_targets_alone() {
+        let target = parse_target_string("https://example.com:8443");
+        assert_eq!(target.protocol, Protocol::Https);
+        assert_eq!(target.address, "example.com");
+        assert_eq!(target.port, Some(8443));
     }
 }

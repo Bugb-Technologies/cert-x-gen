@@ -7,6 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+**The probe contract — driving a local binary and recording an honest verdict**
+- `--scope cli:///path/to/binary` — a scan target can be a locally-built executable rather
+  than a network host. `CERT_X_GEN_TARGET_HOST` carries the binary path and the new
+  `CERT_X_GEN_TARGET_KIND` says which kind it is. `CERT_X_GEN_TARGET_PORT` is meaningless
+  when `KIND=cli` and should be ignored there. A `cli:` scope entry is taken verbatim, so a
+  path containing a comma is not split.
+- **Execution ledger.** Every (template, target) pair now produces a row in
+  `ScanResults.executions` carrying `confirmed` / `refuted` / `errored` / `skipped` /
+  `timed-out`, the finding count, the exit code and a reason — so a refutation is
+  first-class and observable in the result JSON instead of being indistinguishable from a
+  template that did nothing. A new **Execution Status** block reports it in the terminal.
+  cxg infers the status from what it observed; a template may override it with
+  `{"metadata": {"status": ..., "detail": ...}}`, and `declared_by_template` records which
+  happened.
+- `# @allow_nonzero_exit: true` — a probe template that provokes a crash in its target
+  naturally exits non-zero. cxg now keeps its stdout instead of discarding the finding, the
+  sanitizer report and the exit code along with it.
+- `--arg` (repeatable, hyphen-leading values allowed), `--stdin-file`, `--input` and
+  `--target-env` — cxg supplies the probe's argv, stdin, seed corpus and target environment,
+  delivered as `CERT_X_GEN_ARGV`, `CERT_X_GEN_STDIN_FILE`, `CERT_X_GEN_INPUT_DIR` and
+  `CERT_X_GEN_TARGET_ENV`. Each is absent unless its flag was passed.
+- `--require-instrumentation` — inspect a `cli://` build for sanitizer, coverage and
+  debug-info markers before running anything against it, and record `skipped` with a reason
+  (`no-instrumentation-detected`, `target-not-found`, `oracle-unavailable(...)`) rather than
+  running a probe and reporting a refutation the build could not have earned. The detected
+  set is exported to templates as `CERT_X_GEN_TARGET_INSTRUMENTATION`.
+- `# @oracles:` and `# @target_kinds:` template annotations. A declared target-kind mismatch
+  is recorded as `skipped` rather than run. An absent `@target_kinds` accepts every kind, so
+  no existing template changes behaviour.
+- `# @oracles: exception` — the one oracle cxg implements itself. A Python traceback or a Node
+  unhandled rejection exits 1 with no crash signal, so `signal` never fires and `exit` fires on
+  every correct non-zero exit too. A template that declares `exception` hands the target's
+  output back in `{"metadata": {"target_output": ..., "target_exit_code": ...}}` and cxg
+  matches the per-language shape of an escaped exception (CPython, Node, JVM, Go, Rust),
+  recording `confirmed` with `oracle=exception(<kind>)` and a finding carrying the evidence.
+  Both new metadata fields are optional, and a template that declares no `exception` oracle is
+  unaffected.
+
+### Fixed
+- A template that outran its execution timeout kept running unsupervised: the timeout stopped
+  awaiting the child but never killed it. `execute_command` now sets `kill_on_drop`.
+- `--require-instrumentation` skipped **every** template against a target carrying no
+  instrumentation, including templates whose oracles need nothing from the build. An
+  interpreted CLI can never detect instrumentation, so the flag made cxg refuse to test one at
+  all. A template declaring only build-independent oracles (`exit`, `signal`, `timeout`,
+  `exception`) now runs and reaches a real verdict; one declaring a sanitizer oracle, or
+  declaring none, is still skipped with `no-instrumentation-detected`.
+- The instrumentation marker scan read any file, so a shebang script or JS bundle that merely
+  *mentioned* `__asan_init` — in a comment or its own documentation — was classified as an
+  instrumented build and the preflight passed. The scan now runs only on compiled objects
+  (ELF, Mach-O, PE, static archives); everything else reports `none`.
+
 ## [1.3.0] - 2026-08-13
 
 ### Added

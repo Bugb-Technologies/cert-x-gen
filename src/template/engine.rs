@@ -16,6 +16,22 @@ pub trait Template: Send + Sync {
     /// Execute the template against a target
     async fn execute(&self, target: &Target, context: &Context) -> Result<Vec<Finding>>;
 
+    /// Execute and additionally return whatever execution status the template
+    /// declared for itself.
+    ///
+    /// Additive by construction: the default implementation delegates to
+    /// [`Template::execute`] and declares nothing, so every existing `Template`
+    /// impl keeps compiling and behaving identically. Engines that understand
+    /// the probe contract override this to surface "ran but refuted".
+    async fn execute_with_status(
+        &self,
+        target: &Target,
+        context: &Context,
+    ) -> Result<(Vec<Finding>, crate::engine::common::TemplateReport)> {
+        let findings = self.execute(target, context).await?;
+        Ok((findings, crate::engine::common::TemplateReport::default()))
+    }
+
     /// Validate the template
     fn validate(&self) -> Result<()> {
         Ok(())
@@ -363,6 +379,9 @@ mod tests {
                 hypothesis_tags: Vec::new(),
                 batch_group: None,
                 auto_probe: false,
+                allow_nonzero_exit: false,
+                oracles: Vec::new(),
+                target_kinds: Vec::new(),
             },
         })
     }

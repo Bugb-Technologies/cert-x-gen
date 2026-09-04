@@ -33,8 +33,10 @@ pub fn validate(code: &str) -> Result<Vec<TemplateDiagnostic>> {
         ));
     }
 
-    // Check for target host usage
-    if !code.contains("CERT_X_GEN_TARGET_HOST") {
+    // Check for target host usage. A @target_kinds: cli template drives a
+    // local binary and may legitimately reach it through the probe-input
+    // variables instead, so it is not warned for that.
+    if !super::common::reaches_its_target(code) {
         diagnostics.push(TemplateDiagnostic::warning(
             "shell.missing_target_host",
             "Shell template should use CERT_X_GEN_TARGET_HOST environment variable",
@@ -276,6 +278,25 @@ fn check_metadata_variables(code: &str) -> Vec<TemplateDiagnostic> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_declared_cli_template_is_not_warned_for_missing_target_host() {
+        let code =
+            "#!/bin/bash\n# @id: probe\n# @target_kinds: cli\nset -e\nrun \"$CERT_X_GEN_ARGV\"\n";
+        let diags = validate(code).unwrap();
+        assert!(
+            !diags.iter().any(|d| d.code == "shell.missing_target_host"),
+            "diagnostics: {:?}",
+            diags.iter().map(|d| &d.code).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn a_template_that_reaches_no_target_is_still_warned() {
+        let code = "#!/bin/bash\n# @id: probe\nset -e\necho hello\n";
+        let diags = validate(code).unwrap();
+        assert!(diags.iter().any(|d| d.code == "shell.missing_target_host"));
+    }
 
     #[test]
     fn test_detects_ansi_colors() {

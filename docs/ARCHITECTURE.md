@@ -312,10 +312,18 @@ Templates communicate via environment variables and JSON output:
 ```bash
 CERT_X_GEN_TARGET_HOST=example.com
 CERT_X_GEN_TARGET_PORT=80
+CERT_X_GEN_TARGET_KIND=https
 CERT_X_GEN_ADD_PORTS=8080,9090
 CERT_X_GEN_TEMPLATE_ID=my-template
 CERT_X_GEN_TEMPLATE_NAME="My Template"
 ```
+
+For a `cli://` target the "host" is the binary path and `CERT_X_GEN_TARGET_PORT`
+names nothing — ignore it when `KIND=cli`. cxg additionally delivers probe
+input (`CERT_X_GEN_ARGV`, `CERT_X_GEN_STDIN_FILE`, `CERT_X_GEN_INPUT_DIR`,
+`CERT_X_GEN_TARGET_ENV`) and what the build can reveal
+(`CERT_X_GEN_TARGET_INSTRUMENTATION`). See the probe contract in
+[`ENGINE_ARCHITECTURE.md`](ENGINE_ARCHITECTURE.md#the-probe-contract).
 
 #### JSON Output Format
 ```json

@@ -38,15 +38,53 @@ Templates MUST include metadata in the header using `@field:` annotations. The C
 | `@confidence` | 0-100 | `90` |
 | `@references` | Comma-separated URLs | `https://cve.org/...` |
 
+### Probe-Contract Fields (optional)
+Only needed by templates that drive a local binary (`cli://`) target. Omitting
+them keeps today's behaviour exactly.
+
+| Field | Format | Example | Effect |
+|-------|--------|---------|--------|
+| `@target_kinds` | Comma-separated kinds | `cli` | Kinds this template accepts. **Absent means every kind** — never add it just for completeness, only when the template genuinely cannot handle other kinds. A declared mismatch is recorded as `skipped / target-kind-mismatch(...)` instead of being run |
+| `@oracles` | Comma-separated | `asan, signal, exit` | How this template decides something is wrong. Vocabulary: `asan` `ubsan` `msan` `tsan` `signal` `exit` `exception` `assert` `timeout` `diff` `property` `detector`. Under `--require-instrumentation`, a template whose only oracles are sanitizers the build does not carry is recorded as `skipped / oracle-unavailable(...)` rather than run; one declaring **only** build-independent oracles (`exit`, `signal`, `timeout`, `exception`) runs even against a target carrying no instrumentation, which is every interpreted CLI. `exception` is the one oracle cxg implements: report the target's output in `metadata.target_output` (with `metadata.target_exit_code`) and cxg matches the per-language shape of an escaped exception — a CPython traceback, a Node unhandled rejection, a JVM/Go/Rust panic — distinct from a plain non-zero exit |
+| `@allow_nonzero_exit` | true/false | `true` | Set this when the template exits non-zero on purpose. A probe that successfully provokes a crash naturally does; without this cxg discards its stdout and the finding is lost |
+
 ## Runtime Contract
 
 ### Environment Variables (Set by Engine)
 ```
-CERT_X_GEN_TARGET_HOST  - Target hostname or IP
-CERT_X_GEN_TARGET_PORT  - Target port number
+CERT_X_GEN_TARGET_HOST  - Target hostname or IP; the BINARY PATH when KIND=cli
+CERT_X_GEN_TARGET_PORT  - Target port number. Meaningless when KIND=cli: ignore it
+CERT_X_GEN_TARGET_KIND  - http | https | tcp | ... | cli
 CERT_X_GEN_MODE         - "engine" when run by CLI
 CERT_X_GEN_CONTEXT      - Optional JSON context
 ```
+
+### Probe Input (set only when the operator passed the flag)
+```
+CERT_X_GEN_ARGV                    --arg         JSON array: argv for the target
+CERT_X_GEN_STDIN_FILE              --stdin-file  file whose bytes are target stdin
+CERT_X_GEN_INPUT_DIR               --input       seed corpus directory
+CERT_X_GEN_TARGET_ENV              --target-env  JSON object: env for the target
+CERT_X_GEN_TARGET_INSTRUMENTATION                what a cli:// build can reveal,
+                                                 e.g. "asan,debug-info" or "none"
+```
+Each is **absent** unless its flag was passed, so a template must treat every
+one as optional and fall back to its own default probe.
+
+`CERT_X_GEN_TARGET_ENV` is environment for the **target** process, not for the
+template: export it around the target invocation, do not apply it to yourself.
+
+### Declaring an Execution Status
+A template may state its own verdict in the JSON wrapper:
+```json
+{"findings": [], "metadata": {"status": "refuted", "detail": "target handled probe input cleanly (exit=0)"}}
+```
+`status` is one of `confirmed` `refuted` `errored` `skipped` `timed-out`.
+Without it cxg infers `confirmed` when there are findings and `refuted` when
+there are none — so declaring it is how a template says "I ran, I exercised the
+target, and there is no defect" rather than leaving that indistinguishable from
+a template that did nothing. An unrecognised value is reported as
+`unrecognised-status(<value>)`, not silently ignored.
 
 ### Single Target Rule
 - **ONE target per execution** - the engine handles multi-target scanning

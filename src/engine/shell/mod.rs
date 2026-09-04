@@ -1,6 +1,9 @@
 //! Shell template engine implementation
 
-use crate::engine::common::{build_env_vars, create_metadata, execute_command, parse_findings};
+use crate::engine::common::{
+    build_env_vars, create_metadata, execute_command, execute_command_full, parse_findings,
+    parse_template_report, TemplateReport,
+};
 use crate::error::{Error, Result};
 use crate::template::{Template, TemplateEngine};
 use crate::types::{Context, Finding, Protocol, Target, TemplateLanguage};
@@ -31,6 +34,25 @@ impl ShellEngine {
         target: &Target,
         context: &Context,
     ) -> Result<Vec<Finding>> {
+        self.execute_shell_template_full(template_path, target, context, false)
+            .await
+            .map(|(findings, _)| findings)
+    }
+
+    /// Execute a shell template, returning both its findings and whatever
+    /// execution status it declared for itself.
+    ///
+    /// `allow_nonzero_exit` comes from the template's `@allow_nonzero_exit`
+    /// header. When set, a non-zero exit of the *template* no longer discards
+    /// its stdout -- which matters because a probe that successfully provokes a
+    /// crash in its target is a probe that naturally exits non-zero.
+    async fn execute_shell_template_full(
+        &self,
+        template_path: &Path,
+        target: &Target,
+        context: &Context,
+        allow_nonzero_exit: bool,
+    ) -> Result<(Vec<Finding>, TemplateReport)> {
         tracing::debug!("Shell engine executing template: {:?}", template_path);
 
         // Build environment variables
@@ -45,7 +67,24 @@ impl ShellEngine {
             "--json".to_string(),
         ];
 
-        let stdout = execute_command(&self.shell_path, &args, &env_vars).await?;
+        let template_exit: Option<i32>;
+        let stdout = if allow_nonzero_exit {
+            let outcome = execute_command_full(&self.shell_path, &args, &env_vars).await?;
+            if !outcome.success {
+                tracing::debug!(
+                    "Template {:?} exited {:?}; stdout retained under @allow_nonzero_exit",
+                    template_path,
+                    outcome.exit_code
+                );
+            }
+            template_exit = outcome.exit_code;
+            outcome.stdout
+        } else {
+            // execute_command only returns Ok on a zero exit, so the code is known.
+            let s = execute_command(&self.shell_path, &args, &env_vars).await?;
+            template_exit = Some(0);
+            s
+        };
 
         // Try to extract JSON from output (shell scripts may have mixed output)
         let json_str = if let Some(json_start) = stdout.find("[CERT-X-GEN-JSON]") {
@@ -66,7 +105,10 @@ impl ShellEngine {
             .unwrap_or("unknown")
             .to_string();
 
-        parse_findings(json_str, target, &template_id)
+        let mut report = parse_template_report(json_str);
+        report.exit_code = template_exit;
+        let findings = parse_findings(json_str, target, &template_id)?;
+        Ok((findings, report))
     }
 }
 
@@ -97,6 +139,21 @@ impl Template for ShellTemplate {
     async fn execute(&self, target: &Target, context: &Context) -> Result<Vec<Finding>> {
         self.engine
             .execute_shell_template(&self.path, target, context)
+            .await
+    }
+
+    async fn execute_with_status(
+        &self,
+        target: &Target,
+        context: &Context,
+    ) -> Result<(Vec<Finding>, TemplateReport)> {
+        self.engine
+            .execute_shell_template_full(
+                &self.path,
+                target,
+                context,
+                self.metadata.allow_nonzero_exit,
+            )
             .await
     }
 

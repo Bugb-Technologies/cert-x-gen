@@ -124,6 +124,11 @@ pub enum Protocol {
     Rdp,
     /// Custom protocol with name
     Custom(String),
+    /// Local CLI/binary target. `Target::address` carries a filesystem path to a
+    /// locally-built executable rather than a network host. Additive: existing
+    /// network protocols are unchanged, and the `CERT_X_GEN_TARGET_HOST` env
+    /// contract still holds (for a Cli target the "host" is the binary path).
+    Cli,
 }
 
 impl std::fmt::Display for Protocol {
@@ -140,6 +145,7 @@ impl std::fmt::Display for Protocol {
             Protocol::Smb => write!(f, "smb"),
             Protocol::Rdp => write!(f, "rdp"),
             Protocol::Custom(name) => write!(f, "{}", name),
+            Protocol::Cli => write!(f, "cli"),
         }
     }
 }
@@ -272,6 +278,31 @@ pub struct Context {
     /// Cookies for authenticated scans
     #[serde(default)]
     pub cookies: Vec<(String, String)>,
+
+    // --- Structured probe input. All additive and all absent unless the
+    // corresponding flag was passed, so a network scan's template environment
+    // is byte-identical to what it was before these existed.
+    /// Argument vector cxg hands the template to feed the target under test.
+    /// Exposed as `CERT_X_GEN_ARGV` (JSON array). Empty means not supplied.
+    #[serde(default)]
+    pub probe_argv: Vec<String>,
+    /// File whose bytes the template should feed to the target's stdin.
+    /// Exposed as `CERT_X_GEN_STDIN_FILE`.
+    #[serde(default)]
+    pub probe_stdin_file: Option<PathBuf>,
+    /// Directory of seed inputs (corpus) the template may iterate. cxg does
+    /// not mutate or minimise it. Exposed as `CERT_X_GEN_INPUT_DIR`.
+    #[serde(default)]
+    pub probe_input_dir: Option<PathBuf>,
+    /// Environment the template should set on the *target* process, not on
+    /// itself. Exposed as `CERT_X_GEN_TARGET_ENV` (JSON object).
+    #[serde(default)]
+    pub probe_env: Vec<(String, String)>,
+    /// Refuse to run against a `cli://` target whose build carries no
+    /// detectable instrumentation, rather than reporting a "no findings"
+    /// result that reads as a refutation but is not evidence.
+    #[serde(default)]
+    pub require_instrumentation: bool,
 }
 
 impl Default for Context {
@@ -288,6 +319,11 @@ impl Default for Context {
             override_ports: None,
             headers: Vec::new(),
             cookies: Vec::new(),
+            probe_argv: Vec::new(),
+            probe_stdin_file: None,
+            probe_input_dir: None,
+            probe_env: Vec::new(),
+            require_instrumentation: false,
         }
     }
 }
@@ -430,6 +466,103 @@ impl Finding {
     }
 }
 
+/// Outcome of one (template, target) execution.
+///
+/// cxg has always surfaced *findings*. It has never surfaced "this template
+/// ran, exercised the target, and concluded there is no defect" -- which made a
+/// genuine refutation indistinguishable from a template that silently did
+/// nothing. This enum is that missing channel; [`ExecutionRecord`] carries it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ExecutionStatus {
+    /// Template ran and produced at least one finding.
+    Confirmed,
+    /// Template ran, exercised the target, and concluded no defect.
+    Refuted,
+    /// Template ran but could not reach a conclusion (setup failure, bad build).
+    Errored,
+    /// Template declined this target (wrong kind, missing precondition, a build
+    /// that could not have revealed the defect).
+    Skipped,
+    /// Template exceeded its wall-clock budget.
+    #[serde(rename = "timed-out")]
+    TimedOut,
+}
+
+impl std::fmt::Display for ExecutionStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            ExecutionStatus::Confirmed => "confirmed",
+            ExecutionStatus::Refuted => "refuted",
+            ExecutionStatus::Errored => "errored",
+            ExecutionStatus::Skipped => "skipped",
+            ExecutionStatus::TimedOut => "timed-out",
+        };
+        f.write_str(s)
+    }
+}
+
+impl ExecutionStatus {
+    /// Parse a template-declared status string (case-insensitive).
+    ///
+    /// Returns `None` for anything outside the vocabulary; callers must treat
+    /// that as an unrecognised declaration rather than silently ignoring it.
+    pub fn parse(s: &str) -> Option<Self> {
+        match s.trim().to_lowercase().as_str() {
+            "confirmed" | "confirm" => Some(ExecutionStatus::Confirmed),
+            "refuted" | "refute" | "not-reproduced" => Some(ExecutionStatus::Refuted),
+            "errored" | "error" => Some(ExecutionStatus::Errored),
+            "skipped" | "skip" => Some(ExecutionStatus::Skipped),
+            "timed-out" | "timedout" | "timeout" => Some(ExecutionStatus::TimedOut),
+            _ => None,
+        }
+    }
+
+    /// Every status, in report order. Used by the terminal summary.
+    pub const ALL: [ExecutionStatus; 5] = [
+        ExecutionStatus::Confirmed,
+        ExecutionStatus::Refuted,
+        ExecutionStatus::Skipped,
+        ExecutionStatus::Errored,
+        ExecutionStatus::TimedOut,
+    ];
+}
+
+/// One row of the per-(template, target) execution ledger.
+///
+/// Emitted for every template cxg attempted against every target, including
+/// the ones that produced no findings. `ScanResults.findings` says what was
+/// confirmed; this says what was *refuted*, *skipped* or *errored*, which a
+/// scan reporting zero findings otherwise cannot distinguish.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExecutionRecord {
+    /// Target address (host, or binary path for a `cli://` target)
+    pub target: String,
+    /// Target kind, i.e. the target's protocol (`http`, `cli`, ...)
+    #[serde(default)]
+    pub target_kind: String,
+    /// Template ID
+    pub template_id: String,
+    /// What cxg observed, or what the template declared
+    pub status: ExecutionStatus,
+    /// True when `status` came from the template's own JSON metadata rather
+    /// than being inferred by cxg from the finding count. An operator can
+    /// always tell a template's considered verdict from cxg's default guess.
+    #[serde(default)]
+    pub declared_by_template: bool,
+    /// Number of findings this execution produced
+    pub findings: usize,
+    /// Template process exit code, when the engine observed one
+    #[serde(default)]
+    pub exit_code: Option<i32>,
+    /// Short human-readable reason, template-supplied or cxg-supplied
+    #[serde(default)]
+    pub detail: Option<String>,
+    /// Wall-clock duration in milliseconds
+    #[serde(default)]
+    pub duration_ms: u64,
+}
+
 /// Scan statistics
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ScanStatistics {
@@ -464,6 +597,10 @@ pub struct ScanResults {
     pub statistics: ScanStatistics,
     /// Errors encountered
     pub errors: Vec<String>,
+    /// Per-(template, target) execution ledger. Additive: absent in result
+    /// files written by older versions, defaulted to empty on deserialisation.
+    #[serde(default)]
+    pub executions: Vec<ExecutionRecord>,
 }
 
 impl ScanResults {
@@ -476,6 +613,7 @@ impl ScanResults {
             findings: Vec::new(),
             statistics: ScanStatistics::default(),
             errors: Vec::new(),
+            executions: Vec::new(),
         }
     }
 
@@ -579,6 +717,33 @@ pub struct TemplateMetadata {
     /// Whether the template can self-probe for missing context, from `@auto_probe`.
     #[serde(default)]
     pub auto_probe: bool,
+
+    /// The template exits non-zero on purpose (a probe whose job is to provoke
+    /// a crash); cxg keeps its stdout instead of treating the exit as a hard
+    /// error. From `@allow_nonzero_exit`.
+    #[serde(default)]
+    pub allow_nonzero_exit: bool,
+
+    /// Oracles the template relies on to decide something is wrong, from
+    /// `@oracles`. Vocabulary: `asan` `ubsan` `msan` `tsan` `signal` `exit`
+    /// `exception` `assert` `timeout` `diff` `property` `detector`. Knowing
+    /// which one a template depends on lets cxg refuse to run it against a
+    /// build that cannot support it.
+    ///
+    /// The template observes the target for all of these but one: `exception`
+    /// is implemented by cxg, which matches the target output the template
+    /// hands back in `metadata.target_output` against the per-language shape
+    /// of an escaped exception. A template declares it the same way as any
+    /// other; nothing changes for a template that does not.
+    #[serde(default)]
+    pub oracles: Vec<String>,
+
+    /// Target kinds the template accepts, from `@target_kinds` (e.g. `cli`,
+    /// `http`). **Empty means no declaration, and a template with no
+    /// declaration runs against every kind** -- which is every template
+    /// written before this annotation existed.
+    #[serde(default)]
+    pub target_kinds: Vec<String>,
 }
 
 /// Author information
@@ -604,6 +769,59 @@ fn default_version() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn execution_status_round_trips_through_json() {
+        for status in ExecutionStatus::ALL {
+            let json = serde_json::to_string(&status).unwrap();
+            // The wire form is exactly the Display form, so a consumer reading
+            // the JSON and a human reading the terminal see the same word.
+            assert_eq!(json, format!("\"{}\"", status));
+            let back: ExecutionStatus = serde_json::from_str(&json).unwrap();
+            assert_eq!(back, status);
+        }
+    }
+
+    #[test]
+    fn execution_status_parses_the_declared_vocabulary() {
+        assert_eq!(
+            ExecutionStatus::parse("REFUTED"),
+            Some(ExecutionStatus::Refuted)
+        );
+        assert_eq!(
+            ExecutionStatus::parse(" not-reproduced "),
+            Some(ExecutionStatus::Refuted)
+        );
+        assert_eq!(
+            ExecutionStatus::parse("timeout"),
+            Some(ExecutionStatus::TimedOut)
+        );
+        assert_eq!(ExecutionStatus::parse("refuuted"), None);
+        assert_eq!(ExecutionStatus::parse(""), None);
+    }
+
+    /// A result file written before the ledger existed must still load.
+    #[test]
+    fn scan_results_without_an_executions_field_still_deserialise() {
+        let legacy = r#"{
+            "scan_id": "00000000-0000-0000-0000-000000000000",
+            "started_at": "2026-01-01T00:00:00Z",
+            "completed_at": null,
+            "findings": [],
+            "statistics": {
+                "targets_scanned": 0,
+                "templates_executed": 0,
+                "findings_by_severity": {},
+                "network_requests": 0,
+                "data_transferred": 0,
+                "duration": {"secs": 0, "nanos": 0},
+                "success_rate": 0.0
+            },
+            "errors": []
+        }"#;
+        let results: ScanResults = serde_json::from_str(legacy).unwrap();
+        assert!(results.executions.is_empty());
+    }
 
     #[test]
     fn test_severity_ordering() {

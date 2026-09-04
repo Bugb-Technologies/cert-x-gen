@@ -106,11 +106,7 @@ impl CommonValidator {
     /// Check for missing CERT_X_GEN_TARGET_HOST usage
     fn check_missing_target_host(&self, code: &str) -> Option<TemplateDiagnostic> {
         // Check if template uses the target host env var
-        if !code.contains("CERT_X_GEN_TARGET_HOST")
-            && !code.contains("target.address")
-            && !code.contains("{{Hostname}}")
-            && !code.contains("{{BaseURL}}")
-        {
+        if !reaches_its_target(code) {
             // Find where to suggest adding it (after shebang/imports)
             let suggest_line = code
                 .lines()
@@ -328,9 +324,74 @@ impl Default for CommonValidator {
     }
 }
 
+/// Does this template appear to reach its target at all?
+///
+/// A network template reaches it through `CERT_X_GEN_TARGET_HOST` (or a
+/// templating placeholder). A template that declares `@target_kinds: cli` is
+/// driving a **local binary**, and cxg hands it the probe input separately, so
+/// `CERT_X_GEN_ARGV` / `CERT_X_GEN_STDIN_FILE` / `CERT_X_GEN_INPUT_DIR` are
+/// equally valid ways for it to reach its target. Warning such a template that
+/// it "should be dynamic" is wrong advice.
+pub(super) fn reaches_its_target(code: &str) -> bool {
+    const NETWORK_HANDLES: &[&str] = &[
+        "CERT_X_GEN_TARGET_HOST",
+        "target.address",
+        "{{Hostname}}",
+        "{{BaseURL}}",
+    ];
+    const CLI_PROBE_HANDLES: &[&str] = &[
+        "CERT_X_GEN_ARGV",
+        "CERT_X_GEN_STDIN_FILE",
+        "CERT_X_GEN_INPUT_DIR",
+    ];
+
+    if NETWORK_HANDLES.iter().any(|h| code.contains(h)) {
+        return true;
+    }
+
+    let declares_cli = parse_metadata_from_comments(code)
+        .target_kinds
+        .iter()
+        .any(|k| k.trim().eq_ignore_ascii_case("cli"));
+
+    declares_cli && CLI_PROBE_HANDLES.iter().any(|h| code.contains(h))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A cli:// probe drives a local binary and cxg hands it the input
+    /// separately, so telling it to "be dynamic" with CERT_X_GEN_TARGET_HOST is
+    /// wrong advice. It is only exempt when it actually declares that kind.
+    #[test]
+    fn a_declared_cli_template_is_not_warned_for_reaching_its_target_by_argv() {
+        let validator = CommonValidator::new();
+
+        let cli_probe =
+            "#!/bin/bash\n# @id: probe\n# @target_kinds: cli\nrun \"$CERT_X_GEN_ARGV\"\n";
+        assert!(
+            validator.check_missing_target_host(cli_probe).is_none(),
+            "a @target_kinds: cli template reaching its target via CERT_X_GEN_ARGV \
+             must not be told to use CERT_X_GEN_TARGET_HOST"
+        );
+
+        // Without the declaration the same code is still warned: the exemption
+        // is earned by the declaration, not by the variable.
+        let undeclared = "#!/bin/bash\n# @id: probe\nrun \"$CERT_X_GEN_ARGV\"\n";
+        assert!(validator.check_missing_target_host(undeclared).is_some());
+
+        // And a network template that reaches nothing is still warned.
+        let inert = "#!/bin/bash\n# @id: probe\necho hello\n";
+        assert!(validator.check_missing_target_host(inert).is_some());
+    }
+
+    #[test]
+    fn a_cli_template_using_the_target_path_is_not_warned() {
+        let validator = CommonValidator::new();
+        let code = "#!/bin/bash\n# @id: probe\n# @target_kinds: cli\n\"$CERT_X_GEN_TARGET_HOST\" --label x\n";
+        assert!(validator.check_missing_target_host(code).is_none());
+    }
 
     #[test]
     fn test_empty_code_detection() {

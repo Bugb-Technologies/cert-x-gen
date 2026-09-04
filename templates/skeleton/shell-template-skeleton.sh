@@ -12,13 +12,45 @@
 # @confidence: 90
 # @references: https://cwe.mitre.org/data/definitions/1008.html
 #
+# Optional probe-contract annotations (omit them and nothing changes):
+#   @target_kinds: cli          Kinds this template accepts. ABSENT means it
+#                               runs against every kind, which is the default.
+#   @oracles: asan, signal      How this template decides something is wrong.
+#                               Vocabulary: asan ubsan msan tsan signal exit
+#                               exception assert timeout diff property detector.
+#                               Declaring only build-independent ones (exit,
+#                               signal, timeout, exception) also lets the
+#                               template run under --require-instrumentation
+#                               against a target carrying no instrumentation.
+#                               `exception` is cxg's own: hand the target's
+#                               output back in metadata.target_output and cxg
+#                               decides whether an exception escaped.
+#   @allow_nonzero_exit: true   This template exits non-zero on purpose (a probe
+#                               that provokes a crash does); keep its stdout.
+#
 # Execution:
 #   ./template.sh --target example.com --port 80 --json
 #
 # When run by CERT-X-GEN engine, environment variables are set:
-#   CERT_X_GEN_TARGET_HOST - Target host/IP
-#   CERT_X_GEN_TARGET_PORT - Target port
+#   CERT_X_GEN_TARGET_HOST - Target host/IP, or the BINARY PATH when KIND=cli
+#   CERT_X_GEN_TARGET_PORT - Target port. Meaningless when KIND=cli: ignore it.
+#   CERT_X_GEN_TARGET_KIND - Target kind: http, https, tcp, ..., or cli
 #   CERT_X_GEN_MODE=engine - Indicates engine mode (JSON output required)
+#
+# Probe input, set only when the operator passed the matching scan flag:
+#   CERT_X_GEN_ARGV          --arg          JSON array: argv for the target
+#   CERT_X_GEN_STDIN_FILE    --stdin-file   file whose bytes are the target stdin
+#   CERT_X_GEN_INPUT_DIR     --input        seed corpus directory
+#   CERT_X_GEN_TARGET_ENV    --target-env   JSON object: env for the target
+#   CERT_X_GEN_TARGET_INSTRUMENTATION       what a cli:// build can reveal,
+#                                           e.g. "asan,debug-info" or "none"
+#
+# Execution status: a template may declare its own verdict in the JSON wrapper,
+#   {"findings": [], "metadata": {"status": "refuted", "detail": "exit=0"}}
+# with status one of confirmed | refuted | errored | skipped | timed-out.
+# Without it cxg infers confirmed when there are findings and refuted when
+# there are none. Declaring it is how a template says "I ran and found nothing"
+# rather than leaving cxg to guess.
 ################################################################################
 
 set -euo pipefail

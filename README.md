@@ -314,6 +314,17 @@ All templates follow a simple contract:
 2. Perform detection logic
 3. Output JSON with findings array
 
+A template can also drive a **local binary** rather than a network host
+(`cxg scan --scope cli:///path/to/binary`), take its probe input from cxg
+(`--arg`, `--stdin-file`, `--input`, `--target-env`), and declare its own
+verdict so a refutation is recorded rather than inferred. Passing
+`--require-instrumentation` makes cxg skip a build that could not have shown
+the defect instead of reporting a refutation it did not earn. The full
+contract is in
+[`docs/ENGINE_ARCHITECTURE.md`](docs/ENGINE_ARCHITECTURE.md#the-probe-contract).
+Note that `CERT_X_GEN_TARGET_PORT` is meaningless when `CERT_X_GEN_TARGET_KIND`
+is `cli` — ignore it there.
+
 **Python example:**
 
 ```python
