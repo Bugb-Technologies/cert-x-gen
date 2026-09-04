@@ -871,15 +871,15 @@ const DEBUG_INFO_MARKERS: &[&str] = &[".debug_info", "__debug_info", ".debug_lin
 /// Only a file that starts with one of these can *carry* instrumentation, so
 /// only such a file is worth scanning for markers. See [`is_object_file`].
 const OBJECT_MAGICS: &[&[u8]] = &[
-    b"\x7fELF",                    // ELF (Linux, BSD)
-    &[0xFE, 0xED, 0xFA, 0xCE],     // Mach-O 32-bit, big endian
-    &[0xFE, 0xED, 0xFA, 0xCF],     // Mach-O 64-bit, big endian
-    &[0xCE, 0xFA, 0xED, 0xFE],     // Mach-O 32-bit, little endian
-    &[0xCF, 0xFA, 0xED, 0xFE],     // Mach-O 64-bit, little endian
-    &[0xCA, 0xFE, 0xBA, 0xBE],     // Mach-O universal binary
-    &[0xBE, 0xBA, 0xFE, 0xCA],     // Mach-O universal binary, byte-swapped
-    b"MZ",                         // PE/COFF (the DOS stub)
-    b"!<arch>\n",                  // static archive (.a)
+    b"\x7fELF",                // ELF (Linux, BSD)
+    &[0xFE, 0xED, 0xFA, 0xCE], // Mach-O 32-bit, big endian
+    &[0xFE, 0xED, 0xFA, 0xCF], // Mach-O 64-bit, big endian
+    &[0xCE, 0xFA, 0xED, 0xFE], // Mach-O 32-bit, little endian
+    &[0xCF, 0xFA, 0xED, 0xFE], // Mach-O 64-bit, little endian
+    &[0xCA, 0xFE, 0xBA, 0xBE], // Mach-O universal binary
+    &[0xBE, 0xBA, 0xFE, 0xCA], // Mach-O universal binary, byte-swapped
+    b"MZ",                     // PE/COFF (the DOS stub)
+    b"!<arch>\n",              // static archive (.a)
 ];
 
 /// How many leading bytes are read to decide whether a file is an object.
@@ -1079,7 +1079,9 @@ pub fn detect_unhandled_exception(output: &str) -> Option<ExceptionKind> {
 ///
 /// Stack traces are indented; the markers that identify them are not prose.
 fn has_line_starting_with(haystack: &str, needle: &str) -> bool {
-    haystack.lines().any(|line| line.trim_start().starts_with(needle))
+    haystack
+        .lines()
+        .any(|line| line.trim_start().starts_with(needle))
 }
 
 /// Take at most `max` characters, never splitting a UTF-8 character.
@@ -1247,7 +1249,10 @@ fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
     let last_start = haystack.len() - needle.len();
     let mut cursor = 0usize;
     while cursor <= last_start {
-        let Some(offset) = haystack[cursor..=last_start].iter().position(|&b| b == first) else {
+        let Some(offset) = haystack[cursor..=last_start]
+            .iter()
+            .position(|&b| b == first)
+        else {
             return false;
         };
         let start = cursor + offset;
@@ -1263,9 +1268,8 @@ fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
 type InstrumentationKey = (std::path::PathBuf, u64, Option<std::time::SystemTime>);
 
 fn instrumentation_cache() -> &'static std::sync::Mutex<HashMap<InstrumentationKey, Vec<String>>> {
-    static CACHE: std::sync::OnceLock<
-        std::sync::Mutex<HashMap<InstrumentationKey, Vec<String>>>,
-    > = std::sync::OnceLock::new();
+    static CACHE: std::sync::OnceLock<std::sync::Mutex<HashMap<InstrumentationKey, Vec<String>>>> =
+        std::sync::OnceLock::new();
     CACHE.get_or_init(|| std::sync::Mutex::new(HashMap::new()))
 }
 
@@ -1440,10 +1444,7 @@ mod tests {
             probe_argv: vec!["--label".to_string(), "AAAA".to_string()],
             probe_stdin_file: Some("/tmp/case.bin".into()),
             probe_input_dir: Some("/tmp/corpus".into()),
-            probe_env: vec![(
-                "ASAN_OPTIONS".to_string(),
-                "abort_on_error=1".to_string(),
-            )],
+            probe_env: vec![("ASAN_OPTIONS".to_string(), "abort_on_error=1".to_string())],
             ..Context::default()
         };
 
@@ -1476,7 +1477,8 @@ mod tests {
 
     #[test]
     fn parses_oracles_and_target_kinds_from_the_header() {
-        let header = "#!/bin/bash\n# @id: probe\n# @oracles: asan, signal, exit\n# @target_kinds: cli\n";
+        let header =
+            "#!/bin/bash\n# @id: probe\n# @oracles: asan, signal, exit\n# @target_kinds: cli\n";
         let parsed = parse_metadata_from_comments(header);
         assert_eq!(parsed.oracles, vec!["asan", "signal", "exit"]);
         assert_eq!(parsed.target_kinds, vec!["cli"]);
@@ -1575,7 +1577,10 @@ mod tests {
         assert_eq!(detect_unhandled_exception(go), Some(ExceptionKind::GoPanic));
 
         let rust = "thread 'main' panicked at src/main.rs:4:5:\nsynthetic\n";
-        assert_eq!(detect_unhandled_exception(rust), Some(ExceptionKind::RustPanic));
+        assert_eq!(
+            detect_unhandled_exception(rust),
+            Some(ExceptionKind::RustPanic)
+        );
     }
 
     /// The distinction the `exit` oracle cannot draw: these all exit non-zero
@@ -1619,7 +1624,9 @@ mod tests {
 
         // Every oracle works on any build: let it through.
         assert!(oracles_are_build_independent(&s(&["exit"])));
-        assert!(oracles_are_build_independent(&s(&["exit", "signal", "timeout"])));
+        assert!(oracles_are_build_independent(&s(&[
+            "exit", "signal", "timeout"
+        ])));
         assert!(oracles_are_build_independent(&s(&["exception"])));
         assert!(oracles_are_build_independent(&s(&[" EXIT ", "Timeout"])));
 
@@ -1627,7 +1634,9 @@ mod tests {
         // might be reading the report cxg knows is not there.
         assert!(!oracles_are_build_independent(&s(&["asan"])));
         assert!(!oracles_are_build_independent(&s(&["exit", "asan"])));
-        assert!(!oracles_are_build_independent(&s(&["ubsan", "msan", "tsan"])));
+        assert!(!oracles_are_build_independent(&s(&[
+            "ubsan", "msan", "tsan"
+        ])));
 
         // Absent is not a promise.
         assert!(!oracles_are_build_independent(&[]));
@@ -1758,8 +1767,14 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
 
         for (name, body) in [
-            ("source.c", "/* calls __asan_init at startup */\nint main(void){return 0;}\n"),
-            ("bugb", "#!/usr/bin/env python3\n# __asan_init, __llvm_profile, .debug_info\nimport sys\n"),
+            (
+                "source.c",
+                "/* calls __asan_init at startup */\nint main(void){return 0;}\n",
+            ),
+            (
+                "bugb",
+                "#!/usr/bin/env python3\n# __asan_init, __llvm_profile, .debug_info\nimport sys\n",
+            ),
             ("notes.txt", "the marker is __tsan_init\n"),
         ] {
             let path = dir.path().join(name);
@@ -1809,7 +1824,10 @@ mod tests {
         std::fs::write(&bare, b"nothing to see").unwrap();
         let cli = Target::new(bare.to_string_lossy().to_string(), Protocol::Cli);
         let env = build_env_vars(&cli, &Context::default()).unwrap();
-        assert_eq!(env.get("CERT_X_GEN_TARGET_INSTRUMENTATION").unwrap(), "none");
+        assert_eq!(
+            env.get("CERT_X_GEN_TARGET_INSTRUMENTATION").unwrap(),
+            "none"
+        );
 
         let net = Target::with_port("example.com", 443, Protocol::Https);
         let env = build_env_vars(&net, &Context::default()).unwrap();
@@ -1842,8 +1860,7 @@ mod tests {
     /// cxg's own guess -- that is the exact failure the ledger exists to stop.
     #[test]
     fn template_report_keeps_an_unrecognised_status_verbatim() {
-        let report =
-            parse_template_report(r#"{"findings":[],"metadata":{"status":"refuuted"}}"#);
+        let report = parse_template_report(r#"{"findings":[],"metadata":{"status":"refuuted"}}"#);
         assert_eq!(report.status, None);
         assert_eq!(report.unrecognised_status.as_deref(), Some("refuuted"));
     }
@@ -1881,10 +1898,7 @@ mod tests {
     async fn execute_command_kills_the_child_when_the_caller_times_out() {
         let dir = tempfile::tempdir().unwrap();
         let marker = dir.path().join("survived");
-        let script = format!(
-            "sleep 5; echo alive > {}",
-            marker.display()
-        );
+        let script = format!("sleep 5; echo alive > {}", marker.display());
         let args = vec!["-c".to_string(), script];
 
         let timed_out = tokio::time::timeout(
@@ -1892,7 +1906,10 @@ mod tests {
             execute_command("sh", &args, &HashMap::new()),
         )
         .await;
-        assert!(timed_out.is_err(), "the command should have outrun the timeout");
+        assert!(
+            timed_out.is_err(),
+            "the command should have outrun the timeout"
+        );
 
         // Well past the child's own sleep: if it were still alive it would have
         // written the marker by now.

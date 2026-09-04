@@ -187,14 +187,12 @@ impl Executor {
 
         // What this build can reveal, read once per target and reused by every
         // template's oracle check below.
-        let instrumentation: Vec<String> =
-            if matches!(target.protocol, crate::types::Protocol::Cli) {
-                crate::engine::common::detect_instrumentation(std::path::Path::new(
-                    &target.address,
-                ))
-            } else {
-                Vec::new()
-            };
+        let instrumentation: Vec<String> = if matches!(target.protocol, crate::types::Protocol::Cli)
+        {
+            crate::engine::common::detect_instrumentation(std::path::Path::new(&target.address))
+        } else {
+            Vec::new()
+        };
 
         // Execute templates in parallel with limited concurrency
         let per_template: Vec<(Vec<Finding>, ExecutionRecord)> = stream::iter(&job.templates)
@@ -449,8 +447,7 @@ impl Executor {
             ));
         }
 
-        if context.require_instrumentation
-            && matches!(target.protocol, crate::types::Protocol::Cli)
+        if context.require_instrumentation && matches!(target.protocol, crate::types::Protocol::Cli)
         {
             if let Some(missing) =
                 crate::engine::common::unsupported_oracles(&metadata.oracles, instrumentation)
@@ -759,13 +756,9 @@ mod tests {
         let context = crate::types::Context::default();
         let net = Target::with_port("example.com", 443, Protocol::Https);
 
-        let reason = Executor::declaration_skip_reason(
-            &net,
-            &metadata_with(&[], &["cli"]),
-            &context,
-            &[],
-        )
-        .unwrap();
+        let reason =
+            Executor::declaration_skip_reason(&net, &metadata_with(&[], &["cli"]), &context, &[])
+                .unwrap();
         assert!(reason.starts_with("target-kind-mismatch"), "{reason}");
         assert!(reason.contains("kind=https"), "{reason}");
         assert!(reason.contains("accepts=cli"), "{reason}");

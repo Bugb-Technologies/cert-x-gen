@@ -368,7 +368,8 @@ mod tests {
     fn a_declared_cli_template_is_not_warned_for_reaching_its_target_by_argv() {
         let validator = CommonValidator::new();
 
-        let cli_probe = "#!/bin/bash\n# @id: probe\n# @target_kinds: cli\nrun \"$CERT_X_GEN_ARGV\"\n";
+        let cli_probe =
+            "#!/bin/bash\n# @id: probe\n# @target_kinds: cli\nrun \"$CERT_X_GEN_ARGV\"\n";
         assert!(
             validator.check_missing_target_host(cli_probe).is_none(),
             "a @target_kinds: cli template reaching its target via CERT_X_GEN_ARGV \

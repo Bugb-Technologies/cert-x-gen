@@ -1528,9 +1528,7 @@ fn apply_probe_input(args: &cli::ScanArgs, context: &mut cert_x_gen::types::Cont
                 kv
             )));
         }
-        context
-            .probe_env
-            .push((key.to_string(), value.to_string()));
+        context.probe_env.push((key.to_string(), value.to_string()));
     }
     if !context.probe_env.is_empty() {
         tracing::info!(
@@ -5030,10 +5028,7 @@ mod tests {
         apply_probe_input(&args, &mut context).unwrap();
         assert_eq!(
             context.probe_env,
-            vec![(
-                "ASAN_OPTIONS".to_string(),
-                "abort_on_error=1".to_string()
-            )]
+            vec![("ASAN_OPTIONS".to_string(), "abort_on_error=1".to_string())]
         );
     }
 
@@ -5041,7 +5036,9 @@ mod tests {
     fn target_env_without_an_equals_is_an_error_not_a_silent_drop() {
         let args = scan_args(&["--target-env", "NOEQUALS"]);
         let mut context = cert_x_gen::types::Context::default();
-        let err = apply_probe_input(&args, &mut context).unwrap_err().to_string();
+        let err = apply_probe_input(&args, &mut context)
+            .unwrap_err()
+            .to_string();
         assert!(err.contains("NOEQUALS"), "error was {err}");
     }
 
@@ -5049,7 +5046,9 @@ mod tests {
     fn a_missing_stdin_file_is_rejected_before_the_scan_starts() {
         let args = scan_args(&["--stdin-file", "/definitely/not/here.bin"]);
         let mut context = cert_x_gen::types::Context::default();
-        let err = apply_probe_input(&args, &mut context).unwrap_err().to_string();
+        let err = apply_probe_input(&args, &mut context)
+            .unwrap_err()
+            .to_string();
         assert!(err.contains("not a readable file"), "error was {err}");
     }
 
@@ -5058,7 +5057,9 @@ mod tests {
         let file = tempfile::NamedTempFile::new().unwrap();
         let args = scan_args(&["--input", file.path().to_str().unwrap()]);
         let mut context = cert_x_gen::types::Context::default();
-        let err = apply_probe_input(&args, &mut context).unwrap_err().to_string();
+        let err = apply_probe_input(&args, &mut context)
+            .unwrap_err()
+            .to_string();
         assert!(err.contains("not a directory"), "error was {err}");
     }
 
@@ -5111,7 +5112,10 @@ mod tests {
         ] {
             let target = parse_target_string(&spelling);
             assert_eq!(target.protocol, Protocol::Cli);
-            assert_eq!(target.address, canonical, "spelling {spelling} did not canonicalise");
+            assert_eq!(
+                target.address, canonical,
+                "spelling {spelling} did not canonicalise"
+            );
         }
     }
 

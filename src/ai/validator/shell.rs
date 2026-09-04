@@ -281,7 +281,8 @@ mod tests {
 
     #[test]
     fn a_declared_cli_template_is_not_warned_for_missing_target_host() {
-        let code = "#!/bin/bash\n# @id: probe\n# @target_kinds: cli\nset -e\nrun \"$CERT_X_GEN_ARGV\"\n";
+        let code =
+            "#!/bin/bash\n# @id: probe\n# @target_kinds: cli\nset -e\nrun \"$CERT_X_GEN_ARGV\"\n";
         let diags = validate(code).unwrap();
         assert!(
             !diags.iter().any(|d| d.code == "shell.missing_target_host"),

@@ -96,7 +96,12 @@ struct ScanOutcome {
 
 impl ScanOutcome {
     fn single(&self) -> &Row {
-        assert_eq!(self.rows.len(), 1, "expected exactly one ledger row: {:?}", self.rows);
+        assert_eq!(
+            self.rows.len(),
+            1,
+            "expected exactly one ledger row: {:?}",
+            self.rows
+        );
         &self.rows[0]
     }
 }
@@ -175,9 +180,17 @@ fn confirms_and_keeps_the_evidence_when_the_probe_exits_nonzero() {
     let row = out.single();
     assert_eq!(row.status, "confirmed");
     assert_eq!(row.findings, 1);
-    assert_eq!(row.exit_code, Some(3), "the template's own exit code is recorded");
+    assert_eq!(
+        row.exit_code,
+        Some(3),
+        "the template's own exit code is recorded"
+    );
     assert!(row.declared_by_template);
-    assert!(row.detail.contains("oracle=asan"), "detail was {:?}", row.detail);
+    assert!(
+        row.detail.contains("oracle=asan"),
+        "detail was {:?}",
+        row.detail
+    );
 }
 
 /// The identical probe logic *without* `@allow_nonzero_exit`: cxg discards the
@@ -211,7 +224,10 @@ fn refutes_on_the_corrected_twin() {
     assert_eq!(out.findings, 0);
     let row = out.single();
     assert_eq!(row.status, "refuted");
-    assert!(row.declared_by_template, "the template declared the refutation");
+    assert!(
+        row.declared_by_template,
+        "the template declared the refutation"
+    );
     assert!(
         row.detail.contains("handled probe input cleanly"),
         "detail was {:?}",
@@ -230,7 +246,10 @@ fn records_a_template_declared_skip_with_its_own_reason() {
 
     let row = out.single();
     assert_eq!(row.status, "skipped");
-    assert!(row.declared_by_template, "the template declared this itself");
+    assert!(
+        row.declared_by_template,
+        "the template declared this itself"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -253,7 +272,11 @@ fn argv_from_the_arg_flag_drives_the_verdict() {
     );
     let row = over.single();
     assert_eq!(row.status, "confirmed");
-    assert!(row.detail.contains("input=cxg-argv"), "detail was {:?}", row.detail);
+    assert!(
+        row.detail.contains("input=cxg-argv"),
+        "detail was {:?}",
+        row.detail
+    );
 
     let safe = scan(
         dir.path(),
@@ -263,7 +286,11 @@ fn argv_from_the_arg_flag_drives_the_verdict() {
     );
     let row = safe.single();
     assert_eq!(row.status, "refuted");
-    assert!(row.detail.contains("input=cxg-argv"), "detail was {:?}", row.detail);
+    assert!(
+        row.detail.contains("input=cxg-argv"),
+        "detail was {:?}",
+        row.detail
+    );
 }
 
 /// The same discrimination through the other universal CLI channel.
@@ -331,7 +358,10 @@ fn every_probe_variable_reaches_the_template() {
 
     let detail = &out.single().detail;
     assert!(detail.contains("CERT_X_GEN_TARGET_KIND=cli"), "{detail}");
-    assert!(detail.contains("CERT_X_GEN_ARGV=[--label,AAAA]"), "{detail}");
+    assert!(
+        detail.contains("CERT_X_GEN_ARGV=[--label,AAAA]"),
+        "{detail}"
+    );
     assert!(detail.contains("case.bin"), "{detail}");
     assert!(detail.contains("corpus"), "{detail}");
     assert!(
@@ -350,7 +380,10 @@ fn a_network_target_sees_none_of_the_probe_variables() {
     let out = scan(dir.path(), "env-echo.sh", &[], "https://example.com:8443");
 
     let detail = &out.single().detail;
-    assert!(detail.contains("CERT_X_GEN_TARGET_HOST=example.com"), "{detail}");
+    assert!(
+        detail.contains("CERT_X_GEN_TARGET_HOST=example.com"),
+        "{detail}"
+    );
     assert!(detail.contains("CERT_X_GEN_TARGET_KIND=https"), "{detail}");
     for name in [
         "CERT_X_GEN_ARGV",
@@ -407,7 +440,10 @@ fn require_instrumentation_turns_that_refutation_into_an_honest_skip() {
     assert_eq!(row.detail, "no-instrumentation-detected");
     assert_eq!(row.findings, 0);
     assert_eq!(row.exit_code, None, "nothing ran, so there is no exit code");
-    assert!(!row.declared_by_template, "cxg refused, the template never ran");
+    assert!(
+        !row.declared_by_template,
+        "cxg refused, the template never ran"
+    );
 }
 
 /// The preflight must not block a build that *can* show the defect.
@@ -664,7 +700,11 @@ fn a_declared_target_kind_mismatch_is_recorded_rather_than_run() {
         "detail was {:?}",
         row.detail
     );
-    assert!(row.detail.contains("kind=https"), "detail was {:?}", row.detail);
+    assert!(
+        row.detail.contains("kind=https"),
+        "detail was {:?}",
+        row.detail
+    );
     assert!(
         !row.declared_by_template,
         "cxg refused before the template ran"
@@ -738,17 +778,15 @@ fn the_exception_oracle_confirms_a_python_traceback() {
     let dir = tempfile::tempdir().unwrap();
     let bin = install_fixture_as(dir.path(), "exception-fixture.sh", "app_python.sh");
 
-    let out = scan(
-        dir.path(),
-        "cli-probe-exception.sh",
-        &[],
-        &cli_scope(&bin),
-    );
+    let out = scan(dir.path(), "cli-probe-exception.sh", &[], &cli_scope(&bin));
 
     let row = out.single();
     assert_eq!(row.status, "confirmed", "detail was {:?}", row.detail);
     assert_eq!(row.findings, 1);
-    assert_eq!(out.findings, 1, "the finding reaches the report, not just the ledger");
+    assert_eq!(
+        out.findings, 1,
+        "the finding reaches the report, not just the ledger"
+    );
     assert!(
         row.detail.contains("oracle=exception(python-traceback)"),
         "detail was {:?}",
@@ -777,7 +815,8 @@ fn the_exception_oracle_confirms_a_node_unhandled_rejection() {
     assert_eq!(row.status, "confirmed", "detail was {:?}", row.detail);
     assert_eq!(row.findings, 1);
     assert!(
-        row.detail.contains("oracle=exception(node-unhandled-rejection)"),
+        row.detail
+            .contains("oracle=exception(node-unhandled-rejection)"),
         "detail was {:?}",
         row.detail
     );
@@ -816,7 +855,11 @@ fn the_exception_oracle_runs_under_require_instrumentation() {
 
     let row = out.single();
     assert_eq!(row.status, "confirmed", "detail was {:?}", row.detail);
-    assert!(row.detail.contains("python-traceback"), "detail was {:?}", row.detail);
+    assert!(
+        row.detail.contains("python-traceback"),
+        "detail was {:?}",
+        row.detail
+    );
 }
 
 // ---------------------------------------------------------------------------
