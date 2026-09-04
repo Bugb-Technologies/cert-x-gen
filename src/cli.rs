@@ -135,6 +135,24 @@ pub enum Commands {
     /// Run a security scan
     Scan(ScanArgs),
 
+    /// Build a target with instrumentation so a scan can earn its verdict
+    ///
+    /// `cxg scan` inspects a binary and refuses; it never builds the target.
+    /// This is the deliberate opt-in on the other side of that line, and it is
+    /// a separate verb rather than a scan flag for three reasons: building
+    /// runs the project's own build system (`build.rs`, `configure`, arbitrary
+    /// `Makefile` recipes) as you, which is a different trust decision from
+    /// reading a file; it costs minutes and gigabytes, which is a bad surprise
+    /// as a side effect and a fine one as a decision; and one instrumented
+    /// build feeds many scans.
+    ///
+    /// It prints one JSON manifest and nothing else. There is no path from
+    /// "I could not instrument this" to "here is a binary": every precondition
+    /// failure is a `skipped` with a machine-readable reason, and the last
+    /// check re-reads the binary that was just produced, so a build that
+    /// accepted the flags and silently dropped them skips rather than passes.
+    Build(BuildCommand),
+
     /// Manage templates
     Template(TemplateCommand),
 
@@ -186,6 +204,104 @@ pub enum Commands {
 
     /// Display version information
     Version,
+}
+
+/// `cxg build` — produce an instrumented build of a compiled target.
+///
+/// Cargo/Rust is the only back end today; every other recognised build system
+/// skips with `build-system-not-implemented`, which is the honest answer
+/// rather than a hidden limitation.
+// @g.comment -- "CLI options for the instrumented build-assist; drives the target's own build system"
+#[derive(Parser, Debug, Clone)]
+pub struct BuildCommand {
+    #[arg(
+        long,
+        help = "Build the target with sanitizer instrumentation",
+        long_help = "Build the target with sanitizer instrumentation. Required: `cxg build` has \
+                     no other mode, and demanding the word keeps room for one without changing \
+                     what this invocation means."
+    )]
+    pub instrument: bool,
+
+    #[arg(
+        long,
+        value_name = "DIR",
+        default_value = ".",
+        help = "Project directory whose build system to drive",
+        long_help = "Directory holding the project to build. The build system is detected from \
+                     its marker files in priority order (Cargo.toml, CMakeLists.txt, go.mod, \
+                     configure, Makefile, meson.build); Cargo.toml first, so a polyglot \
+                     repository such as a Tauri app instruments its Rust binary. A tree matching \
+                     none of them skips with unknown-build-system rather than being guessed at."
+    )]
+    pub project: PathBuf,
+
+    #[arg(
+        long,
+        value_name = "NAME",
+        help = "Which binary target to build",
+        long_help = "Which binary target to build. Inferred when the project has exactly one; a \
+                     workspace with several skips with binary-target-ambiguous rather than \
+                     instrumenting one nobody asked for."
+    )]
+    pub bin: Option<String>,
+
+    #[arg(
+        long,
+        value_name = "LIST",
+        default_value = "address",
+        help = "Comma-separated sanitizers to build with",
+        long_help = "Comma-separated sanitizers, in rustc's vocabulary: address, thread, memory. \
+                     Capability is asked of rustc per target rather than guessed, so a request \
+                     the target cannot serve (MSan on arm64 macOS) skips with \
+                     sanitizer-unsupported-on-target. Note that Rust has NO UBSan -- \
+                     -Zsanitizer=undefined does not exist on any target -- so `undefined` skips \
+                     with a note naming the Rust equivalent for the integer class, \
+                     -C overflow-checks=on, which cxg passes on every instrumented build anyway."
+    )]
+    pub sanitizer: String,
+
+    #[arg(
+        long,
+        value_name = "DIR",
+        help = "Where to put the instrumented build tree",
+        long_help = "Where to put the instrumented build tree; defaults to \
+                     <project>/target-instrumented. Never the project's own target/: RUSTFLAGS \
+                     is part of cargo's fingerprint, so sharing one forces a full rebuild in \
+                     both directions every time you alternate between an instrumented scan and \
+                     ordinary work. Budget several gigabytes per instrumented project."
+    )]
+    pub out: Option<PathBuf>,
+
+    #[arg(
+        long,
+        help = "Rebuild std with the sanitizer (-Zbuild-std)",
+        long_help = "Rebuild std with the sanitizer. Needs the rust-src component. Mandatory for \
+                     MSan, whose uninstrumented std reports uninitialised reads everywhere, and \
+                     merely better for ASan, which interposes the allocator and so catches heap \
+                     errors through a precompiled std. Off by default."
+    )]
+    pub build_std: bool,
+
+    #[arg(
+        long,
+        value_name = "PATH",
+        help = "Also write the manifest to this file",
+        long_help = "Write the manifest to this file as well as to stdout. Hand it back to a \
+                     scan with `cxg scan --instrumented-manifest <path>` so the scan trusts what \
+                     cxg recorded at build time instead of re-inspecting the artefact."
+    )]
+    pub manifest: Option<PathBuf>,
+
+    #[arg(
+        short = 'q',
+        long,
+        help = "Print only the path of the instrumented binary",
+        long_help = "Print only the path of the instrumented binary, and nothing at all on a \
+                     skip, for `cxg scan --scope cli://$(cxg build --instrument --project . -q)`. \
+                     The exit status still distinguishes the two: 0 instrumented, 3 skipped."
+    )]
+    pub quiet: bool,
 }
 
 /// `cxg update` — self-update the binary from the latest GitHub release.
@@ -1748,6 +1864,23 @@ pub struct ScanArgs {
                      build the target."
     )]
     pub require_instrumentation: bool,
+
+    #[arg(
+        long,
+        value_name = "PATH",
+        help_heading = "Probe Input",
+        display_order = 56,
+        help = "Trust this cxg build --instrument manifest over re-inspecting the binary",
+        long_help = "Manifest written by `cxg build --instrument`, naming a binary and the \
+                     instrumentation cxg verified in it at build time. Provenance beats \
+                     inspection: cxg passed the flags and read the produced artefact back before \
+                     it was willing to call the build instrumented, and that record survives \
+                     stripping and a copy away from the build tree. The record applies only to \
+                     the binary the manifest names; every other target is inspected exactly as \
+                     before. Repeatable. Omit it and the scan behaves identically to one run \
+                     before this flag existed."
+    )]
+    pub instrumented_manifest: Vec<PathBuf>,
 
     #[arg(
         long,

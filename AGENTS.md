@@ -39,6 +39,17 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   with `cc`; every test that uses one is `#[cfg(unix)]`, because the suite runs on Windows
   and there is no `cc` there.
 
+## The instrumented build assist (`cxg build --instrument`)
+
+- **Nightly Rust is a real dependency** (`-Zsanitizer` is unstable, no stable equivalent).
+  `tests/build_instrument.rs` explains itself and passes when nightly is missing rather than
+  failing the build; do not turn that into a hard failure. `src/build/cargo.rs`'s module doc
+  is the authority on the four load-bearing build flags.
+- The proof toy's manifest is checked in as
+  `tests/fixtures/build-instrument/cargo-manifest.toml`, **not** `Cargo.toml`, and the test
+  materialises it into a temp directory. Renaming it to `Cargo.toml` nests a package inside
+  the package under test and breaks `cargo build` and `cargo fmt --all`.
+
 ## Maintaining this file
 
 Keep this file for knowledge useful to almost every future agent session in this project.

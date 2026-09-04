@@ -125,8 +125,10 @@ async fn run(cli: Cli) -> Result<()> {
         Some(Commands::Template(cmd)) if matches!(cmd.action, cli::TemplateAction::Update { .. })
     );
 
-    // Handle auto-update flags before running any command (skip for template update)
-    if !is_template_update {
+    // Handle auto-update flags before running any command (skip for template
+    // update, and for `build`, which needs no templates and whose stdout is a
+    // machine-readable manifest a first-run auto-install would pollute)
+    if !is_template_update && !matches!(&cli.command, Some(Commands::Build(_))) {
         handle_auto_update(&cli).await?;
     }
 
@@ -146,6 +148,9 @@ async fn run(cli: Cli) -> Result<()> {
     match command {
         Commands::Scan(args) => {
             run_scan(args, cli.config).await?;
+        }
+        Commands::Build(cmd) => {
+            run_build_command(cmd)?;
         }
         Commands::Template(cmd) => {
             run_template_command(cmd).await?;
@@ -221,6 +226,78 @@ fn release_target() -> Result<String> {
         }
     };
     Ok(format!("{os}-{arch}"))
+}
+
+/// Handle `cxg build --instrument` — produce an instrumented build, or say
+/// honestly why one could not be produced.
+///
+/// Prints one JSON manifest on stdout and nothing else (or, with `-q`, just
+/// the binary's path). The exit status carries the same answer for a shell:
+/// **0** the binary exists and was verified, **3** the build was skipped. A
+/// skip is not an error -- nothing went wrong, cxg simply refuses to hand back
+/// an artefact it could not vouch for -- so it does not take the error path,
+/// which is reserved for cxg itself failing.
+// @g.comment -- "drives the target project's own build system, which executes that project's build scripts as the invoking user"
+// @g.sink Commands.Build -- "executes `cargo build` in the operator-named project directory"
+fn run_build_command(cmd: cli::BuildCommand) -> Result<()> {
+    use cert_x_gen::build::{self, InstrumentRequest, Manifest};
+    use std::io::Write;
+
+    if !cmd.instrument {
+        return Err(Error::config(
+            "cxg build needs --instrument: it has no other mode".to_string(),
+        ));
+    }
+
+    let sanitizers: Vec<String> = cmd
+        .sanitizer
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    if sanitizers.is_empty() {
+        return Err(Error::config(
+            "--sanitizer needs at least one sanitizer, e.g. --sanitizer address".to_string(),
+        ));
+    }
+
+    let manifest = build::instrument(&InstrumentRequest {
+        project: cmd.project.clone(),
+        bin: cmd.bin.clone(),
+        sanitizers,
+        out_dir: cmd.out.clone(),
+        build_std: cmd.build_std,
+    });
+
+    let rendered =
+        serde_json::to_string_pretty(&manifest).map_err(|e| Error::Serialization(e.to_string()))?;
+    if let Some(ref path) = cmd.manifest {
+        std::fs::write(path, format!("{rendered}\n")).map_err(|e| {
+            Error::config(format!("cannot write --manifest '{}': {e}", path.display()))
+        })?;
+    }
+
+    match &manifest {
+        Manifest::Instrumented(built) => {
+            if cmd.quiet {
+                println!("{}", built.binary.display());
+            } else {
+                println!("{rendered}");
+            }
+            Ok(())
+        }
+        Manifest::Skipped(skipped) => {
+            if cmd.quiet {
+                // Nothing on stdout: `cli://$(cxg build ... -q)` must not be
+                // handed a reason string as if it were a path.
+                eprintln!("cxg build: skipped: {}", skipped.reason);
+            } else {
+                println!("{rendered}");
+            }
+            let _ = std::io::stdout().flush();
+            std::process::exit(3);
+        }
+    }
 }
 
 /// Handle `cxg update` — self-replace the running binary with the latest GitHub release.
@@ -1559,7 +1636,68 @@ fn apply_probe_input(args: &cli::ScanArgs, context: &mut cert_x_gen::types::Cont
         );
     }
 
+    for path in &args.instrumented_manifest {
+        let (binary, instrumentation) = read_instrumented_manifest(path)?;
+        tracing::info!(
+            "Instrumentation provenance for {}: {} (from {})",
+            binary,
+            instrumentation.join(","),
+            path.display()
+        );
+        context
+            .instrumentation_provenance
+            .insert(binary, instrumentation);
+    }
+
     Ok(())
+}
+
+/// Read one `cxg build --instrument` manifest into a (binary, instrumentation)
+/// pair.
+///
+/// A manifest recording a **skipped** build is an error rather than a silent
+/// no-op. It names a build that did not happen, so a scan that accepted it and
+/// carried on would be inspecting some older artefact while the operator
+/// believed they had handed over provenance -- and the reason the build was
+/// skipped is exactly what they need to see.
+fn read_instrumented_manifest(path: &std::path::Path) -> Result<(String, Vec<String>)> {
+    use cert_x_gen::build::Manifest;
+
+    let raw = std::fs::read_to_string(path).map_err(|e| {
+        Error::config(format!(
+            "--instrumented-manifest '{}' is not readable: {e}",
+            path.display()
+        ))
+    })?;
+    let manifest: Manifest = serde_json::from_str(&raw).map_err(|e| {
+        Error::config(format!(
+            "--instrumented-manifest '{}' is not a cxg build manifest: {e}",
+            path.display()
+        ))
+    })?;
+
+    match manifest {
+        Manifest::Instrumented(built) => {
+            let binary = built
+                .binary
+                .canonicalize()
+                .unwrap_or_else(|_| built.binary.clone());
+            if built.instrumentation.is_empty() {
+                return Err(Error::config(format!(
+                    "--instrumented-manifest '{}' records no instrumentation for {}",
+                    path.display(),
+                    built.binary.display()
+                )));
+            }
+            Ok((binary.to_string_lossy().to_string(), built.instrumentation))
+        }
+        Manifest::Skipped(skipped) => Err(Error::config(format!(
+            "--instrumented-manifest '{}' records a build that was SKIPPED ({}); there is no \
+             instrumented binary to trust",
+            path.display(),
+            skipped.reason
+        ))),
+    }
 }
 
 /// Resolve a `cli://` path to its canonical form, falling back to the literal.

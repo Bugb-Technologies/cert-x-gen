@@ -189,7 +189,10 @@ impl Executor {
         // template's oracle check below.
         let instrumentation: Vec<String> = if matches!(target.protocol, crate::types::Protocol::Cli)
         {
-            crate::engine::common::detect_instrumentation(std::path::Path::new(&target.address))
+            crate::engine::common::instrumentation_for(
+                std::path::Path::new(&target.address),
+                &job.context,
+            )
         } else {
             Vec::new()
         };
@@ -405,7 +408,7 @@ impl Executor {
             return Some("target-not-found".to_string());
         }
 
-        let detected = crate::engine::common::detect_instrumentation(path);
+        let detected = crate::engine::common::instrumentation_for(path, context);
         if detected.is_empty() {
             Some(NO_INSTRUMENTATION.to_string())
         } else {

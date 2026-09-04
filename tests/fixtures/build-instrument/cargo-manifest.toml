@@ -1,0 +1,33 @@
+# The manifest for the `santoy` toy, materialised as `Cargo.toml` by
+# `tests/build_instrument.rs`.
+#
+# It is kept under a name cargo does NOT recognise so that this crate's own
+# `cargo build`, `cargo fmt --all` and `cargo test` never see a package nested
+# inside the package under test.
+#
+# Three binary targets from ONE source, so the twins cannot drift apart, and so
+# the toy also exercises `binary-target-ambiguous`: with three bins and no
+# `--bin`, there is no way to guess which one is the CLI under test.
+
+[package]
+name = "santoy"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Deliberately empty. The point of this crate is the BUILD path -- cargo plus
+# `-Zsanitizer=address` on a nightly toolchain -- so it must not drag in a
+# dependency tree that could be blamed for a failure.
+[dependencies]
+
+[[bin]]
+name = "santoy_defective"
+path = "src/main.rs"
+
+[[bin]]
+name = "santoy_intonly"
+path = "src/main.rs"
+
+[[bin]]
+name = "santoy_fixed"
+path = "src/main.rs"
