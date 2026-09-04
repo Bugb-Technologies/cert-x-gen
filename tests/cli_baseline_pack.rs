@@ -10,6 +10,12 @@
 //! twin a program is comes from its own filename, the same convention as
 //! `tests/fixtures/probe-contract/`.
 //!
+//! The pack itself is vendored alongside them, at
+//! `tests/fixtures/cli-baseline/pack/`. The published pack lives in the
+//! templates repository; this copy is what the test runs, so the engine
+//! repository's suite stays green on its own contents rather than depending on
+//! a checkout of another repository.
+//!
 //! Unix-only. The templates are `bash`, the fixtures are Python and C, and
 //! Windows cannot exec a `.sh` (`os error 3`) -- the same reason
 //! `tests/probe_contract.rs` is gated.
@@ -20,9 +26,9 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-/// Where the pack's templates live.
+/// Where the vendored copy of the pack's templates lives.
 fn pack_dir() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("templates/cli-baseline")
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/cli-baseline/pack")
 }
 
 /// Where the fixture sources live.

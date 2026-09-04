@@ -15,9 +15,11 @@ This file is the project's committed home for project-intrinsic agent knowledge:
 
 ## Templates
 
-- Detection templates live in a separate repository; `templates/` holds the per-language
-  skeletons embedded into the binary at compile time, plus `templates/cli-baseline/`. See
-  `templates/README.md`.
+- Detection templates live in a separate repository; `templates/` holds only the
+  per-language skeletons embedded into the binary at compile time. See `templates/README.md`.
+- A test that needs a real detection pack vendors its own copy under `tests/fixtures/`
+  (see `tests/fixtures/cli-baseline/pack/`) rather than reaching for one in another
+  repository, so this repository's suite is green on its own contents.
 - A file's **extension** decides whether cxg loads it as a template, and there are two
   independent allow-lists that must agree: the scan loader (`src/template/engine.rs`) and
   the `template validate` walk (`src/main.rs`). A helper that must not be run as a check
