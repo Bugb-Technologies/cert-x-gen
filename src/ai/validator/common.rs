@@ -87,16 +87,17 @@ impl CommonValidator {
         ];
 
         for (pattern, msg) in skeleton_patterns {
-            if code.contains(pattern) {
-                if let Some(line_num) = code.lines().position(|line| line.contains(pattern)) {
-                    diagnostics.push(
-                        TemplateDiagnostic::warning(
-                            "common.skeleton_placeholder",
-                            format!("{}: '{}'", msg, pattern),
-                        )
-                        .with_location(line_num + 1, None),
-                    );
-                }
+            let hit = code
+                .lines()
+                .position(|line| line.contains(pattern) && !is_exempt_placeholder(pattern, line));
+            if let Some(line_num) = hit {
+                diagnostics.push(
+                    TemplateDiagnostic::warning(
+                        "common.skeleton_placeholder",
+                        format!("{}: '{}'", msg, pattern),
+                    )
+                    .with_location(line_num + 1, None),
+                );
             }
         }
 
@@ -352,6 +353,22 @@ pub(super) fn reaches_its_target(code: &str) -> bool {
     declares_cli_target_kind(code) && CLI_PROBE_HANDLES.iter().any(|h| code.contains(h))
 }
 
+/// Is this occurrence of a skeleton-placeholder pattern a false positive?
+///
+/// `XXX` is both an unreplaced-placeholder marker and, as a run of six, the
+/// trailing template `mktemp` requires:
+///
+/// ```sh
+/// LAB="$(mktemp -d "${TMPDIR:-/tmp}/cxg-b01.XXXXXX")"
+/// ```
+///
+/// That is the standard hermetic-lab idiom, and every CLI probe template needs
+/// it -- each has to build its own sandbox before it touches the target. The
+/// `X`s there are an argument to `mktemp`, not a reminder to edit the file.
+fn is_exempt_placeholder(pattern: &str, line: &str) -> bool {
+    pattern == "XXX" && line.contains("mktemp")
+}
+
 /// Does this template declare `@target_kinds: cli`?
 ///
 /// The declaration changes what several validation rules *mean*, because a CLI
@@ -406,6 +423,41 @@ mod tests {
         let validator = CommonValidator::new();
         let code = "#!/bin/bash\n# @id: probe\n# @target_kinds: cli\n\"$CERT_X_GEN_TARGET_HOST\" --label x\n";
         assert!(validator.check_missing_target_host(code).is_none());
+    }
+
+    /// `mktemp` wants a run of `X`s, and every CLI probe template needs a
+    /// hermetic lab, so the placeholder scan fired on the whole category.
+    #[test]
+    fn a_mktemp_template_is_not_an_unreplaced_placeholder() {
+        let validator = CommonValidator::new();
+        let code = concat!(
+            "#!/bin/bash\n",
+            "# @id: cli-baseline-b01-argument-injection\n",
+            "# @target_kinds: cli\n",
+            "LAB=\"$(mktemp -d \"${TMPDIR:-/tmp}/cxg-b01.XXXXXX\")\"\n",
+        );
+        let diags = validator.check_skeleton_placeholders(code);
+        assert!(
+            diags.is_empty(),
+            "the X run is an argument to mktemp: {:?}",
+            diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+        );
+    }
+
+    /// The exemption is for `mktemp`'s argument only -- a real `XXX` marker on
+    /// any other line is still reported, including in a template that also
+    /// builds a lab.
+    #[test]
+    fn a_real_xxx_marker_is_still_reported_alongside_a_mktemp_lab() {
+        let validator = CommonValidator::new();
+        let code = concat!(
+            "#!/bin/bash\n",
+            "LAB=\"$(mktemp -d /tmp/cxg.XXXXXX)\"\n",
+            "# XXX decide what to probe here\n",
+        );
+        let diags = validator.check_skeleton_placeholders(code);
+        assert_eq!(diags.len(), 1, "{:?}", diags);
+        assert_eq!(diags[0].line, Some(3), "should point at the real marker");
     }
 
     #[test]
