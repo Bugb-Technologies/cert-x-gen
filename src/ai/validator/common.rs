@@ -349,12 +349,27 @@ pub(super) fn reaches_its_target(code: &str) -> bool {
         return true;
     }
 
-    let declares_cli = parse_metadata_from_comments(code)
+    declares_cli_target_kind(code) && CLI_PROBE_HANDLES.iter().any(|h| code.contains(h))
+}
+
+/// Does this template declare `@target_kinds: cli`?
+///
+/// The declaration changes what several validation rules *mean*, because a CLI
+/// template drives a local binary rather than a network service:
+///
+/// * an `ESC`-introduced sequence is the **probe payload** of a
+///   terminal-escape check (baseline class B08), not decorative colour;
+/// * a `mktemp -d …XXXXXX` template is a **hermetic lab**, not an unreplaced
+///   skeleton placeholder.
+///
+/// Rules that would otherwise fire on those two idioms consult this helper, in
+/// the same shape as the `@target_kinds`-aware exemption in
+/// [`reaches_its_target`].
+pub(super) fn declares_cli_target_kind(code: &str) -> bool {
+    parse_metadata_from_comments(code)
         .target_kinds
         .iter()
-        .any(|k| k.trim().eq_ignore_ascii_case("cli"));
-
-    declares_cli && CLI_PROBE_HANDLES.iter().any(|h| code.contains(h))
+        .any(|k| k.trim().eq_ignore_ascii_case("cli"))
 }
 
 #[cfg(test)]

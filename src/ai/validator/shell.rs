@@ -16,14 +16,18 @@ pub fn validate(code: &str) -> Result<Vec<TemplateDiagnostic>> {
         }
     }
 
+    // A `@target_kinds: cli` template carries an ESC sequence as probe payload
+    // rather than as decoration, so the escape-code rules below read it that way.
+    let cli_target = super::common::declares_cli_target_kind(code);
+
     // Check for CERT-X-GEN JSON contract structure
     diagnostics.extend(check_json_contract(code));
 
     // Check for problematic output statements
-    diagnostics.extend(check_output_statements(code));
+    diagnostics.extend(check_output_statements(code, cli_target));
 
     // Check for ANSI colors/escape codes (will break JSON)
-    diagnostics.extend(check_ansi_colors(code));
+    diagnostics.extend(check_ansi_colors(code, cli_target));
 
     // Check for error handling
     if !code.contains("set -e") && !code.contains("set -o errexit") {
@@ -106,13 +110,12 @@ fn check_json_contract(code: &str) -> Vec<TemplateDiagnostic> {
 }
 
 /// Check for problematic output statements that break JSON
-fn check_output_statements(code: &str) -> Vec<TemplateDiagnostic> {
+fn check_output_statements(code: &str, cli_target: bool) -> Vec<TemplateDiagnostic> {
     let mut diagnostics = Vec::new();
 
     // Patterns that indicate human-readable output
-    let problematic_patterns = vec![
+    let mut problematic_patterns = vec![
         ("echo -e", "echo with escape sequences (colors) detected"),
-        ("printf.*\\\\033", "ANSI escape sequences detected"),
         (
             "log_finding",
             "log_finding function may output human text instead of collecting JSON",
@@ -123,6 +126,11 @@ fn check_output_statements(code: &str) -> Vec<TemplateDiagnostic> {
         ),
         ("usage()", "usage() function called may output help text"),
     ];
+    // Same reasoning as `check_ansi_colors`: in a CLI template a `printf` of an
+    // ESC sequence builds the probe, it does not colourise the report.
+    if !cli_target {
+        problematic_patterns.push(("printf.*\\\\033", "ANSI escape sequences detected"));
+    }
 
     for (pattern_str, msg) in problematic_patterns {
         if let Ok(re) = regex::Regex::new(pattern_str) {
@@ -189,18 +197,26 @@ fn check_output_statements(code: &str) -> Vec<TemplateDiagnostic> {
 }
 
 /// Check for ANSI color codes that break JSON
-fn check_ansi_colors(code: &str) -> Vec<TemplateDiagnostic> {
+///
+/// `cli_target` is true when the template declares `@target_kinds: cli`. For
+/// such a template a raw escape sequence is the **payload** of a
+/// terminal-escape-injection probe (baseline class B08), not decoration, so
+/// the two raw-escape patterns are not evidence of colourised output. The
+/// decorative colour *variables* still are, and are still reported.
+fn check_ansi_colors(code: &str, cli_target: bool) -> Vec<TemplateDiagnostic> {
     let mut diagnostics = Vec::new();
 
     // Check for color variable definitions
-    let color_patterns = vec![
+    let mut color_patterns = vec![
         ("RED=", "RED color variable"),
         ("GREEN=", "GREEN color variable"),
         ("YELLOW=", "YELLOW color variable"),
         ("NC=", "NC (no color) variable"),
-        ("\\033[", "ANSI escape code"),
-        ("\\e[", "ANSI escape code"),
     ];
+    if !cli_target {
+        color_patterns.push(("\\033[", "ANSI escape code"));
+        color_patterns.push(("\\e[", "ANSI escape code"));
+    }
 
     for (pattern, name) in color_patterns {
         if code.contains(pattern) {
@@ -296,6 +312,65 @@ mod tests {
         let code = "#!/bin/bash\n# @id: probe\nset -e\necho hello\n";
         let diags = validate(code).unwrap();
         assert!(diags.iter().any(|d| d.code == "shell.missing_target_host"));
+    }
+
+    /// The terminal-escape baseline class (B08) probes a CLI by *sending* an
+    /// ESC-introduced sequence and checking whether the target echoes the raw
+    /// byte back. `shell.ansi_colors` is an `error`, so before this exemption
+    /// the most CLI-native class in the baseline could never be saved.
+    #[test]
+    fn a_declared_cli_template_may_carry_an_esc_sequence_as_probe_payload() {
+        let code = concat!(
+            "#!/bin/bash\n",
+            "# @id: cli-baseline-b08-terminal-escape\n",
+            "# @target_kinds: cli\n",
+            "BIN=\"$CERT_X_GEN_TARGET_HOST\"\n",
+            "PROBE=\"$(printf 'safe\\033[31mRED')\"\n",
+            "\"$BIN\" banner \"$PROBE\"\n",
+        );
+        let diags = validate(code).unwrap();
+        assert!(
+            !diags.iter().any(|d| d.code == "shell.ansi_colors"),
+            "the ESC byte IS the payload: {:?}",
+            diags.iter().map(|d| &d.code).collect::<Vec<_>>()
+        );
+        assert!(
+            !diags.iter().any(|d| d.code == "shell.human_readable_output"),
+            "the same false positive, one rule over: {:?}",
+            diags.iter().map(|d| &d.code).collect::<Vec<_>>()
+        );
+    }
+
+    /// The exemption is bought by the declaration, not by the escape sequence:
+    /// a network template that colourises its output is still an error, and a
+    /// CLI template that defines decorative colour *variables* still is too.
+    #[test]
+    fn an_undeclared_template_with_the_same_escape_is_still_an_error() {
+        let code = concat!(
+            "#!/bin/bash\n",
+            "# @id: some-network-probe\n",
+            "BIN=\"$CERT_X_GEN_TARGET_HOST\"\n",
+            "PROBE=\"$(printf 'safe\\033[31mRED')\"\n",
+        );
+        let diags = validate(code).unwrap();
+        assert!(diags.iter().any(|d| d.code == "shell.ansi_colors"));
+    }
+
+    #[test]
+    fn a_cli_template_that_actually_colourises_is_still_an_error() {
+        let code = concat!(
+            "#!/bin/bash\n",
+            "# @id: probe\n",
+            "# @target_kinds: cli\n",
+            "RED='red'\n",
+            "BIN=\"$CERT_X_GEN_TARGET_HOST\"\n",
+        );
+        let diags = validate(code).unwrap();
+        assert!(
+            diags.iter().any(|d| d.code == "shell.ansi_colors"),
+            "decorative colour variables are still decoration: {:?}",
+            diags.iter().map(|d| &d.code).collect::<Vec<_>>()
+        );
     }
 
     #[test]
