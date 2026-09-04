@@ -335,7 +335,9 @@ mod tests {
             diags.iter().map(|d| &d.code).collect::<Vec<_>>()
         );
         assert!(
-            !diags.iter().any(|d| d.code == "shell.human_readable_output"),
+            !diags
+                .iter()
+                .any(|d| d.code == "shell.human_readable_output"),
             "the same false positive, one rule over: {:?}",
             diags.iter().map(|d| &d.code).collect::<Vec<_>>()
         );

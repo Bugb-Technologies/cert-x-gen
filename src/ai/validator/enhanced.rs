@@ -64,12 +64,31 @@ impl EnhancedValidator {
     }
 
     /// Check for network/socket code presence
+    ///
+    /// "Security templates typically need network connectivity" holds for a
+    /// template pointed at a host and port. It does not hold for one pointed at
+    /// a local binary through `cli://`, which reaches its target by executing
+    /// it -- suggesting `nc -z $HOST $PORT` there is wrong advice, and the whole
+    /// CLI Security Baseline is that category.
+    ///
+    /// `shell.rs` and `common.rs` already ask `reaches_its_target` before
+    /// giving target-shaped advice; this rule was the one that never did, so
+    /// the s15 A3 exemption missed it.
     fn check_network_code(
         &self,
         code: &str,
         language: TemplateLanguage,
     ) -> Vec<TemplateDiagnostic> {
         let mut diagnostics = Vec::new();
+
+        // Exempt only a template that both declares the CLI kind and actually
+        // reaches its target. Requiring the declaration keeps the rule's real
+        // signal: a *network* template that reads the target host but never
+        // opens a socket is still warned, which is what it is for.
+        if super::common::declares_cli_target_kind(code) && super::common::reaches_its_target(code)
+        {
+            return diagnostics;
+        }
 
         if !self
             .registry
@@ -483,6 +502,65 @@ impl Default for EnhancedValidator {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A CLI baseline template reaches its target by *running* it. Telling it
+    /// to add `nc -z $HOST $PORT` is wrong advice, and it fired on all four of
+    /// the s16 proof templates.
+    #[test]
+    fn a_declared_cli_template_is_not_told_to_open_a_socket() {
+        let validator = EnhancedValidator::new();
+
+        let by_target_host = concat!(
+            "#!/bin/bash\n",
+            "# @id: cli-baseline-b03-path-traversal\n",
+            "# @target_kinds: cli\n",
+            "BIN=\"$CERT_X_GEN_TARGET_HOST\"\n",
+            "\"$BIN\" show ../outside.txt\n",
+        );
+        assert!(validator
+            .check_network_code(by_target_host, TemplateLanguage::Shell)
+            .is_empty());
+
+        // The other way a CLI template may reach its target (s15 A3).
+        let by_argv = concat!(
+            "#!/bin/bash\n",
+            "# @id: probe\n",
+            "# @target_kinds: cli\n",
+            "run \"$CERT_X_GEN_ARGV\"\n",
+        );
+        assert!(validator
+            .check_network_code(by_argv, TemplateLanguage::Shell)
+            .is_empty());
+    }
+
+    /// The exemption must not swallow the rule's real signal: a network
+    /// template that reads the target host but never opens a socket is exactly
+    /// what this rule is for, and is still warned.
+    #[test]
+    fn a_network_template_without_socket_code_is_still_warned() {
+        let validator = EnhancedValidator::new();
+
+        let no_declaration = concat!(
+            "#!/bin/bash\n",
+            "# @id: some-network-probe\n",
+            "HOST=\"$CERT_X_GEN_TARGET_HOST\"\n",
+            "echo \"$HOST\"\n",
+        );
+        let diags = validator.check_network_code(no_declaration, TemplateLanguage::Shell);
+        assert!(!diags.is_empty(), "{:?}", diags);
+        assert!(diags[0].code.contains("missing_network"));
+
+        // Declaring a kind that is not `cli` earns nothing either.
+        let other_kind = concat!(
+            "#!/bin/bash\n",
+            "# @id: probe\n",
+            "# @target_kinds: https\n",
+            "HOST=\"$CERT_X_GEN_TARGET_HOST\"\n",
+        );
+        assert!(!validator
+            .check_network_code(other_kind, TemplateLanguage::Shell)
+            .is_empty());
+    }
 
     #[test]
     fn test_python_network_check() {
