@@ -278,7 +278,7 @@ By contributing, you agree that your contributions will be licensed under the Ap
 ## Questions?
 
 - Open a discussion on GitHub
-- Join our Discord: https://discord.gg/cert-x-gen
+- Join our Discord: https://discord.gg/3RFkNtHRE
 - Email: team@cert-x-gen.io
 
 ## Recognition
