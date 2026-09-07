@@ -593,7 +593,9 @@ pub enum PentestAction {
     ///
     /// Exit codes:
     ///   0 → no confirmed findings (clean scan)
-    ///   1 → no templates available (guardlink output missing or empty)
+    ///   1 → no templates available (guardlink output missing or empty, or every
+    ///       template in a replayed --template-dir was withheld for carrying no
+    ///       `// @attach_scheme: path` header); report.json is still written
     ///   2 → confirmed findings present
     ///   3 → scan was hard-killed (5xx streak, scope violation) OR, under
     ///       `--no-restart`, a desktop target died mid-scan and was not relaunched
@@ -726,6 +728,11 @@ pub enum PentestAction {
         /// different targets, or after fixing engine bugs that affected template execution.
         ///
         /// Template directories are at `~/.cert-x-gen/templates/session-<timestamp>/`.
+        ///
+        /// A template carrying no `// @attach_scheme: path` header is WITHHELD — never
+        /// executed — and named in a `templates_withheld` caveat in report.json, because
+        /// it may have been generated under a same-named file's intent context. See
+        /// `pentest/docs/ARCHITECTURE.md` for the rule and the remedy for each case.
         #[arg(
             long,
             help_heading = "AI Generation",
