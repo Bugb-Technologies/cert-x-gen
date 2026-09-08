@@ -13,6 +13,16 @@ This file is the project's committed home for project-intrinsic agent knowledge:
 - **Clippy has a non-zero baseline.** Compare the count against the merge-base rather than
   expecting zero: `cargo clippy --all-targets 2>&1 | grep -c '^warning: '`.
 
+## Inline annotations this repo writes about itself
+
+- Every file here carries `@g.*` annotations (see `CLAUDE.md`). `pentest/guardlink.py`'s
+  `parse_inline` is what READS them, and the `@g.` prefix and multi-line descriptions were
+  invisible to it until they were made optional/joined — cert-x-gen's own 3,118 notes read as 1.
+  `pentest/docs/ARCHITECTURE.md` ("Inline annotations") is the authority on what it accepts.
+- Any change there must be measured through the real `parse_inline` over a fixture, never by
+  asserting on a regex's source; `pentest/tests/test_inline_annotation_forms.py` is the pattern,
+  including the tests that pin what must NOT match.
+
 ## Templates
 
 - Detection templates live in a separate repository; `templates/` holds only the
