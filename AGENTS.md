@@ -25,6 +25,12 @@ This file is the project's committed home for project-intrinsic agent knowledge:
 - Any change there must be measured through the real `parse_inline` over a fixture, never by
   asserting on a regex's source; `pentest/tests/test_inline_annotation_forms.py` is the pattern,
   including the tests that pin what must NOT match.
+- **A fix round may not weaken a test to make its own change pass.** If an existing test
+  fails, either the change is wrong or the test was wrong, and which one it is must be argued
+  explicitly — never settled by editing the test and moving on. A test relabelled "tolerated"
+  by the round that broke it is a regression with paperwork. This happened here: a round
+  moved a verb off position 0 in a fixture so its new stop stopped firing, and shipped green
+  while silently losing a whole wrapped note.
 
 ## Templates
 
