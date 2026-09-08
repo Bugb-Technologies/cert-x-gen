@@ -19,6 +19,9 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   `parse_inline` is what READS them, and the `@g.` prefix and multi-line descriptions were
   invisible to it until they were made optional/joined — cert-x-gen's own 3,118 notes read as 1.
   `pentest/docs/ARCHITECTURE.md` ("Inline annotations") is the authority on what it accepts.
+- **Escape a quote inside a note as `\"`.** An unescaped one truncates a single-line
+  description at that point, and on a wrapped note's continuation line it loses the whole
+  annotation silently — no error, the note simply stops being read.
 - Any change there must be measured through the real `parse_inline` over a fixture, never by
   asserting on a regex's source; `pentest/tests/test_inline_annotation_forms.py` is the pattern,
   including the tests that pin what must NOT match.
