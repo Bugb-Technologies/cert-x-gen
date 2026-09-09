@@ -335,7 +335,9 @@ pub enum PentestAction {
     ///
     /// One-time setup. Copies the Python orchestrator bundled with the cxg source tree
     /// to `~/.cert-x-gen/pentest/`, then verifies the required Python deps (playwright,
-    /// anthropic) are installed. Must be run before `cxg pentest auth` or `cxg pentest run`.
+    /// anthropic, PyYAML) are installed. It only CHECKS — anything missing is reported with
+    /// the `pip3 install` line to run. PyYAML is what `--scope-file` needs: without it every
+    /// `--scope-file` is refused. Must be run before `cxg pentest auth` or `cxg pentest run`.
     ///
     /// Examples:
     ///     cxg pentest install
@@ -599,6 +601,12 @@ pub enum PentestAction {
     ///   2 → confirmed findings present
     ///   3 → scan was hard-killed (5xx streak, scope violation) OR, under
     ///       `--no-restart`, a desktop target died mid-scan and was not relaunched
+    ///   4 → mis-specified run, refused at pre-flight before any probing: a
+    ///       `--scope-file` cxg cannot read (missing, unreadable, invalid YAML,
+    ///       not a mapping, empty file, or PyYAML absent), `--scope-file` with
+    ///       `--template-lang py`, `--target-type electron` without `--app-cmd`/
+    ///       `--app-binary`, `--oast` together with `--oast-interactsh`, or an auth
+    ///       profile whose kind does not match the target substrate
     ///   5 → CI mode (`--ci` / CXG_CI=1): an auth session was dead/expired at
     ///       pre-flight, so the run stopped before spending any AI calls rather
     ///       than silently probing UNAUTHENTICATED
@@ -811,6 +819,20 @@ pub enum PentestAction {
         /// Path to scope.yaml. Default: safe permissive defaults (any URL, GET/POST/HEAD/
         /// OPTIONS, 30 reqs/endpoint, 1500 reqs total, kill on 8-streak 5xx).
         /// Generate one with `cxg pentest scope-init`.
+        ///
+        /// If this flag is given and the file cannot be read — path does not exist,
+        /// unreadable, invalid YAML, not a mapping, empty, or PyYAML not installed —
+        /// the run is REFUSED with exit 4. It does not fall back to the defaults:
+        /// a bound cxg cannot read is not the same as no bound. Omitting the flag
+        /// entirely is the supported way to run on the defaults.
+        ///
+        /// An empty value never reaches that check and is not ignored either:
+        /// `--scope-file "$SCOPE"` with `SCOPE` unset is rejected by the CLI parser
+        /// as a usage error (exit 2, `a value is required for '--scope-file
+        /// <SCOPE_FILE>' but none was supplied`) before the scan starts.
+        ///
+        /// Refused with exit 4 on `--template-lang py` as well: the legacy Python probe
+        /// path enforces no scope at all, so a file accepted there would be discarded.
         #[arg(
             long,
             help_heading = "Execution",

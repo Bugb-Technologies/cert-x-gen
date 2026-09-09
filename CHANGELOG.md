@@ -96,6 +96,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `@source` is an unrelated `file:line` anchor directive that fails `guardlink validate`.
 
 ### Fixed
+- **`--scope-file` failed open.** It is how an operator tells `cxg pentest` what a scan is
+  allowed to touch, and every way of failing to read it left the run going on the built-in
+  defaults: a path that did not exist returned them **silently**, and an unparseable file —
+  or a machine without PyYAML — printed one warning line that scrolled past while the scan
+  proceeded. The operator believed the blast radius was bounded and it was not.
+  `ScopeConfig.load` now **refuses**: a missing path, an unopenable file, invalid YAML, a
+  document that is not a mapping of settings, an empty file, an empty flag value, or PyYAML
+  being absent all raise `ScopeFileError`, and `run_pentest` stops with **exit 4** (a
+  mis-specified run, not 2, which means "vulnerabilities found") before it resolves the
+  codebase or runs guardlink. The empty-value refusal covers direct invocation of the
+  orchestrator; `cxg pentest run --scope-file "$SCOPE"` with `SCOPE` unset never reaches it,
+  because clap rejects an empty value as a usage error (exit 2) before forwarding argv.
+  The message names the path, the reason, and the next action. Passing **no** `--scope-file`
+  is unchanged and is not an error — absent is not unreadable, and an operator who set no
+  bound still gets the documented defaults.
+- Reading a scope file requires **PyYAML**, which no install path checked for: `cxg pentest
+  install` verified only playwright and anthropic. It now verifies PyYAML too and names it
+  in the `pip3 install` line it prints, it is pinned in `pentest/requirements.txt`, and it
+  is named in the refusal — so a machine without it is told what to install instead of
+  scanning unbounded. Measured on a host where no interpreter on PATH could import `yaml`:
+  before this change every `--scope-file`, valid or not, was ignored.
+- `--scope-file` is refused with exit 4 on `--template-lang py`, and the refusal now runs in
+  pre-flight, before `--interactive-auth` capture and `--creds-file` re-auth. The legacy
+  Python probe path enforces no scope at all, so a file accepted there was read and
+  discarded; and an operator who mistyped the path used to complete every interactive login
+  first and be refused afterwards.
 - A template that outran its execution timeout kept running unsupervised: the timeout stopped
   awaiting the child but never killed it. `execute_command` now sets `kill_on_drop`.
 - `--require-instrumentation` skipped **every** template against a target carrying no

@@ -785,7 +785,7 @@ fn which_python() -> Result<PathBuf> {
 }
 
 /// Install the pentest orchestrator: copy bundled Python sources to ~/.cert-x-gen/pentest/
-/// and verify deps (playwright, anthropic).
+/// and verify deps (playwright, anthropic, PyYAML).
 fn pentest_install(home: &Path, force: bool) -> Result<()> {
     use std::process::Command as SysCommand;
 
@@ -824,17 +824,18 @@ fn pentest_install(home: &Path, force: bool) -> Result<()> {
         }
     }
 
+    // @comment -- "yaml (PyYAML) is checked alongside playwright and anthropic because --scope-file now REFUSES the run when it is absent rather than warning and scanning on defaults. Verifying two of the three dependencies while a containment control depends on the third moves the discovery from install time to engagement time — the operator finds out their scope file cannot be read at the moment they are trying to bound a live scan. The import name is `yaml`, the wheel is `pyyaml`; both spellings appear here for that reason."
     // Dep check
     let python = which_python()?;
     println!("checking Python deps…");
     let check = SysCommand::new(&python)
-        .args(["-c", "import playwright, anthropic; print('OK')"])
+        .args(["-c", "import playwright, anthropic, yaml; print('OK')"])
         .output();
     match check {
-        Ok(o) if o.status.success() => println!("  ✓ playwright + anthropic installed"),
+        Ok(o) if o.status.success() => println!("  ✓ playwright + anthropic + PyYAML installed"),
         _ => {
             println!("  ⚠ missing Python deps. Install with:");
-            println!("    pip3 install --break-system-packages playwright anthropic");
+            println!("    pip3 install --break-system-packages playwright anthropic pyyaml");
             println!("    python3 -m playwright install chromium");
         }
     }
