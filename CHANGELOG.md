@@ -88,7 +88,13 @@ make cxg read guardlink's grammar, and nothing here should be read as saying it 
   stopped being read at all, having been read for as long as cxg has had the verb. A flow that
   does not match is not a flow with an unread src, it is nothing. Endpoints are bounded on
   both sides by structure, so the wider shape is restored there and `@audit`/`@assumes` keep
-  the narrow one.
+  the narrow one. The endpoint is `#?(?:[\w.]|-(?!>))+`: a hyphen reads inside an endpoint
+  (`user-agent`, `#api-cache`) but is refused immediately before `>`, so `@flows #a --> #b`
+  reads as nothing rather than as `#a-` → `#b` — which is also what the installed guardlink
+  does with it. Without that exception a greedy endpoint absorbs the first hyphen of an
+  unspaced `->`, and because every group after the chain is optional the match never
+  backtracks: `@flows #a->#b->#c via sql -- "d"` SUCCEEDED with a fabricated destination
+  `#b-` and no channel and no description at all.
 - **A multi-hop chain no longer stamps one hypothesis as both provider and consumer of the
   same artifact.** `@flows #api -> #cache -> #db via redis` decomposes into two edges sharing
   one channel and therefore one artifact name, so `#cache` reached both sides once the edges
@@ -112,6 +118,26 @@ make cxg read guardlink's grammar, and nothing here should be read as saying it 
   annotation and silently re-attributing every note below it to the quoted path, so a "this is
   by design" note could reach a hypothesis in a different file. Leading whitespace still opens
   a block, because the installed guardlink parses an indented header.
+- **A via-less edge is no longer described to the model as having a channel.** The generation
+  prompt named the artifact but described every edge identically, so a declared `via` was not
+  passed on and an absent one could not be distinguished from it. A declared channel is now
+  named (`PROVIDES 'coupon_code' (declared over coupon.code)`) and an absent one is not
+  mentioned at all.
+
+**What went wrong repeatedly here, and why it was predictable**
+
+Review of this change turned up **six** defects where a written claim exceeded what the code
+does — the consumer table, the closed-severity set, the "one defect closed in three places"
+claim, the endpoint grammar, the chain-block note on where artifact names come from, and the
+headline itself — plus **two false guards**: tests whose assertions passed identically whether
+or not the thing they guarded had regressed. These are not unrelated tidy-ups, and the
+structural reason is worth stating because it predicts the defect rather than regretting it:
+**a change to what a parser ACCEPTS falsifies documentation at a higher rate than most
+changes, because the documentation's whole subject is what it accepts** — every widening
+invalidates some sentence describing the old bound, including sentences in files the diff does
+not touch. Both false guards were found by asking of each test the same question: would it
+still fail if the thing it guards were deleted? A guard that cannot fail is worse than no
+guard, because it reports coverage it does not have.
 
 **The instrumentation component — building a target that can earn its verdict**
 - **`cxg build --instrument`** — a new verb that produces an *instrumented* build of a
