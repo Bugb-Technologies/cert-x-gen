@@ -602,8 +602,8 @@ pub enum PentestAction {
     ///   3 → scan was hard-killed (5xx streak, scope violation) OR, under
     ///       `--no-restart`, a desktop target died mid-scan and was not relaunched
     ///   4 → mis-specified run, refused at pre-flight before any probing: a
-    ///       `--scope-file` cxg cannot read (missing, empty value, invalid YAML,
-    ///       not a mapping, or PyYAML absent), `--scope-file` with
+    ///       `--scope-file` cxg cannot read (missing, unreadable, invalid YAML,
+    ///       not a mapping, empty file, or PyYAML absent), `--scope-file` with
     ///       `--template-lang py`, `--target-type electron` without `--app-cmd`/
     ///       `--app-binary`, `--oast` together with `--oast-interactsh`, or an auth
     ///       profile whose kind does not match the target substrate
@@ -822,10 +822,14 @@ pub enum PentestAction {
         ///
         /// If this flag is given and the file cannot be read — path does not exist,
         /// unreadable, invalid YAML, not a mapping, empty, or PyYAML not installed —
-        /// the run is REFUSED with exit 4. So is an empty value: `--scope-file "$SCOPE"`
-        /// with `SCOPE` unset gave the flag and set no bound. It does not fall back to
-        /// the defaults: a bound cxg cannot read is not the same as no bound. Omitting
-        /// the flag entirely is the supported way to run on the defaults.
+        /// the run is REFUSED with exit 4. It does not fall back to the defaults:
+        /// a bound cxg cannot read is not the same as no bound. Omitting the flag
+        /// entirely is the supported way to run on the defaults.
+        ///
+        /// An empty value never reaches that check and is not ignored either:
+        /// `--scope-file "$SCOPE"` with `SCOPE` unset is rejected by the CLI parser
+        /// as a usage error (exit 2, `a value is required for '--scope-file
+        /// <SCOPE_FILE>' but none was supplied`) before the scan starts.
         ///
         /// Refused with exit 4 on `--template-lang py` as well: the legacy Python probe
         /// path enforces no scope at all, so a file accepted there would be discarded.

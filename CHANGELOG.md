@@ -101,11 +101,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   defaults: a path that did not exist returned them **silently**, and an unparseable file —
   or a machine without PyYAML — printed one warning line that scrolled past while the scan
   proceeded. The operator believed the blast radius was bounded and it was not.
-  `ScopeConfig.load` now **refuses**: an empty flag value (`--scope-file "$SCOPE"` with
-  `SCOPE` unset), a missing path, an unopenable file, invalid YAML, a document that is not
-  a mapping of settings, an empty file, or PyYAML being absent all raise `ScopeFileError`,
-  and `run_pentest` stops with **exit 4** (a mis-specified run, not 2, which means
-  "vulnerabilities found") before it resolves the codebase or runs guardlink.
+  `ScopeConfig.load` now **refuses**: a missing path, an unopenable file, invalid YAML, a
+  document that is not a mapping of settings, an empty file, an empty flag value, or PyYAML
+  being absent all raise `ScopeFileError`, and `run_pentest` stops with **exit 4** (a
+  mis-specified run, not 2, which means "vulnerabilities found") before it resolves the
+  codebase or runs guardlink. The empty-value refusal covers direct invocation of the
+  orchestrator; `cxg pentest run --scope-file "$SCOPE"` with `SCOPE` unset never reaches it,
+  because clap rejects an empty value as a usage error (exit 2) before forwarding argv.
   The message names the path, the reason, and the next action. Passing **no** `--scope-file`
   is unchanged and is not an error — absent is not unreadable, and an operator who set no
   bound still gets the documented defaults.
