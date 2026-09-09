@@ -28,9 +28,16 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   and must not be "converted". A match is also discarded unless it consumed the WHOLE
   declaration: a verb's clauses are all optional, so a search-based pattern cannot fail on a
   malformed one — it succeeds on the prefix it understood and drops the channel and the
-  description in silence. `_consumed_whole_declaration` is that test and
-  `pentest/docs/ARCHITECTURE.md` states what it refuses and the three details that keep it from
-  refusing real notes. `pentest/docs/ARCHITECTURE.md` ("Inline annotations") is the
+  description in silence. `_consumed_whole_declaration` is that test; it refuses a leftover
+  CLAUSE of the verb's own grammar (derived from `_VERB_CLAUSES`, the tuple the verb's pattern
+  is itself composed from — never restate it) and a leftover `#` REFERENCE, which is the half
+  no clause set can reach because malformed junk is usually an unread OPERAND. Measure any
+  change to it over the grammar's DIMENSIONS — terminator × each clause present or absent, for
+  every verb — never over the shapes you have seen failing: a bar built from observed failures
+  cannot falsify a rule keyed on what those failures happened to share, which is exactly how
+  the first version scored 29 of 29 while a whole quadrant stayed open.
+  `pentest/docs/ARCHITECTURE.md` states what it refuses, what it deliberately does not, and the
+  three details that keep it from refusing real notes. `pentest/docs/ARCHITECTURE.md` ("Inline annotations") is the
   authority on what it accepts, including which verbs have a CONSUMER: `@confirmed`,
   `@feature` and `@owns` are recognised and deliberately consumed by nothing, and that is a
   stated contract, not an omission. The installed `guardlink` binary is the other reader;

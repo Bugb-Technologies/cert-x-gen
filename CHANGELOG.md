@@ -145,13 +145,35 @@ make cxg read guardlink's grammar, and nothing here should be read as saying it 
   `report.json` under a header calling it the codebase's own declaration; `@audit #api!`,
   `@validates #ctl for App.API!` and `@boundary internet and api.gateway, db (#edge)` are the
   same defect on other verbs, and the installed guardlink answers `Malformed` for every one. A
-  match is now discarded when it leaves a clause of its own grammar unconsumed on the line — a
-  CLOSED `-- "…"` description, or a ` via ` clause for `@flows` — up to the next annotation.
-  An UNCLOSED description is deliberately not such a clause: that is a note the author did not
-  finish, and cxg's settled behaviour of reading the mandatory arguments with no `desc` is
-  unchanged. Measured across guardlink, siete and cert-x-gen: 0 descriptions shortened, 23
-  annotations gained a channel or a description they had been losing, and 7 no longer read,
-  every one of the 7 a hard `Malformed` error on the installed 2.0.0.
+  match is now discarded when the line up to the next ANNOTATION carries either a clause of the
+  verb's own grammar or an unread `#` reference. The clause set is DERIVED from `_VERB_CLAUSES`,
+  the same tuple each verb's pattern is composed from, so it covers every clause that verb has;
+  a hand-kept list of two — a description and `@flows`' ` via ` — reported
+  `@exposes App.API to #sqli cwe:CWE-89 [high]` with the severity silently dropped. The
+  reference test is the half no clause set can reach, because the junk in a malformed
+  declaration is usually an OPERAND: `@flows #api -> #cache, #db` drops a second endpoint and
+  `@exposes App.API to #sqli, #xss` a second threat. It is guardlink's own discrimination, read
+  off the tool — 2.0.0 answers `Malformed … could not parse arguments (looks structural — found
+  a #reference)` for both. An UNCLOSED description is deliberately not such a clause: that is a
+  note the author did not finish, and cxg's settled behaviour of reading the mandatory arguments
+  with no `desc` is unchanged. Measured over the grammar's dimensions rather than over shapes
+  seen failing — terminator × every combination of each verb's clauses present or absent, 1,624
+  shapes across all thirteen verbs — 740 read as a partial before and 0 do now; the clauses
+  alone leave 327 and the reference alone leaves 0, so neither half is redundant. What is not
+  refused is trailing text carrying neither: `@audit App.API!` still reads, which 2.0.0 reports
+  as prose rather than as an annotation. Measured across guardlink, siete and cert-x-gen: 0
+  descriptions shortened, 277 annotations gained a description they had been losing, 523 read
+  that did not read before, and 6 no longer read — two hard `Malformed` errors on 2.0.0 sitting
+  inside fixtures that assert exactly that, one prose passage in guardlink's agent instructions
+  explaining `@exposes`, and three renders in its generated dashboard HTML of a note whose
+  description is entity- or backslash-escaped and so genuinely unconsumed.
+- **The completeness region ends at the next ANNOTATION, not at the next at-sign.** Bounding it
+  at any `@` collapsed the region to nothing whenever a comment named a person, which is an
+  ordinary thing to write: `@audit #api @alice -- "please review the bcrypt comparison"` read as
+  an audit with the description gone, and `@flows User -> App.API @team via HTTPS -- "login
+  path"` lost the channel AND the note while still reaching `derive_chain_edges` as a declared
+  edge. The `@` must now be followed by one of the thirteen verbs, derived from `_VERB_RULES`.
+  The installed 2.0.0 calls the first line `Malformed @audit annotation`.
 - **Threat and control references may be DOTTED, and a `via` mechanism may carry `/`, `{`
   and `}`.** Both were measured against the installed binary rather than inferred: it validates
   `#shared-lib.injection` clean and returns `GET./items`, `HTTPS/443` and `GET./{stem}` whole,
