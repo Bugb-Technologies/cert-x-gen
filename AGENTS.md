@@ -13,6 +13,39 @@ This file is the project's committed home for project-intrinsic agent knowledge:
 - **Clippy has a non-zero baseline.** Compare the count against the merge-base rather than
   expecting zero: `cargo clippy --all-targets 2>&1 | grep -c '^warning: '`.
 
+## Inline annotations this repo writes about itself
+
+- Every file here carries `@g.*` annotations (see `CLAUDE.md`). `pentest/guardlink.py`'s
+  `parse_inline` is what READS them, and the `@g.` prefix and multi-line descriptions were
+  invisible to it until they were made optional/joined — cert-x-gen's own 3,118 notes read as 1.
+  `pentest/docs/ARCHITECTURE.md` ("Inline annotations") is the authority on what it accepts.
+- **Escape a quote inside a note as `\"`.** An unescaped one truncates a single-line
+  description at that point, and on a wrapped note's continuation line it loses the whole
+  annotation silently — no error, the note simply stops being read.
+- Any change there must be measured through the real `parse_inline` over a fixture, never by
+  asserting on a regex's source; `pentest/tests/test_inline_annotation_forms.py` is the pattern,
+  including the tests that pin what must NOT match.
+- **A fix round may not weaken a test to make its own change pass.** If an existing test
+  fails, either the change is wrong or the test was wrong, and which one it is must be argued
+  explicitly — never settled by editing the test and moving on. A test relabelled "tolerated"
+  by the round that broke it is a regression with paperwork. This happened here: a round
+  moved a verb off position 0 in a fixture so its new stop stopped firing, and shipped green
+  while silently losing a whole wrapped note.
+- **A test's meaning depends on the code around it.** A later change that adds an early exit
+  can silently empty a test that used to matter, and nothing goes red to say so. The only
+  defence is to ask whether the guard would still FAIL if the thing it guards were removed;
+  if deleting the guarded code leaves the test green, the test is not guarding it. This is a
+  different species from a weakened fixture — nobody edited the test. The nested-annotation
+  stop added an early exit that a 4,000-opener performance fixture hit before the continuation
+  cap was ever approached, so it stopped testing its subject and stayed green.
+- **An asymmetry justifies COMPLETING something, not BUILDING something.** "The same note
+  reads on one line and vanishes when wrapped" is evidence of an oversight only where closing
+  it adds no new discrimination — the `/**` opener was an incomplete marker set and was
+  completed. Where closing it needs new logic, especially logic that weakens an existing
+  safety check, the asymmetry is evidence of a BOUND: document it and file it, do not remove
+  it. The trailing-comment opener is that case (GAP-34); `pentest/guardlink.py`'s
+  `_line_comment_marker` carries the reasoning.
+
 ## Templates
 
 - Detection templates live in a separate repository; `templates/` holds only the
