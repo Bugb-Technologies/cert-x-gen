@@ -73,6 +73,26 @@ This file is the project's committed home for project-intrinsic agent knowledge:
 - `cxg template validate` gates `cxg ai generate`'s save path and `cxg template add`, but
   **not** `cxg scan` — a template can run fine and still fail validation.
 
+## Measuring the pentest orchestrator end to end
+
+- `cxg pentest run` shells out to `~/.cert-x-gen/pentest/cxg_pentest.py`, which is a COPY
+  installed by `cxg pentest install` — it can be older than the checkout. To measure your
+  own changes, run the checkout's script directly; the Rust side only forwards argv.
+- The Python entry point's subcommand is `pentest`, not `run`
+  (`python3 pentest/cxg_pentest.py pentest --target … --codebase …`). `run` is the Rust
+  spelling and argparse rejects it.
+- `main()` runs a profile-kind pre-flight that exits 4 before `run_pentest` is ever called,
+  so a measurement needs a real profile in `~/.cert-x-gen/auth/<name>.json` or it will exit
+  on that instead of on the thing being measured.
+- **PyYAML is not guaranteed by any install path.** `cxg pentest install` checks only
+  playwright and anthropic; PyYAML is pinned in `pentest/requirements.txt` and is what
+  `--scope-file` needs. Without it every `--scope-file` is refused — see
+  `pentest/README.md` § `cxg pentest scope-init`.
+- `--scope-file` fails CLOSED: an unreadable file refuses the run with exit 4 and never
+  degrades to defaults, while omitting the flag is a normal run on defaults. Absent is not
+  unreadable, and the two must not be conflated. `pentest/docs/ARCHITECTURE.md` §
+  `scope.py` is the authority; `pentest/tests/test_scope_file_refusal.py` pins both halves.
+
 ## Instrumentation preflight
 
 - `detect_instrumentation` (`src/engine/common.rs`) reads the **symbol table**, never the

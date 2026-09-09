@@ -811,6 +811,12 @@ pub enum PentestAction {
         /// Path to scope.yaml. Default: safe permissive defaults (any URL, GET/POST/HEAD/
         /// OPTIONS, 30 reqs/endpoint, 1500 reqs total, kill on 8-streak 5xx).
         /// Generate one with `cxg pentest scope-init`.
+        ///
+        /// If this flag is given and the file cannot be read — path does not exist,
+        /// invalid YAML, not a mapping, empty, or PyYAML not installed — the run is
+        /// REFUSED with exit 4. It does not fall back to the defaults: a bound cxg
+        /// cannot read is not the same as no bound. Omitting the flag entirely is the
+        /// supported way to run on the defaults.
         #[arg(
             long,
             help_heading = "Execution",
