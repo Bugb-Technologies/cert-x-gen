@@ -9,13 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-**cxg reads the annotation grammar guardlink teaches**
-- **1 of 14 → 13 of 14.** guardlink's `CLAUDE.md` teaches fourteen Quick Syntax forms; the
-  installed cxg parser read exactly one of them, the one-line `@comment`. A customer who
-  followed guardlink's documentation wrote annotations cxg could not see, and nothing said
-  so. `parse_inline` now reads thirteen — the fourteenth is `@actor`, which that block marks
-  `(definitions file)` and which names no code. Customer source is unchanged; the work is
-  entirely inside cxg.
+**cxg reads the annotation forms guardlink TEACHES, and some of what it accepts**
+
+Three separate claims, because they are separately true. guardlink's `CLAUDE.md` Quick Syntax
+block is a TEACHING SUBSET; `guardlink gal` is the authoritative grammar. This change does not
+make cxg read guardlink's grammar, and nothing here should be read as saying it does.
+
+- **(a) Teaching examples: 1 of 14 → 13 of 14.** guardlink's `CLAUDE.md` teaches fourteen
+  Quick Syntax forms; the installed cxg parser read exactly one of them, the one-line
+  `@comment`. A customer who followed guardlink's documentation wrote annotations cxg could
+  not see, and nothing said so. `parse_inline` now reads thirteen — the fourteenth is
+  `@actor`, which that block marks `(definitions file)` and which names no code. Customer
+  source is unchanged; the work is entirely inside cxg.
+- **(b) Additional `gal` forms this change adds**, beyond the teaching subset: `@boundary`'s
+  PRIMARY spellings `A and B (#id)` and `A | B` (cxg previously read only `between A and B`,
+  which `gal` calls the alternate), and multi-word `@flows` mechanisms such as `via TLS 1.3`
+  — `gal`'s own example, which cxg truncated to `TLS` and whose description it then dropped
+  entirely.
+- **(c) `gal` forms this change DELIBERATELY LEAVES UNREAD.** `@mitigates`' control clause is
+  optional in `gal` and `with` is accepted as a synonym for `using`, so
+  `@mitigates db.users against Token Theft -- "Rotation implemented in v2"` — `gal`'s own
+  second example — validates and parses on the installed binary and cxg still reads nothing
+  for it. This is a decision, not a to-do: nothing consumes `@mitigates` (see the consumer
+  table below), so widening it would add annotations no reader reads. Filed as **GAP-44**,
+  blocked on **GAP-43**, which is where "should an inline declaration with no SARIF result
+  behind it become a hypothesis?" gets settled.
 - **The grammar was widened to what the INSTALLED guardlink accepts**, not to what an
   instruction file describes: `guardlink validate` over a fixture carrying all thirteen
   source-legal examples reports 0 errors. Assets may be a dotted path (`App.API`) or a bare
@@ -29,7 +47,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   new parsers: `@assumes`, `@transfers`, `@boundary`, `@handles` and `@validates` reach the
   generation prompt as intent context, labelled with the verb their author wrote, and
   `@confirmed`, `@feature` and `@owns` are **recognised and consumed by nothing**, which is a
-  stated contract rather than an omission. Promoting `@confirmed` — a human asserting an
+  stated contract rather than an omission. `@exposes`, `@mitigates` and `@audit` are in that
+  same unconsumed group — six of the thirteen verbs in all. Hypotheses come from the SARIF,
+  not from inline annotations, so an exposure declared inline with no matching SARIF result
+  is invisible to cxg today; that is GAP-43 and is not decided here. Promoting `@confirmed` — a human asserting an
   exploit is real — into the context that decides whether a finding is a real vulnerability
   is an evidence-standard product call, not a parser change.
 - **`.gal` sidecars are read.** `guardlink init` writes EXTERNAL annotation mode by default,

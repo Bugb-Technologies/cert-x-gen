@@ -20,8 +20,10 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   estate was converted off it — the installed `guardlink` reads no `@g.` verb at all, so the
   whole corpus was invisible to it.
 - **Two readers, and they do not read the same set.** `pentest/guardlink.py`'s `parse_inline`
-  is cxg's own reader — thirteen verbs since 2026-09-09, when it was widened to the grammar
-  guardlink's own documentation teaches — and it still ACCEPTS `@g.` on purpose, so the
+  is cxg's own reader — thirteen verbs since 2026-09-09, when it was widened to the forms
+  guardlink's Quick Syntax block TEACHES (a subset; `guardlink gal` is the grammar, and cxg
+  does not read all of it — `@mitigates`' optional control clause and its `with` synonym are
+  deliberately unread, GAP-44) — and it still ACCEPTS `@g.` on purpose, so the
   tolerance tests in `pentest/tests/test_inline_annotation_forms.py` keep their `@g.` fixtures
   and must not be "converted". `pentest/docs/ARCHITECTURE.md` ("Inline annotations") is the
   authority on what it accepts, including which verbs have a CONSUMER: `@confirmed`,
