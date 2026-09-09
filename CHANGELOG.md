@@ -74,7 +74,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   merged — emitting `// @provides: redis` and `// @requires_artifact: redis` in one template,
   which the engine reads as a template waiting on an artifact it has not produced yet. The
   both-ends rule now also applies to the merged record, which is what `apply_chain_edges`
-  reads.
+  reads. The declared hop ORDER within such a chain is not enforced — hops sharing one `via`
+  share one artifact, so the run orders providers before consumers, not hop before hop, and
+  `chain_edges_declared` lists the hops as provenance of what was declared rather than as a
+  claim that the run reproduced that sequence.
+- **A via-less flow's artifact name no longer shares a namespace with a channel's.** Slugging
+  the endpoint pair the way a channel is slugged made `@flows #a -> #b` and an unrelated flow
+  declared `via a-b` both come out as `a_b` and MERGE onto one artifact — the consumer of one
+  reading whatever the producer of the other put there, on a record reporting `channel: null`
+  while listing a flow that did declare one. Via-less flows also collided with each other over
+  hyphenated ids (`#order -> #api-cache` and `#order-api -> #cache` both slugged to
+  `order_api_cache`). Endpoint-derived names are now `edge_<digest of the pair>`, still pure
+  so both halves of an edge compute one name from one string.
+- **A `.gal` `@source` header is recognised only at the start of a line.** Matched anywhere, a
+  note whose own description quoted the header text was consumed as a header — losing its own
+  annotation and silently re-attributing every note below it to the quoted path, so a "this is
+  by design" note could reach a hypothesis in a different file. Leading whitespace still opens
+  a block, because the installed guardlink parses an indented header.
 
 **The instrumentation component — building a target that can earn its verdict**
 - **`cxg build --instrument`** — a new verb that produces an *instrumented* build of a
