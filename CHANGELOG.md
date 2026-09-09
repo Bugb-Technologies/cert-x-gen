@@ -96,6 +96,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   *mentioned* `__asan_init` — in a comment or its own documentation — was classified as an
   instrumented build and the preflight passed. The scan now runs only on compiled objects
   (ELF, Mach-O, PE, static archives); everything else reports `none`.
+- `cxg pentest` read almost none of the inline `@comment` intent notes an annotated codebase
+  carries, so the design decisions those notes exist to explain reached the ranking and
+  probe-writing model as unexplained code. Two independent causes, both fixed: the `@g.` verb
+  prefix (`@g.comment`) that some agent instruction files teach was not accepted at all, and a
+  description wrapped onto a second comment line was read as no annotation rather than as one
+  joined note. Measured across three annotated repositories before the fix, 8,098 notes on disk
+  read as 140. The bounds that remain — the `\"` escaping rule, the continuation-line cap, and
+  the trailing-comment opener that is deliberately not joined — are documented under "Inline
+  annotations" in `pentest/docs/ARCHITECTURE.md`.
 
 ## [1.3.0] - 2026-08-13
 
