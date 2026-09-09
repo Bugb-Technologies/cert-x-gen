@@ -41,7 +41,7 @@ impl RepositoryManager {
             config,
         };
 
-        // @g.comment -- "Migrate stale official repo URL from old org to current default"
+        // @comment -- "Migrate stale official repo URL from old org to current default"
         manager.migrate_official_url()?;
 
         Ok(manager)
@@ -95,7 +95,7 @@ impl RepositoryManager {
         Ok(())
     }
 
-    // @g.comment -- "Updates a single repo: detects remote URL drift, re-clones if needed, then pulls"
+    // @comment -- "Updates a single repo: detects remote URL drift, re-clones if needed, then pulls"
     /// Update a specific repository
     pub fn update_repository(&mut self, name: &str) -> Result<()> {
         let repo = self

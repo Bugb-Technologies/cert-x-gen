@@ -183,7 +183,7 @@ impl DockerSandbox {
         }
 
         // Fix Docker credential helper issue by temporarily disabling it
-        // @g.comment -- "locate the Docker config under the user's home; dirs::home_dir() is cross-platform unlike $HOME, which is unset on Windows"
+        // @comment -- "locate the Docker config under the user's home; dirs::home_dir() is cross-platform unlike $HOME, which is unset on Windows"
         let docker_config_path = dirs::home_dir().map(|h| h.join(".docker/config.json"));
         let mut backup_made = false;
 

@@ -211,7 +211,7 @@ pub enum Commands {
 /// Cargo/Rust is the only back end today; every other recognised build system
 /// skips with `build-system-not-implemented`, which is the honest answer
 /// rather than a hidden limitation.
-// @g.comment -- "CLI options for the instrumented build-assist; drives the target's own build system"
+// @comment -- "CLI options for the instrumented build-assist; drives the target's own build system"
 #[derive(Parser, Debug, Clone)]
 pub struct BuildCommand {
     #[arg(
@@ -305,7 +305,7 @@ pub struct BuildCommand {
 }
 
 /// `cxg update` — self-update the binary from the latest GitHub release.
-// @g.comment -- "CLI options for the self-update command; downloads a release binary and replaces the running executable"
+// @comment -- "CLI options for the self-update command; downloads a release binary and replaces the running executable"
 #[derive(Parser, Debug, Clone)]
 pub struct UpdateCommand {
     /// Only check whether a newer version exists; don't download or install
@@ -328,7 +328,7 @@ pub struct PentestCommand {
 }
 
 #[derive(Subcommand, Debug, Clone)]
-// @g.comment -- "clippy::large_enum_variant, allowed deliberately. Run already carries ~35 operator flags and sat just under the lint's 200-byte spread; adding --oast-interactsh pushed it over. The lint's remedy is to box the variant's payload, which here would mean a Box around a clap-derived struct that main.rs destructures field-by-field — a churn of every pentest call site, and an allocation on a path that parses one command line and exits, to save bytes on a value that exists once per process. The size is a true statement about a subcommand with this many flags, not a defect."
+// @comment -- "clippy::large_enum_variant, allowed deliberately. Run already carries ~35 operator flags and sat just under the lint's 200-byte spread; adding --oast-interactsh pushed it over. The lint's remedy is to box the variant's payload, which here would mean a Box around a clap-derived struct that main.rs destructures field-by-field — a churn of every pentest call site, and an allocation on a path that parses one command line and exits, to save bytes on a value that exists once per process. The size is a true statement about a subcommand with this many flags, not a defect."
 #[allow(clippy::large_enum_variant)]
 pub enum PentestAction {
     /// Install the Python orchestrator into ~/.cert-x-gen/pentest/
@@ -389,7 +389,7 @@ pub enum PentestAction {
     ///     cxg pentest auth import --profile pentest --target https://staging.app \
     ///       --storage-state ./pentest.storage.json
     ///     cxg pentest auth verify --profile pentest
-    // @g.comment -- "auth carries the interactive-capture flags AND hosts the CI subcommands (import/verify). args_conflicts_with_subcommands keeps the two modes from being mixed on one line. This mirrors the Python surface, where cxg_pentest.py forwards `auth <rest>` verbatim to auth.py's own login|import|verify|list subparsers; bare `cxg pentest auth ...` maps to `auth login` exactly as before. --target/--profile are Option here rather than required-at-clap ONLY because clap's derive does not honour subcommand_negates_reqs (the builder method works, the #[command(...)] attribute is a no-op in clap 4.5), so a required --target would wrongly be demanded of `auth import`/`auth verify` too. Their required-ness for the capture path is enforced in main.rs's None branch, so the capture happy path and its errors are unchanged."
+    // @comment -- "auth carries the interactive-capture flags AND hosts the CI subcommands (import/verify). args_conflicts_with_subcommands keeps the two modes from being mixed on one line. This mirrors the Python surface, where cxg_pentest.py forwards `auth <rest>` verbatim to auth.py's own login|import|verify|list subparsers; bare `cxg pentest auth ...` maps to `auth login` exactly as before. --target/--profile are Option here rather than required-at-clap ONLY because clap's derive does not honour subcommand_negates_reqs (the builder method works, the #[command(...)] attribute is a no-op in clap 4.5), so a required --target would wrongly be demanded of `auth import`/`auth verify` too. Their required-ness for the capture path is enforced in main.rs's None branch, so the capture happy path and its errors are unchanged."
     #[command(args_conflicts_with_subcommands = true)]
     Auth {
         /// Target URL where login happens (e.g. https://app.example.com).
@@ -488,7 +488,7 @@ pub enum PentestAction {
         /// session state instead of a browser's.
         ///
         /// Tauri is not supported — it exposes no CDP endpoint on macOS or Linux.
-        // @g.comment -- "selects which substrate auth capture launches against; an unknown value is rejected by clap so a typo can never silently downgrade a desktop capture to a web capture"
+        // @comment -- "selects which substrate auth capture launches against; an unknown value is rejected by clap so a typo can never silently downgrade a desktop capture to a web capture"
         // requires_if (not required_if_eq on app_cmd) is deliberate: clap's required_if_eq/
         // required_unless validation path skips the conflicts_with escape hatch, so pairing it
         // with app_cmd's conflicts_with would wrongly demand --app-cmd even when --app-binary
@@ -501,7 +501,7 @@ pub enum PentestAction {
         ///
         /// Required with `--target-type electron` unless `--app-binary` is given.
         /// cxg appends `--remote-debugging-port` and a per-identity `--user-data-dir`.
-        // @g.comment -- "operator-supplied launch command forwarded to the orchestrator, which splits and executes it as a child process per identity"
+        // @comment -- "operator-supplied launch command forwarded to the orchestrator, which splits and executes it as a child process per identity"
         // @g.source (#operator_app_cmd) -- "command string supplied by the operator on the command line"
         #[arg(long, conflicts_with = "app_binary")]
         app_cmd: Option<String>,
@@ -509,13 +509,13 @@ pub enum PentestAction {
         /// Path to a built desktop app, e.g. /Applications/Foo.app.
         ///
         /// Alternative to `--app-cmd`; the two are mutually exclusive.
-        // @g.comment -- "operator-supplied path to a packaged application, executed directly instead of via a launch command"
+        // @comment -- "operator-supplied path to a packaged application, executed directly instead of via a launch command"
         #[arg(long, conflicts_with = "app_cmd")]
         app_binary: Option<String>,
 
         /// Non-interactive CI subcommand (`import` or `verify`). Absent = interactive
         /// capture using the flags above.
-        // @g.comment -- "optional so bare `cxg pentest auth --target ... --profile ...` still means interactive capture; present it routes to the browser-free import/verify paths auth.py exposes for CI"
+        // @comment -- "optional so bare `cxg pentest auth --target ... --profile ...` still means interactive capture; present it routes to the browser-free import/verify paths auth.py exposes for CI"
         #[command(subcommand)]
         auth_sub: Option<AuthSubcommand>,
     },
@@ -925,8 +925,8 @@ pub enum PentestAction {
         /// prints — that terminal is the only place these callbacks become visible.
         ///
         /// (With `--oast-interactsh` there is no second terminal: cxg is the client.)
-        // @g.comment -- "operator-supplied callback host injected into payloads; kept exactly as it was, value and all, because every existing invocation and every template calling cxg.oast.url() depends on it"
-        // @g.comment -- "help text deliberately no longer claims 'definitive blind-vuln confirmation': cxg holds no session for a host it was merely handed, so it cannot poll it, and an operator who read the old wording would take an unconfirmed finding for a confirmed one"
+        // @comment -- "operator-supplied callback host injected into payloads; kept exactly as it was, value and all, because every existing invocation and every template calling cxg.oast.url() depends on it"
+        // @comment -- "help text deliberately no longer claims 'definitive blind-vuln confirmation': cxg holds no session for a host it was merely handed, so it cannot poll it, and an operator who read the old wording would take an unconfirmed finding for a confirmed one"
         #[arg(
             long,
             value_name = "HOST",
@@ -952,9 +952,9 @@ pub enum PentestAction {
         ///
         /// Examples: `--oast-interactsh` (default servers), or
         /// `--oast-interactsh https://oast.example.internal` (your own instance).
-        // @g.comment -- "selects the OAST mode in which cxg registers and therefore can read the canary; the server URL, when given, is the interactsh instance the session is registered against"
-        // @g.comment -- "conflicts_with rather than a runtime if-both check, matching --app-cmd/--app-binary above: clap then rejects the pair during parse with the standard usage error, before any scan work, and the constraint is visible in --help instead of hiding in main()"
-        // @g.comment -- "num_args = 0..=1 with an empty default_missing_value keeps the value optional and distinguishes the three states the mode needs — absent (None, no session), bare (Some(\"\"), default servers), explicit (Some(url)). An Option<Option<String>> would encode the same thing while making every downstream match arm nested for no gain"
+        // @comment -- "selects the OAST mode in which cxg registers and therefore can read the canary; the server URL, when given, is the interactsh instance the session is registered against"
+        // @comment -- "conflicts_with rather than a runtime if-both check, matching --app-cmd/--app-binary above: clap then rejects the pair during parse with the standard usage error, before any scan work, and the constraint is visible in --help instead of hiding in main()"
+        // @comment -- "num_args = 0..=1 with an empty default_missing_value keeps the value optional and distinguishes the three states the mode needs — absent (None, no session), bare (Some(\"\"), default servers), explicit (Some(url)). An Option<Option<String>> would encode the same thing while making every downstream match arm nested for no gain"
         // @g.source (#operator_oast_server) -- "interactsh server URL supplied by the operator on the command line"
         #[arg(
             long,
@@ -981,7 +981,7 @@ pub enum PentestAction {
         ///
         ///     cxg pentest run --target-type electron --app-cmd "npm run electron:dev" \
         ///       --codebase ./app-repo --target https://api.example.com --auth desk-1,desk-2
-        // @g.comment -- "selects which substrate the orchestrator uses; an unknown value is rejected by clap so a typo can never silently downgrade a desktop scan to a web scan"
+        // @comment -- "selects which substrate the orchestrator uses; an unknown value is rejected by clap so a typo can never silently downgrade a desktop scan to a web scan"
         // requires_if (not required_if_eq on app_cmd) is deliberate: clap's required_if_eq/
         // required_unless validation path skips the conflicts_with escape hatch, so pairing it
         // with app_cmd's conflicts_with would wrongly demand --app-cmd even when --app-binary
@@ -1002,7 +1002,7 @@ pub enum PentestAction {
         ///
         /// Required with `--target-type electron` unless `--app-binary` is given.
         /// cxg appends `--remote-debugging-port` and a per-identity `--user-data-dir`.
-        // @g.comment -- "operator-supplied launch command forwarded to the orchestrator, which splits and executes it as a child process per identity"
+        // @comment -- "operator-supplied launch command forwarded to the orchestrator, which splits and executes it as a child process per identity"
         // @g.source (#operator_app_cmd) -- "command string supplied by the operator on the command line"
         #[arg(
             long,
@@ -1016,7 +1016,7 @@ pub enum PentestAction {
         /// Path to a built desktop app, e.g. /Applications/Foo.app.
         ///
         /// Alternative to `--app-cmd`; the two are mutually exclusive.
-        // @g.comment -- "operator-supplied path to a packaged application, executed directly instead of via a launch command"
+        // @comment -- "operator-supplied path to a packaged application, executed directly instead of via a launch command"
         #[arg(
             long,
             conflicts_with = "app_cmd",
@@ -1030,7 +1030,7 @@ pub enum PentestAction {
         ///
         /// By default host probes read only the isolated user-data directories cxg
         /// created itself. Pass this to opt in to scanning an existing install.
-        // @g.comment -- "opt-in expansion of host-probe scan scope beyond cxg-created directories, since reading an operator's real install is host-level access"
+        // @comment -- "opt-in expansion of host-probe scan scope beyond cxg-created directories, since reading an operator's real install is host-level access"
         #[arg(
             long,
             help_heading = "Target",
@@ -1046,7 +1046,7 @@ pub enum PentestAction {
         /// from the target's own origin. A same-origin probe of them is unsound: an
         /// app defended only by an Origin check accepts cxg's own-origin request, so
         /// the probe confirms an attack a real cross-site attacker could never land.
-        // @g.comment -- "Opt-in because it binds a listening socket on the operator's machine and performs REAL cross-site state changes against their application. Both are consequences an operator should choose rather than discover, which is why this is a flag and not a default even though it strictly improves verdict quality."
+        // @comment -- "Opt-in because it binds a listening socket on the operator's machine and performs REAL cross-site state changes against their application. Both are consequences an operator should choose rather than discover, which is why this is a flag and not a default even though it strictly improves verdict quality."
         #[arg(
             long,
             help_heading = "Probe execution",
@@ -1059,7 +1059,7 @@ pub enum PentestAction {
         ///
         /// Measured: 130-220s per AI template, so 105 routes cost ~4.5 hours.
         /// Default 1 is the existing per-hypothesis path, byte-for-byte.
-        // @g.comment -- "Clamped to 5 inside the generator rather than here, so the blast radius of one timed-out call stays bounded: a failed batch costs a re-run of that chunk individually, and at 5 the worst case is five regenerations rather than fifty. Cached and deterministically-emittable hypotheses are excluded before batching, so a fully-cached run makes zero calls whatever this is set to."
+        // @comment -- "Clamped to 5 inside the generator rather than here, so the blast radius of one timed-out call stays bounded: a failed batch costs a re-run of that chunk individually, and at 5 the worst case is five regenerations rather than fifty. Cached and deterministically-emittable hypotheses are excluded before batching, so a fully-cached run makes zero calls whatever this is set to."
         #[arg(
             long,
             help_heading = "Hypothesis filtering",
@@ -1074,7 +1074,7 @@ pub enum PentestAction {
         /// Covers cross-identity IDOR reads and missing collection authorization —
         /// 47 of Juice Shop's 105 discovered routes. These probes read no source,
         /// so they cannot cite a code-level cause; breadth, not depth.
-        // @g.comment -- "Opt-in because a deterministic probe is genuinely WEAKER than an AI-authored one: it cannot recognise an intentional design or name the guard that failed. An operator should choose that trade deliberately rather than inherit it from a default."
+        // @comment -- "Opt-in because a deterministic probe is genuinely WEAKER than an AI-authored one: it cannot recognise an intentional design or name the guard that failed. An operator should choose that trade deliberately rather than inherit it from a default."
         #[arg(
             long,
             help_heading = "Hypothesis filtering",
@@ -1088,7 +1088,7 @@ pub enum PentestAction {
         /// Templates declare `@provides: <name>` / `@requires_artifact: <name>`; cxg
         /// orders providers before consumers and passes the value through a per-run
         /// store. Edges are also derived automatically from guardlink `@flows`.
-        // @g.comment -- "Opt-in because it CHANGES TEMPLATE ORDER: a consumer waits for its provider, and one that declares an artifact nobody provides is skipped rather than run. With the flag off the order is the plain destructive_priority sort it has always been, so an existing run is unaffected."
+        // @comment -- "Opt-in because it CHANGES TEMPLATE ORDER: a consumer waits for its provider, and one that declares an artifact nobody provides is skipped rather than run. With the flag off the order is the plain destructive_priority sort it has always been, so an existing run is unaffected."
         #[arg(
             long,
             help_heading = "Probe execution",
@@ -1102,7 +1102,7 @@ pub enum PentestAction {
         /// guardlink only parses GAL annotations, so an un-annotated codebase yields
         /// zero hypotheses and the scan exits with "no templates available" having
         /// tested nothing. Measured on OWASP Juice Shop: guardlink 0, discovery 105.
-        // @g.comment -- "Opt-in because it changes WHAT gets tested: a discovered route is an attack SURFACE inferred from source, not a threat anybody declared, so its hypotheses are speculative in a way an annotated one is not. An annotated hypothesis always wins where both cover the same route. Default off keeps every existing run byte-identical."
+        // @comment -- "Opt-in because it changes WHAT gets tested: a discovered route is an attack SURFACE inferred from source, not a threat anybody declared, so its hypotheses are speculative in a way an annotated one is not. An annotated hypothesis always wins where both cover the same route. Default off keeps every existing run byte-identical."
         #[arg(
             long,
             help_heading = "Hypothesis filtering",
@@ -1117,7 +1117,7 @@ pub enum PentestAction {
         /// HTTP client can express — both `window.fetch` and Playwright's
         /// APIRequestContext normalise the framing that IS the payload for those
         /// classes. Can desync connections or wedge a server.
-        // @g.comment -- "Permission, distinct from the substrate capability that says a socket is POSSIBLE. Byte-level traffic can wedge a target, and an operator must opt into that consequence rather than inherit it from their choice of --target-type. Without it, request_smuggling and http_desync hypotheses route to review_only_threats instead of consuming a template slot they could never conclude."
+        // @comment -- "Permission, distinct from the substrate capability that says a socket is POSSIBLE. Byte-level traffic can wedge a target, and an operator must opt into that consequence rather than inherit it from their choice of --target-type. Without it, request_smuggling and http_desync hypotheses route to review_only_threats instead of consuming a template slot they could never conclude."
         #[arg(
             long,
             help_heading = "Probe execution",
@@ -1130,8 +1130,8 @@ pub enum PentestAction {
         /// front of them. Requires grpcio. The call carries the identity's
         /// --header values as gRPC metadata; cxg cannot borrow the browser
         /// session on this transport.
-        // @g.comment -- "Permission, distinct from the substrate capability that says a native gRPC call is POSSIBLE from this process. cxg.grpc dials a host:port from outside the browser where no same-origin policy contains it, so an operator opts into that reach rather than inheriting it from --target-type. Without it, hypotheses whose route is a gRPC method go to review_only_threats instead of consuming a template slot they could never conclude."
-        // @g.comment -- "NOT the switch for gRPC-Web, which is an ordinary HTTP POST cxg.raw already sends on every run with no flag. This covers a BARE gRPC service, which nothing in cxg could reach at all before."
+        // @comment -- "Permission, distinct from the substrate capability that says a native gRPC call is POSSIBLE from this process. cxg.grpc dials a host:port from outside the browser where no same-origin policy contains it, so an operator opts into that reach rather than inheriting it from --target-type. Without it, hypotheses whose route is a gRPC method go to review_only_threats instead of consuming a template slot they could never conclude."
+        // @comment -- "NOT the switch for gRPC-Web, which is an ordinary HTTP POST cxg.raw already sends on every run with no flag. This covers a BARE gRPC service, which nothing in cxg could reach at all before."
         #[arg(
             long,
             help_heading = "Probe execution",
@@ -1143,7 +1143,7 @@ pub enum PentestAction {
         /// A protoc-emitted FileDescriptorSet describing the target's gRPC
         /// services, so probes can send real typed messages and decode responses.
         /// Produce one with `protoc --descriptor_set_out=out.pb --include_imports`.
-        // @g.comment -- "The operator's own protoc output, and the only descriptor source cxg fully trusts: a service is free to describe itself inaccurately over reflection, so the result records which source produced each decoded field. Optional — without it cxg falls back to empty or raw-byte messages, which still answer an authorization question."
+        // @comment -- "The operator's own protoc output, and the only descriptor source cxg fully trusts: a service is free to describe itself inaccurately over reflection, so the result records which source produced each decoded field. Optional — without it cxg falls back to empty or raw-byte messages, which still answer an authorization question."
         #[arg(
             long,
             value_name = "FILE",
@@ -1155,7 +1155,7 @@ pub enum PentestAction {
 
         /// Do not ask gRPC services to describe themselves over server reflection.
         /// Without reflection, typed messages need --grpc-descriptor-set.
-        // @g.comment -- "An OFF-switch rather than an on-switch, matching the orchestrator: --allow-grpc is already the deliberate opt-in to gRPC traffic, and reflection is one cached read-only request per service of exactly the kind grpcurl makes by default. This exists for an engagement where every extra request must be accounted for."
+        // @comment -- "An OFF-switch rather than an on-switch, matching the orchestrator: --allow-grpc is already the deliberate opt-in to gRPC traffic, and reflection is one cached read-only request per service of exactly the kind grpcurl makes by default. This exists for an engagement where every extra request must be accounted for."
         #[arg(
             long,
             help_heading = "Probe execution",
@@ -1168,7 +1168,7 @@ pub enum PentestAction {
         /// treated as a dead target. Default 900s. This is a BACKSTOP only —
         /// `--stall-timeout` is what actually catches a frozen app. 0 disables it,
         /// which lets a wedged app hang the scan indefinitely.
-        // @g.comment -- "forwards the per-template ceiling to the orchestrator; without this the flag existed in Python only and was unreachable from the cxg binary, so an operator could not raise or disable the backstop at all"
+        // @comment -- "forwards the per-template ceiling to the orchestrator; without this the flag existed in Python only and was unreachable from the cxg binary, so an operator could not raise or disable the backstop at all"
         #[arg(
             long,
             help_heading = "Execution",
@@ -1182,7 +1182,7 @@ pub enum PentestAction {
         /// treated as stalled. This is IDLE time, not template runtime: a probe that
         /// keeps getting answers is never killed however long it runs. Default 90s,
         /// 0 disables. Applies to `--target-type electron` only.
-        // @g.comment -- "forwards the stall threshold to the orchestrator; the measured freeze (a native modal blocking Electron's main process) produces no exception at all, so this is the only bound that ends such a run, and it was unreachable from the binary until now"
+        // @comment -- "forwards the stall threshold to the orchestrator; the measured freeze (a native modal blocking Electron's main process) produces no exception at all, so this is the only bound that ends such a run, and it was unreachable from the binary until now"
         #[arg(
             long,
             help_heading = "Execution",
@@ -1197,7 +1197,7 @@ pub enum PentestAction {
         /// as a `denial_of_service` finding, re-probe the suspected IPC channel once
         /// and then quarantine it. With this flag a dead target ends the scan with a
         /// truncation caveat and exit 3 — the pre-recovery behaviour.
-        // @g.comment -- "operator opt-out of crash recovery, because recovery lets cxg's own probes restart the application under test repeatedly and that side effect is an availability decision the operator owns, not cxg"
+        // @comment -- "operator opt-out of crash recovery, because recovery lets cxg's own probes restart the application under test repeatedly and that side effect is an availability decision the operator owns, not cxg"
         #[arg(
             long,
             help_heading = "Execution",
@@ -1213,7 +1213,7 @@ pub enum PentestAction {
         /// points the run at the same directory here, so pre-flight, the engine, and
         /// the health monitor all read the restored bundle rather than the operator's
         /// home store.
-        // @g.comment -- "forwards the auth-store redirect to the orchestrator, which reassigns auth.AUTH_DIR before any profile is loaded; every profile consumer reaches the store only through auth.load_profile, so this one flag moves all of them. Forwarded only when set, so an unset flag leaves the orchestrator's ~/.cert-x-gen/auth default in force — one default, in one place the two CLIs cannot drift apart on."
+        // @comment -- "forwards the auth-store redirect to the orchestrator, which reassigns auth.AUTH_DIR before any profile is loaded; every profile consumer reaches the store only through auth.load_profile, so this one flag moves all of them. Forwarded only when set, so an unset flag leaves the orchestrator's ~/.cert-x-gen/auth default in force — one default, in one place the two CLIs cannot drift apart on."
         #[arg(
             long,
             help_heading = "Authentication",
@@ -1233,7 +1233,7 @@ pub enum PentestAction {
         ///
         /// Also enabled by the environment variable CXG_CI=1, for pipelines that
         /// cannot add the flag to the invocation.
-        // @g.comment -- "forwards the CI-mode selector as a flag when set; the hard-fail-on-dead-session and world-readable-auth-dir refusal both live in the Python orchestrator (cxg_pentest.py, auth.py), which also honours CXG_CI=1 on its own, so leaving the flag off here still lets the env var reach the orchestrator through the inherited environment"
+        // @comment -- "forwards the CI-mode selector as a flag when set; the hard-fail-on-dead-session and world-readable-auth-dir refusal both live in the Python orchestrator (cxg_pentest.py, auth.py), which also honours CXG_CI=1 on its own, so leaving the flag off here still lets the env var reach the orchestrator through the inherited environment"
         #[arg(
             long,
             help_heading = "Authentication",
@@ -1270,7 +1270,7 @@ pub enum PentestAction {
 
 /// Non-interactive auth subcommands for CI — mirrors `pentest/auth.py`'s
 /// `import`/`verify` subparsers exactly.
-// @g.comment -- "the CI-replay half of the auth surface: a human captures a session once (SSO/MFA and all) and exports its Playwright storage_state; import writes a profile from that state with no browser, and verify gates on whether the saved session is still alive. Both were reachable only via `python3 cxg_pentest.py auth ...` until this surface was wired into clap; the defaults here are copied from auth.py's argparse, which is the specification."
+// @comment -- "the CI-replay half of the auth surface: a human captures a session once (SSO/MFA and all) and exports its Playwright storage_state; import writes a profile from that state with no browser, and verify gates on whether the saved session is still alive. Both were reachable only via `python3 cxg_pentest.py auth ...` until this surface was wired into clap; the defaults here are copied from auth.py's argparse, which is the specification."
 #[derive(Subcommand, Debug, Clone)]
 pub enum AuthSubcommand {
     /// Import a saved Playwright storage_state as a profile (no browser)
@@ -1348,7 +1348,7 @@ pub enum AuthSubcommand {
 
         /// Non-interactive CI mode: refuse a world-accessible `--auth-dir` rather than
         /// write a credential a fellow user could read. Also enabled by CXG_CI=1.
-        // @g.comment -- "forwards CI-strictness to auth.py, which refuses a world-readable --auth-dir before persisting a session; the refusal lives in Python (assert_auth_dir_not_world_readable), honoured here and via CXG_CI=1 in the inherited environment"
+        // @comment -- "forwards CI-strictness to auth.py, which refuses a world-readable --auth-dir before persisting a session; the refusal lives in Python (assert_auth_dir_not_world_readable), honoured here and via CXG_CI=1 in the inherited environment"
         #[arg(long)]
         ci: bool,
     },
@@ -3213,7 +3213,7 @@ pub enum ProviderAction {
     Status,
 }
 
-// @g.comment -- "unit tests for the desktop-target CLI flags (--target-type/--app-cmd/--app-binary), verifying clap's default, validation, and conflicts_with/required_if_eq resolution before wiring them into the orchestrator forwarding"
+// @comment -- "unit tests for the desktop-target CLI flags (--target-type/--app-cmd/--app-binary), verifying clap's default, validation, and conflicts_with/required_if_eq resolution before wiring them into the orchestrator forwarding"
 #[cfg(test)]
 mod desktop_flag_tests {
     use super::*;
@@ -3544,7 +3544,7 @@ mod desktop_flag_tests {
     }
 }
 
-// @g.comment -- "unit tests for the two OAST modes: that the pollable one parses in both its bare and explicit forms, that clap rejects the pair (a split canary), and — the one that guards backward compatibility — that a lone --oast still parses to exactly what it always did"
+// @comment -- "unit tests for the two OAST modes: that the pollable one parses in both its bare and explicit forms, that clap rejects the pair (a split canary), and — the one that guards backward compatibility — that a lone --oast still parses to exactly what it always did"
 #[cfg(test)]
 mod oast_flag_tests {
     use super::*;
@@ -3690,7 +3690,7 @@ mod oast_flag_tests {
     }
 }
 
-// @g.comment -- "unit tests for the Track B CI-auth surface (auth import / auth verify subcommands, and run's --ci/--auth-dir). Track B shipped to the Python orchestrator's argparse only; src/cli.rs was never updated, so the cxg binary rejected the whole surface with 'unexpected argument'. These pin that each subcommand and flag now parses, that the auth capture path is unchanged when no subcommand is given, that the import/verify subcommands do NOT demand the capture path's --target/--profile (the reason those two are Option at the parent), and that the mutually-exclusive capture-args-vs-subcommand constraint holds."
+// @comment -- "unit tests for the Track B CI-auth surface (auth import / auth verify subcommands, and run's --ci/--auth-dir). Track B shipped to the Python orchestrator's argparse only; src/cli.rs was never updated, so the cxg binary rejected the whole surface with 'unexpected argument'. These pin that each subcommand and flag now parses, that the auth capture path is unchanged when no subcommand is given, that the import/verify subcommands do NOT demand the capture path's --target/--profile (the reason those two are Option at the parent), and that the mutually-exclusive capture-args-vs-subcommand constraint holds."
 #[cfg(test)]
 mod track_b_auth_tests {
     use super::*;

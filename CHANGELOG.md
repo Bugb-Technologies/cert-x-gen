@@ -83,6 +83,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Both new metadata fields are optional, and a template that declares no `exception` oracle is
   unaffected.
 
+### Changed
+- **This repository's own inline annotations now use GuardLink's bare verbs.** Every
+  annotation here was written to the grammar of Giggs, a discontinued predecessor, which
+  prefixes each verb `@g.` — a form the `guardlink` binary reads as nothing at all, so the
+  whole corpus was absent from its threat model (`annotations_parsed: 0`). 3,202 `@g.comment`
+  verbs across 115 files became `@comment`; no description text, asset, severity or layout
+  changed. `guardlink parse` now reads 1,511 of them (0 before). cxg's own `parse_inline` is
+  unaffected — it accepts both forms and reads the same 3,256 annotations before and after.
+  Two verbs are deliberately left in the old form because they do not map onto GuardLink's
+  grammar: `@g.sink` (7), which has no `@sink` counterpart, and `@g.source` (9), whose bare
+  `@source` is an unrelated `file:line` anchor directive that fails `guardlink validate`.
+
 ### Fixed
 - A template that outran its execution timeout kept running unsupervised: the timeout stopped
   awaiting the child but never killed it. `execute_command` now sets `kill_on_drop`.
