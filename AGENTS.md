@@ -40,7 +40,7 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   case is in guardlink's `tests/fixtures/expense-api`. This is one defect in three places
   (continuation line, opening line, and a note that opens and closes on one line); the last two
   are closed, and any new verb widens the surface of all three. **The CONTINUATION-line case is
-  an OPEN BOUND — board card GAP-42.** The join stopping at such a line is not the fix:
+  an OPEN BOUND — board card GAP-48.** The join stopping at such a line is not the fix:
   `parse_inline` reaches that line again on its own turn and emits. Do not attempt the closure
   without re-reading the measurement in `pentest/docs/ARCHITECTURE.md` — the obvious one loses
   191 descriptions in siete and overturns a standing PR-74 decision. Until it is closed, prose

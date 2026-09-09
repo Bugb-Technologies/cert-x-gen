@@ -77,7 +77,7 @@ make cxg read guardlink's grammar, and nothing here should be read as saying it 
   and the bound did not reach it, so `@feature "SSO Login" -- "we rejected @exposes App.API
   to #idor here"` emitted the exposure the sentence says was rejected.
 - **The CONTINUATION-line case is NOT closed and is carried as an open bound** (board card
-  GAP-42). The join refuses to run past such a line, but `parse_inline` visits it again on its
+  GAP-48). The join refuses to run past such a line, but `parse_inline` visits it again on its
   own turn with no span, so a verb in a wrapped note's prose is still emitted. The smallest
   closure was prototyped and measured: it removes 9 fabrications in cert-x-gen but loses 191
   descriptions in siete and overturns a standing PR-74 decision, so it is filed rather than
@@ -101,10 +101,16 @@ make cxg read guardlink's grammar, and nothing here should be read as saying it 
   merged — emitting `// @provides: redis` and `// @requires_artifact: redis` in one template,
   which the engine reads as a template waiting on an artifact it has not produced yet. The
   both-ends rule now also applies to the merged record, which is what `apply_chain_edges`
-  reads. The declared hop ORDER within such a chain is not enforced — hops sharing one `via`
-  share one artifact, so the run orders providers before consumers, not hop before hop, and
-  `chain_edges_declared` lists the hops as provenance of what was declared rather than as a
-  claim that the run reproduced that sequence.
+  reads.
+- **Each hop of a multi-hop chain gets its own artifact.** Naming both hops of
+  `@flows #api -> #cache -> #db via redis` from the shared channel left ONE artifact with TWO
+  providers, and the engine's chain store is a dict assignment — the second put overwrote the
+  first with no error and no second entry, so `#db` probed whichever provider ran last,
+  possibly the value discovered for a hop it never declared, and `#cache` was never sequenced
+  after `#api`. A hop is now named from the channel AND its own endpoint pair, so the two hops
+  are distinct and the declared order is enforced. Single-hop naming is unchanged: two hops of
+  ONE declaration are a sequence its author wrote and must stay distinct, whereas two SEPARATE
+  declarations naming one transport are a different cause with a different fix (GAP-47).
 - **A via-less flow's artifact name no longer shares a namespace with a channel's.** Slugging
   the endpoint pair the way a channel is slugged made `@flows #a -> #b` and an unrelated flow
   declared `via a-b` both come out as `a_b` and MERGE onto one artifact — the consumer of one
@@ -138,6 +144,14 @@ invalidates some sentence describing the old bound, including sentences in files
 not touch. Both false guards were found by asking of each test the same question: would it
 still fail if the thing it guards were deleted? A guard that cannot fail is worse than no
 guard, because it reports coverage it does not have.
+
+One more, and it is the cheaper lesson of the two: **a finding that keeps returning in new
+shapes is a cause that has not been named.** The multi-hop `@flows` declaration produced three
+findings across three rounds — a hypothesis both providing and requiring one artifact, then an
+unenforced hop ordering, then two providers silently overwriting one artifact key. The first
+two were correct symptom fixes and the cause only surfaced on the third: hops of one
+declaration were sharing a name. When the same declaration produces a third finding, stop
+fixing it and go looking for what makes it produce findings.
 
 **The instrumentation component — building a target that can earn its verdict**
 - **`cxg build --instrument`** — a new verb that produces an *instrumented* build of a
