@@ -20,11 +20,24 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   estate was converted off it — the installed `guardlink` reads no `@g.` verb at all, so the
   whole corpus was invisible to it.
 - **Two readers, and they do not read the same set.** `pentest/guardlink.py`'s `parse_inline`
-  is cxg's own reader — five verbs, and it still ACCEPTS `@g.` on purpose, so the tolerance
-  tests in `pentest/tests/test_inline_annotation_forms.py` keep their `@g.` fixtures and must
-  not be "converted". `pentest/docs/ARCHITECTURE.md` ("Inline annotations") is the authority
-  on what it accepts. The installed `guardlink` binary is the other reader; `guardlink gal`
-  is its grammar.
+  is cxg's own reader — thirteen verbs since 2026-09-09, when it was widened to the grammar
+  guardlink's own documentation teaches — and it still ACCEPTS `@g.` on purpose, so the
+  tolerance tests in `pentest/tests/test_inline_annotation_forms.py` keep their `@g.` fixtures
+  and must not be "converted". `pentest/docs/ARCHITECTURE.md` ("Inline annotations") is the
+  authority on what it accepts, including which verbs have a CONSUMER: `@confirmed`,
+  `@feature` and `@owns` are recognised and deliberately consumed by nothing, and that is a
+  stated contract, not an omission. The installed `guardlink` binary is the other reader;
+  `guardlink gal` is its grammar.
+- **Widen to what the installed guardlink ACCEPTS, never to what an instruction file teaches.**
+  The two disagree: guardlink rejects `@exposes Dotted.Path (#id) to #threat` and bare
+  `@source (#id)` as hard `validate` errors (SPEC 2.3 reserves the parenthesised id for
+  definition verbs — board card GAP-36), so cxg must not read them either. Check a form by
+  running `guardlink validate` over a fixture before building a reader for it.
+- **A verb written inside a note's own description is not an annotation.** Prose explaining a
+  verb, or recording a mitigation deliberately NOT written, must not be read as one — the real
+  case is in guardlink's `tests/fixtures/expense-api`. This is one defect in three places
+  (continuation line, opening line, and a note that opens and closes on one line); all three
+  are closed, and any new verb widens the surface of all three.
 - **`@source` and `@sink` are still in the Giggs form, deliberately.** guardlink has no
   `@sink` verb, and its `@source` is an unrelated `file:line` anchor directive — a bare
   `@source (#id) -- "…"` is a hard `guardlink validate` error, not a working annotation. Both

@@ -9,6 +9,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+**cxg reads the annotation grammar guardlink teaches**
+- **1 of 14 → 13 of 14.** guardlink's `CLAUDE.md` teaches fourteen Quick Syntax forms; the
+  installed cxg parser read exactly one of them, the one-line `@comment`. A customer who
+  followed guardlink's documentation wrote annotations cxg could not see, and nothing said
+  so. `parse_inline` now reads thirteen — the fourteenth is `@actor`, which that block marks
+  `(definitions file)` and which names no code. Customer source is unchanged; the work is
+  entirely inside cxg.
+- **The grammar was widened to what the INSTALLED guardlink accepts**, not to what an
+  instruction file describes: `guardlink validate` over a fixture carrying all thirteen
+  source-legal examples reports 0 errors. Assets may be a dotted path (`App.API`) or a bare
+  capitalised identifier; severities accept guardlink's word spellings (all 88 severities in
+  guardlink's own model are word form and NOT ONE is a `[P0]` code, so the only spelling cxg
+  admitted was the one the corpus never writes); `@flows` is a chain with an optional `via`
+  (37 of the 123 flows in guardlink's own repository could never become a chain edge, every
+  one failing on a bare destination).
+- **Eight verbs cxg had no reader for at all** — `@confirmed`, `@boundary`, `@handles`,
+  `@validates`, `@assumes`, `@transfers`, `@feature`, `@owns` — are read. They are not eight
+  new parsers: `@assumes`, `@transfers`, `@boundary`, `@handles` and `@validates` reach the
+  generation prompt as intent context, labelled with the verb their author wrote, and
+  `@confirmed`, `@feature` and `@owns` are **recognised and consumed by nothing**, which is a
+  stated contract rather than an omission. Promoting `@confirmed` — a human asserting an
+  exploit is real — into the context that decides whether a finding is a real vulnerability
+  is an evidence-standard product call, not a parser change.
+- **`.gal` sidecars are read.** `guardlink init` writes EXTERNAL annotation mode by default,
+  putting annotations in `.guardlink/annotations/<path>.gal` and leaving source files bare.
+  `.gal` is not a source extension, so on a repository set up the way guardlink's own
+  instructions describe, cxg read zero annotations and lost every intent note in guardlink's
+  DEFAULT mode. Annotations are attributed to the source file and line their `@source` header
+  names, never to the sidecar — matching what the installed binary emits.
+
+### Fixed
+
+- **A verb written inside a note's own description is no longer read as an annotation.** A
+  human explaining which mitigation they deliberately did NOT write had that mitigation
+  recorded as real. The example is from guardlink's own `tests/fixtures/expense-api`:
+  `@comment -- "Written first as @mitigates #api against #malformed-input using
+  #auth-required, which nothing rejected even though the control and the threat have nothing
+  to do with each other"`. This is one defect in three places — on a continuation line
+  (closed earlier), on a line that opens a description running off its end, and on a line
+  where the note opens and closes — and this closes the third. Widening the verb set from
+  five to thirteen is what made it necessary rather than tidy. It was the only annotation the
+  bound removed across all three annotated repositories, and a genuine annotation written
+  after a closed note on the same line is still read.
+
 **The instrumentation component — building a target that can earn its verdict**
 - **`cxg build --instrument`** — a new verb that produces an *instrumented* build of a
   compiled target, so the CLI Security Baseline's low-level classes reach real
