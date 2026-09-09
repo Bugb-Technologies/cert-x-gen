@@ -77,7 +77,7 @@ make cxg read guardlink's grammar, and nothing here should be read as saying it 
   and the bound did not reach it, so `@feature "SSO Login" -- "we rejected @exposes App.API
   to #idor here"` emitted the exposure the sentence says was rejected.
 - **The CONTINUATION-line case is NOT closed and is carried as an open bound** (board card
-  GAP-48). The join refuses to run past such a line, but `parse_inline` visits it again on its
+  GAP-32). The join refuses to run past such a line, but `parse_inline` visits it again on its
   own turn with no span, so a verb in a wrapped note's prose is still emitted. The smallest
   closure was prototyped and measured: it removes 9 fabrications in cert-x-gen but loses 191
   descriptions in siete and overturns a standing PR-74 decision, so it is filed rather than
@@ -111,6 +111,12 @@ make cxg read guardlink's grammar, and nothing here should be read as saying it 
   are distinct and the declared order is enforced. Single-hop naming is unchanged: two hops of
   ONE declaration are a sequence its author wrote and must stay distinct, whereas two SEPARATE
   declarations naming one transport are a different cause with a different fix (GAP-47).
+  **This closes the NAMING cause, not the two-providers class.** Two providers on one artifact,
+  and the silent overwrite with it, stay reachable by two routes this change does not touch:
+  two hypotheses sharing one asset both become providers, because `src_ids` is the id set of
+  every hypothesis on the src asset — the ordinary case, one SARIF result per exposure and
+  several per asset — and two separate declarations sharing a transport name do the same
+  (GAP-47). Both are pre-existing and neither is closed here.
 - **A via-less flow's artifact name no longer shares a namespace with a channel's.** Slugging
   the endpoint pair the way a channel is slugged made `@flows #a -> #b` and an unrelated flow
   declared `via a-b` both come out as `a_b` and MERGE onto one artifact — the consumer of one

@@ -40,12 +40,16 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   case is in guardlink's `tests/fixtures/expense-api`. This is one defect in three places
   (continuation line, opening line, and a note that opens and closes on one line); the last two
   are closed, and any new verb widens the surface of all three. **The CONTINUATION-line case is
-  an OPEN BOUND — board card GAP-48.** The join stopping at such a line is not the fix:
+  an OPEN BOUND — board card GAP-32.** The join stopping at such a line is not the fix:
   `parse_inline` reaches that line again on its own turn and emits. Do not attempt the closure
   without re-reading the measurement in `pentest/docs/ARCHITECTURE.md` — the obvious one loses
   191 descriptions in siete and overturns a standing PR-74 decision. Until it is closed, prose
   in this estate must spell a verb apart from its arguments (`` `@flows` `` then
-  `` `#p -> #q` ``), because this parser reads its own source.
+  `` `#p -> #q` ``), because this parser reads its own source. GAP-32 is one specific way a
+  broader root cause fires: cxg reads a verb ANYWHERE in a comment where guardlink requires it
+  to open one (**GAP-48**). Cite GAP-32 for the continuation line and GAP-48 for the general
+  case; do not merge them, and note that GAP-48's proposed anchor has a `.gal` trap — sidecar
+  lines carry no comment marker, so a naive anchor drops every sidecar annotation.
 - **`@source` and `@sink` are still in the Giggs form, deliberately.** guardlink has no
   `@sink` verb, and its `@source` is an unrelated `file:line` anchor directive — a bare
   `@source (#id) -- "…"` is a hard `guardlink validate` error, not a working annotation. Both
