@@ -84,7 +84,14 @@ make cxg read guardlink's grammar, and nothing here should be read as saying it 
   own turn with no span, so a verb in a wrapped note's prose is still emitted. The smallest
   closure was prototyped and measured: it removes 9 fabrications in cert-x-gen but loses 191
   descriptions in siete and overturns a standing PR-74 decision, so it is filed rather than
-  attempted. `pentest/docs/ARCHITECTURE.md` carries the measurement.
+  attempted. `pentest/docs/ARCHITECTURE.md` carries the measurement. The widening also makes
+  cert-x-gen's own documentation an input to itself: `App.API` is now an asset, so a comment
+  that explains the parser by writing a verb next to its arguments becomes an annotation of
+  `guardlink.py` — two such notes were read this way on this branch and reworded to spell the
+  verb apart from its arguments. Rewording one comment is a treadmill rather than a fix, and the
+  comments most likely to trip it are the ones EXPLAINING the parser. The class — cxg reads a
+  verb ANYWHERE in a comment where guardlink requires it to open one — is board card GAP-48,
+  whose real fix was measured at 365 of 10,079 annotations and is not attempted here.
 - **A flow endpoint is no longer narrowed to the asset grammar.** The widening had replaced
   `@flows`' endpoints with the asset reference, which refuses a bare lowercase word — so
   `@flows browser -> #api via https` and the same with `s3`, `user-agent` or `3rdparty`
@@ -146,27 +153,43 @@ make cxg read guardlink's grammar, and nothing here should be read as saying it 
   `@validates #ctl for App.API!` and `@boundary internet and api.gateway, db (#edge)` are the
   same defect on other verbs, and the installed guardlink answers `Malformed` for every one. A
   match is now discarded when the line up to the next ANNOTATION carries either a clause of the
-  verb's own grammar or an unread `#` reference. The clause set is DERIVED from `_VERB_CLAUSES`,
-  the same tuple each verb's pattern is composed from, so it covers every clause that verb has;
-  a hand-kept list of two — a description and `@flows`' ` via ` — reported
-  `@exposes App.API to #sqli cwe:CWE-89 [high]` with the severity silently dropped. The
-  reference test is the half no clause set can reach, because the junk in a malformed
-  declaration is usually an OPERAND: `@flows #api -> #cache, #db` drops a second endpoint and
-  `@exposes App.API to #sqli, #xss` a second threat. It is guardlink's own discrimination, read
-  off the tool — 2.0.0 answers `Malformed … could not parse arguments (looks structural — found
-  a #reference)` for both. An UNCLOSED description is deliberately not such a clause: that is a
-  note the author did not finish, and cxg's settled behaviour of reading the mandatory arguments
-  with no `desc` is unchanged. Measured over the grammar's dimensions rather than over shapes
-  seen failing — terminator × every combination of each verb's clauses present or absent, 1,624
-  shapes across all thirteen verbs — 740 read as a partial before and 0 do now; the clauses
-  alone leave 327 and the reference alone leaves 0, so neither half is redundant. What is not
-  refused is trailing text carrying neither: `@audit App.API!` still reads, which 2.0.0 reports
-  as prose rather than as an annotation. Measured across guardlink, siete and cert-x-gen: 0
-  descriptions shortened, 277 annotations gained a description they had been losing, 523 read
-  that did not read before, and 6 no longer read — two hard `Malformed` errors on 2.0.0 sitting
-  inside fixtures that assert exactly that, one prose passage in guardlink's agent instructions
-  explaining `@exposes`, and three renders in its generated dashboard HTML of a note whose
-  description is entity- or backslash-escaped and so genuinely unconsumed.
+  verb's own grammar or an unread REFERENCE of the widened asset grammar. The clause set is
+  DERIVED from `_VERB_CLAUSES`, the same tuple each verb's pattern is composed from, so it covers
+  every clause that verb has; a hand-kept list of two — a description and `@flows`' ` via ` —
+  reported an `@exposes` written `App.API to #sqli cwe:CWE-89 [high]` with the severity silently
+  dropped. The reference test is the half no clause set can reach, because the junk in a
+  malformed declaration is usually an OPERAND — a second endpoint, a second threat — and its
+  shape is `_ASSET_REF`, composed from `_ASSET_REF_ALTERNATIVES`, not `#` alone: keyed on `#` it
+  refused a dropped `#db` but read a `@flows` written `Browser -> App.API, App.Worker` as a whole
+  Browser-to-App.API flow, the dropped operand being exactly the dotted and capitalised forms the
+  widening admitted, and that pair reached `derive_chain_edges`. It is guardlink's own
+  discrimination, read off the tool — 2.0.0 answers `Malformed … could not parse arguments
+  (looks structural — found a #reference)` for all of them. An UNCLOSED description is
+  deliberately not such a clause, and its prose is not searched for an operand either: that is a
+  note the author did not finish, cxg's settled behaviour of reading the mandatory arguments
+  with no `desc` is unchanged, and 4 of the 7 such notes across the three corpora carry a
+  sentence-initial capital that would otherwise have overturned it by accident. Measured over
+  the grammar's dimensions rather than over shapes seen failing — terminator × every combination
+  of each verb's clauses present or absent × one unread operand per alternative of the reference
+  grammar, 4,788 shapes across all thirteen verbs — 654 read as a partial while the reference
+  half was keyed on `#` (every one in the dotted and capitalised columns, 327 each) and 0 do
+  now; the clause half is not redundant, since the out-of-order severity above carries no stray
+  reference. Each dimension of that bar is checked against the parser's own tables, so a verb, a
+  clause or a reference form added without a sample fails the suite. What is NOT refused is
+  trailing text in which no token is a reference of the widened grammar — lowercase words: a
+  `@flows` written `Browser -> App.API for login` still reads as a Browser-to-App.API pair that
+  reaches `derive_chain_edges`, which 2.0.0 calls Malformed on its `->` keyword (the second arm
+  of its discrimination, a leftover structural keyword, which cxg does not implement), and an
+  `@audit` written `App.API!` still reads, which 2.0.0 reports as prose. That residue is pinned
+  in the suite and stated in `pentest/docs/ARCHITECTURE.md`. Measured across guardlink, siete
+  and cert-x-gen against the base of this branch, keyed on file, line and verb: 0 descriptions
+  shortened, 290 annotations gained a description they had been losing, 425 read that did not
+  read before, and 421 no longer read — 399 of them one generated dashboard HTML file in
+  guardlink rendering source lines inside `<span>` markup, and the other 22 fixture source inside
+  string literals, prose explaining a verb, or hard `Malformed` errors on 2.0.0, each named in
+  `pentest/docs/ARCHITECTURE.md`. The widened reference test alone stops 613 reads against the
+  head that keyed it on `#`, 0 of them with the verb opening its comment, and 2.0.0 reads 607 of
+  the 613 as `Malformed` and 4 as prose.
 - **The completeness region ends at the next ANNOTATION, not at the next at-sign.** Bounding it
   at any `@` collapsed the region to nothing whenever a comment named a person, which is an
   ordinary thing to write: `@audit #api @alice -- "please review the bcrypt comparison"` read as

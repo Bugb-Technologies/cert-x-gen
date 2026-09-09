@@ -30,14 +30,21 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   malformed one — it succeeds on the prefix it understood and drops the channel and the
   description in silence. `_consumed_whole_declaration` is that test; it refuses a leftover
   CLAUSE of the verb's own grammar (derived from `_VERB_CLAUSES`, the tuple the verb's pattern
-  is itself composed from — never restate it) and a leftover `#` REFERENCE, which is the half
-  no clause set can reach because malformed junk is usually an unread OPERAND. Measure any
-  change to it over the grammar's DIMENSIONS — terminator × each clause present or absent, for
-  every verb — never over the shapes you have seen failing: a bar built from observed failures
+  is itself composed from — never restate it) and a leftover REFERENCE of the widened asset
+  grammar (derived from `_ASSET_REF_ALTERNATIVES`, not `#` alone — keyed on `#` it read a
+  `@flows` written `Browser -> App.API, App.Worker` as a whole flow), which is the half no
+  clause set can reach because malformed junk is usually an unread OPERAND. An UNFINISHED
+  description's prose is not searched for one, so the settled unclosed-note decision stands.
+  Measure any change to it over the grammar's DIMENSIONS — terminator × each clause present or
+  absent × one unread operand per reference alternative, for every verb — never over the
+  shapes you have seen failing: a bar built from observed failures
   cannot falsify a rule keyed on what those failures happened to share, which is exactly how
-  the first version scored 29 of 29 while a whole quadrant stayed open.
+  the first version scored 29 of 29 while a whole quadrant stayed open, and the second
+  1,624 of 1,624 while every bare or dotted operand stayed open. What it does NOT refuse —
+  lowercase trailing words, so a `@flows` written `Browser -> App.API for login` still reads —
+  is pinned in the suite as the residue and stated in `pentest/docs/ARCHITECTURE.md`.
   `pentest/docs/ARCHITECTURE.md` states what it refuses, what it deliberately does not, and the
-  three details that keep it from refusing real notes. `pentest/docs/ARCHITECTURE.md` ("Inline annotations") is the
+  four details that keep it from refusing real notes. `pentest/docs/ARCHITECTURE.md` ("Inline annotations") is the
   authority on what it accepts, including which verbs have a CONSUMER: `@confirmed`,
   `@feature` and `@owns` are recognised and deliberately consumed by nothing, and that is a
   stated contract, not an omission. The installed `guardlink` binary is the other reader;
