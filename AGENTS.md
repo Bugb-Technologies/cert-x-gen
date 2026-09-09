@@ -16,9 +16,9 @@ This file is the project's committed home for project-intrinsic agent knowledge:
 ## Inline annotations this repo writes about itself
 
 - Annotations here are **bare GuardLink verbs** (`@comment`, `@exposes`, …). Write new ones
-  that way; see `CLAUDE.md`. The `@g.` prefix is the dialect of Giggs, a discontinued
-  predecessor, and the estate was converted off it — the installed `guardlink` reads no `@g.`
-  verb at all, so the whole corpus was invisible to it.
+  that way. The `@g.` prefix is the dialect of Giggs, a discontinued predecessor, and the
+  estate was converted off it — the installed `guardlink` reads no `@g.` verb at all, so the
+  whole corpus was invisible to it.
 - **Two readers, and they do not read the same set.** `pentest/guardlink.py`'s `parse_inline`
   is cxg's own reader — five verbs, and it still ACCEPTS `@g.` on purpose, so the tolerance
   tests in `pentest/tests/test_inline_annotation_forms.py` keep their `@g.` fixtures and must
