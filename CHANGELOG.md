@@ -108,11 +108,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The message names the path, the reason, and the next action. Passing **no** `--scope-file`
   is unchanged and is not an error — absent is not unreadable, and an operator who set no
   bound still gets the documented defaults.
-- Reading a scope file requires **PyYAML**, which no install path guaranteed: `cxg pentest
-  install` verifies only playwright and anthropic. It is now pinned in
-  `pentest/requirements.txt` and named in the refusal, so a machine without it is told what
-  to install instead of scanning unbounded. Measured on a host where no interpreter on PATH
-  could import `yaml`: before this change every `--scope-file`, valid or not, was ignored.
+- Reading a scope file requires **PyYAML**, which no install path checked for: `cxg pentest
+  install` verified only playwright and anthropic. It now verifies PyYAML too and names it
+  in the `pip3 install` line it prints, it is pinned in `pentest/requirements.txt`, and it
+  is named in the refusal — so a machine without it is told what to install instead of
+  scanning unbounded. Measured on a host where no interpreter on PATH could import `yaml`:
+  before this change every `--scope-file`, valid or not, was ignored.
+- `--scope-file` is refused with exit 4 on `--template-lang py`, and the refusal now runs in
+  pre-flight, before `--interactive-auth` capture and `--creds-file` re-auth. The legacy
+  Python probe path enforces no scope at all, so a file accepted there was read and
+  discarded; and an operator who mistyped the path used to complete every interactive login
+  first and be refused afterwards.
 - A template that outran its execution timeout kept running unsupervised: the timeout stopped
   awaiting the child but never killed it. `execute_command` now sets `kill_on_drop`.
 - `--require-instrumentation` skipped **every** template against a target carrying no

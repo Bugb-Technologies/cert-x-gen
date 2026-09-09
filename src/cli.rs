@@ -817,6 +817,9 @@ pub enum PentestAction {
         /// REFUSED with exit 4. It does not fall back to the defaults: a bound cxg
         /// cannot read is not the same as no bound. Omitting the flag entirely is the
         /// supported way to run on the defaults.
+        ///
+        /// Refused with exit 4 on `--template-lang py` as well: the legacy Python probe
+        /// path enforces no scope at all, so a file accepted there would be discarded.
         #[arg(
             long,
             help_heading = "Execution",
