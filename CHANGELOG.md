@@ -103,8 +103,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   proceeded. The operator believed the blast radius was bounded and it was not.
   `ScopeConfig.load` now **refuses**: an empty flag value (`--scope-file "$SCOPE"` with
   `SCOPE` unset), a missing path, an unopenable file, invalid YAML, a document that is not
-  a mapping of settings, an empty file, or PyYAML being absent all raise `ScopeFileError`, and `run_pentest` stops with **exit 4** (a mis-specified run, not
-  2, which means "vulnerabilities found") before it resolves the codebase or runs guardlink.
+  a mapping of settings, an empty file, or PyYAML being absent all raise `ScopeFileError`,
+  and `run_pentest` stops with **exit 4** (a mis-specified run, not 2, which means
+  "vulnerabilities found") before it resolves the codebase or runs guardlink.
   The message names the path, the reason, and the next action. Passing **no** `--scope-file`
   is unchanged and is not an error — absent is not unreadable, and an operator who set no
   bound still gets the documented defaults.

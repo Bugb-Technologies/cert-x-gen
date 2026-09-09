@@ -335,7 +335,9 @@ pub enum PentestAction {
     ///
     /// One-time setup. Copies the Python orchestrator bundled with the cxg source tree
     /// to `~/.cert-x-gen/pentest/`, then verifies the required Python deps (playwright,
-    /// anthropic) are installed. Must be run before `cxg pentest auth` or `cxg pentest run`.
+    /// anthropic, PyYAML) are installed. It only CHECKS — anything missing is reported with
+    /// the `pip3 install` line to run. PyYAML is what `--scope-file` needs: without it every
+    /// `--scope-file` is refused. Must be run before `cxg pentest auth` or `cxg pentest run`.
     ///
     /// Examples:
     ///     cxg pentest install
