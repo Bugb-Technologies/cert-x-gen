@@ -108,8 +108,10 @@ make cxg read guardlink's grammar, and nothing here should be read as saying it 
   at all. **Reading a chain wrongly is worse than not reading it**: a wrongly derived chain is
   a false attack finding, the one output this product must never produce. The whole feature —
   parsing, getting a description to a consumer, and chain edges — is board card GAP-49.
-  Single-hop chaining is byte-for-byte what it was, verified in both declaration orders. Two
-  providers on one artifact remains reachable for single-hop flows and is not closed here:
+  Single-hop chaining is unchanged by the withdrawal itself; it did change earlier in this
+  branch, under the merged-record rule below, and no byte-for-byte parity with main is claimed
+  for it. Two providers on one artifact remains reachable for single-hop flows and is not
+  closed here:
   `src_ids` is the id set of every hypothesis on the src asset, so two hypotheses on one asset
   both provide — the ordinary case, one SARIF result per exposure and several per asset — and
   two separate declarations sharing a transport name do the same (GAP-47).
@@ -124,6 +126,38 @@ make cxg read guardlink's grammar, and nothing here should be read as saying it 
   endpoint keeps its hyphen as a stated backward-compatibility tolerance, because cxg read
   `user-agent` and `3rdparty` before this widening. Measured at 0 of 2,133 reference values
   across guardlink, siete and cert-x-gen — the narrowing costs no annotation anywhere.
+- **The both-ends rule is re-applied to the MERGED chain-edge record.** Each individual flow
+  was already refused if it put one hypothesis on both sides, but merging is what can produce
+  that state after every flow was clean: two separate declarations sharing a channel share an
+  artifact name, so one pointing each way leaves the same hypothesis carrying `@provides` and
+  `@requires_artifact` for it — which the engine reads as a template waiting on an artifact it
+  has itself produced. `src` wins, and an edge left with no `dst` is dropped rather than
+  emitted one-sided. This CHANGES single-hop chaining, measured by executing base `128de49`'s
+  `derive_chain_edges` against this branch's on identical hypotheses: `#a -> #b via tok` plus
+  `#b -> #a via tok` gave `{tok: src=[a,b], dst=[a,b]}` and now yields no edge at all, and
+  `#a -> #b via tok` plus `#b -> #c via tok` gave `dst=[b,c]` and now gives `dst=[c]`. Both
+  differences are the rule doing its work.
+- **A declaration is now read WHOLE or not at all.** Every clause after a verb's mandatory
+  arguments is optional, so a search-based pattern could not fail on a malformed declaration —
+  it succeeded on the prefix it understood and dropped the rest in silence. Of 29 characters
+  placed after a flow's destination, 27 produced a `src`/`dst` pair the author never wrote,
+  with the channel and the description gone, and that pair reached `derive_chain_edges` and
+  `report.json` under a header calling it the codebase's own declaration; `@audit #api!`,
+  `@validates #ctl for App.API!` and `@boundary internet and api.gateway, db (#edge)` are the
+  same defect on other verbs, and the installed guardlink answers `Malformed` for every one. A
+  match is now discarded when it leaves a clause of its own grammar unconsumed on the line — a
+  CLOSED `-- "…"` description, or a ` via ` clause for `@flows` — up to the next annotation.
+  An UNCLOSED description is deliberately not such a clause: that is a note the author did not
+  finish, and cxg's settled behaviour of reading the mandatory arguments with no `desc` is
+  unchanged. Measured across guardlink, siete and cert-x-gen: 0 descriptions shortened, 23
+  annotations gained a channel or a description they had been losing, and 7 no longer read,
+  every one of the 7 a hard `Malformed` error on the installed 2.0.0.
+- **Threat and control references may be DOTTED, and a `via` mechanism may carry `/`, `{`
+  and `}`.** Both were measured against the installed binary rather than inferred: it validates
+  `#shared-lib.injection` clean and returns `GET./items`, `HTTPS/443` and `GET./{stem}` whole,
+  while cxg stopped at the dot and at the slash and — the description no longer sitting where
+  the pattern expected it — dropped the description behind it. 23 annotations across the three
+  corpora were reading a truncated reference or channel and no note.
 - **A via-less flow's artifact name no longer shares a namespace with a channel's.** Slugging
   the endpoint pair the way a channel is slugged made `@flows #a -> #b` and an unrelated flow
   declared `via a-b` both come out as `a_b` and MERGE onto one artifact — the consumer of one
@@ -145,10 +179,13 @@ make cxg read guardlink's grammar, and nothing here should be read as saying it 
 
 **What went wrong repeatedly here, and why it was predictable**
 
-Review of this change turned up **six** defects where a written claim exceeded what the code
+Review of this change turned up **nine** defects where a written claim exceeded what the code
 does — the consumer table, the closed-severity set, the "one defect closed in three places"
-claim, the endpoint grammar, the chain-block note on where artifact names come from, and the
-headline itself — plus **two false guards**: tests whose assertions passed identically whether
+claim, the endpoint grammar, the chain-block note on where artifact names come from, the
+headline itself, two sentences in `ARCHITECTURE.md` still saying a multi-hop declaration
+decomposes per edge after that reading was withdrawn, and this file's own claim that single-hop
+chaining was byte-for-byte what it was — plus **two false guards**: tests whose assertions
+passed identically whether
 or not the thing they guarded had regressed. These are not unrelated tidy-ups, and the
 structural reason is worth stating because it predicts the defect rather than regretting it:
 **a change to what a parser ACCEPTS falsifies documentation at a higher rate than most

@@ -25,7 +25,12 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   does not read all of it — `@mitigates`' optional control clause and its `with` synonym are
   deliberately unread, GAP-44) — and it still ACCEPTS `@g.` on purpose, so the
   tolerance tests in `pentest/tests/test_inline_annotation_forms.py` keep their `@g.` fixtures
-  and must not be "converted". `pentest/docs/ARCHITECTURE.md` ("Inline annotations") is the
+  and must not be "converted". A match is also discarded unless it consumed the WHOLE
+  declaration: a verb's clauses are all optional, so a search-based pattern cannot fail on a
+  malformed one — it succeeds on the prefix it understood and drops the channel and the
+  description in silence. `_consumed_whole_declaration` is that test and
+  `pentest/docs/ARCHITECTURE.md` states what it refuses and the three details that keep it from
+  refusing real notes. `pentest/docs/ARCHITECTURE.md` ("Inline annotations") is the
   authority on what it accepts, including which verbs have a CONSUMER: `@confirmed`,
   `@feature` and `@owns` are recognised and deliberately consumed by nothing, and that is a
   stated contract, not an omission. The installed `guardlink` binary is the other reader;
