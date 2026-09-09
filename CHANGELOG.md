@@ -48,7 +48,9 @@ make cxg read guardlink's grammar, and nothing here should be read as saying it 
   generation prompt as intent context, labelled with the verb their author wrote, and
   `@confirmed`, `@feature` and `@owns` are **recognised and consumed by nothing**, which is a
   stated contract rather than an omission. `@exposes`, `@mitigates` and `@audit` are in that
-  same unconsumed group — six of the thirteen verbs in all. Hypotheses come from the SARIF,
+  same unconsumed group — six of the thirteen verbs in all, splitting three deliberate
+  (`@confirmed`, `@feature`, `@owns`) and three actionable (`@exposes`, `@mitigates`,
+  `@audit`, unconsumed because of GAP-43 rather than by decision). Hypotheses come from the SARIF,
   not from inline annotations, so an exposure declared inline with no matching SARIF result
   is invisible to cxg today; that is GAP-43 and is not decided here. Promoting `@confirmed` — a human asserting an
   exploit is real — into the context that decides whether a finding is a real vulnerability
@@ -102,21 +104,28 @@ make cxg read guardlink's grammar, and nothing here should be read as saying it 
   which the engine reads as a template waiting on an artifact it has not produced yet. The
   both-ends rule now also applies to the merged record, which is what `apply_chain_edges`
   reads.
-- **Each hop of a multi-hop chain gets its own artifact.** Naming both hops of
-  `@flows #api -> #cache -> #db via redis` from the shared channel left ONE artifact with TWO
-  providers, and the engine's chain store is a dict assignment — the second put overwrote the
-  first with no error and no second entry, so `#db` probed whichever provider ran last,
-  possibly the value discovered for a hop it never declared, and `#cache` was never sequenced
-  after `#api`. A hop is now named from the channel AND its own endpoint pair, so the two hops
-  are distinct and the declared order is enforced. Single-hop naming is unchanged: two hops of
-  ONE declaration are a sequence its author wrote and must stay distinct, whereas two SEPARATE
-  declarations naming one transport are a different cause with a different fix (GAP-47).
-  **This closes the NAMING cause, not the two-providers class.** Two providers on one artifact,
-  and the silent overwrite with it, stay reachable by two routes this change does not touch:
-  two hypotheses sharing one asset both become providers, because `src_ids` is the id set of
-  every hypothesis on the src asset — the ordinary case, one SARIF result per exposure and
-  several per asset — and two separate declarations sharing a transport name do the same
-  (GAP-47). Both are pre-existing and neither is closed here.
+- **A multi-hop `@flows` declaration is READ but derives no chain edge — a stated bound.**
+  `#api -> #cache -> #db via redis` parses into its two per-edge records and its description
+  reaches the generation prompt as intent context, which is already more than the parser this
+  replaces managed: it read the whole declaration as nothing. No artifact is named from it.
+  **Reading a chain wrongly is worse than not chaining it** — a wrongly derived chain is a
+  false attack finding, the one output this product must never produce. Single-hop chaining is
+  byte-for-byte what it was. Two providers on one artifact remains reachable for single-hop
+  flows and is not closed here: `src_ids` is the id set of every hypothesis on the src asset,
+  so two hypotheses on one asset both provide — the ordinary case, one SARIF result per
+  exposure and several per asset — and two separate declarations sharing a transport name do
+  the same (GAP-47).
+- **A hyphen is refused in a bare or dotted reference.** `@exposes User-Store to #sqli`,
+  `@exposes App-Name.API to #sqli`, `@assumes App.API-v2`, `@transfers #ddos from App-X to
+  Ext.CF`, `@handles user-data on App.API` and `@boundary internal-network and #db` are every
+  one a hard `Malformed` error on the installed guardlink 2.0.0, and cxg read all six as live
+  annotations — `@assumes`, `@boundary` and `@handles` carrying their descriptions into the
+  generation prompt as the author's stated intent, so a note guardlink calls malformed arrived
+  labelled as one a human wrote. A hyphen after `#` stays legal (`#prepared-stmts` is
+  guardlink's own spelling), as does `@owns`' owner token (`security-team`, likewise). The flow
+  endpoint keeps its hyphen as a stated backward-compatibility tolerance, because cxg read
+  `user-agent` and `3rdparty` before this widening. Measured at 0 of 2,133 reference values
+  across guardlink, siete and cert-x-gen — the narrowing costs no annotation anywhere.
 - **A via-less flow's artifact name no longer shares a namespace with a channel's.** Slugging
   the endpoint pair the way a channel is slugged made `@flows #a -> #b` and an unrelated flow
   declared `via a-b` both come out as `a_b` and MERGE onto one artifact — the consumer of one
@@ -152,12 +161,17 @@ still fail if the thing it guards were deleted? A guard that cannot fail is wors
 guard, because it reports coverage it does not have.
 
 One more, and it is the cheaper lesson of the two: **a finding that keeps returning in new
-shapes is a cause that has not been named.** The multi-hop `@flows` declaration produced three
-findings across three rounds — a hypothesis both providing and requiring one artifact, then an
-unenforced hop ordering, then two providers silently overwriting one artifact key. The first
-two were correct symptom fixes and the cause only surfaced on the third: hops of one
-declaration were sharing a name. When the same declaration produces a third finding, stop
-fixing it and go looking for what makes it produce findings.
+shapes is a cause that has not been named.** The multi-hop `@flows` declaration produced FOUR
+findings across four rounds — a hypothesis both providing and requiring one artifact; a
+declared hop ordering never applied; two providers silently overwriting one artifact key; and
+finally an artifact name that depended on which hypothesis the run iterated first. Each fix
+produced the next. The cause under all four is that a flow record's IDENTITY and its artifact
+NAME were keyed on different tuples: the dedup keys on `(src, dst, channel)` while a hop-scoped
+name derived from `(src, dst, channel, hops)`, so the record that survived decided the
+namespace. Rather than take a fifth symptom fix, the chain-edge half was withdrawn to a stated
+bound and filed as a board card, so whoever picks it up starts from that cause instead of
+rediscovering three symptoms. When the same declaration produces a third finding, stop fixing
+it and go looking for what makes it produce findings.
 
 **The instrumentation component — building a target that can earn its verdict**
 - **`cxg build --instrument`** — a new verb that produces an *instrumented* build of a
