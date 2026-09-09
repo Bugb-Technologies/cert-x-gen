@@ -308,7 +308,7 @@ impl GitClient {
         path.join(".git").exists()
     }
 
-    // @g.comment -- "Returns the origin remote URL for an existing repo"
+    // @comment -- "Returns the origin remote URL for an existing repo"
     /// Get the current remote URL for origin
     pub fn get_remote_url(path: &Path) -> Result<String> {
         let repo = GitRepository::open(path)
@@ -319,7 +319,7 @@ impl GitClient {
         Ok(remote.url().unwrap_or("").to_string())
     }
 
-    // @g.comment -- "Updates the origin remote URL and re-fetches from the new remote"
+    // @comment -- "Updates the origin remote URL and re-fetches from the new remote"
     /// Update the remote URL for origin
     pub fn set_remote_url(path: &Path, new_url: &str) -> Result<()> {
         let repo = GitRepository::open(path)

@@ -29,7 +29,7 @@ impl PathResolver {
     /// Honors the `CERT_X_GEN_HOME` override (relocation / test isolation) before
     /// falling back to the OS home dir. The override works on every platform,
     /// unlike `$HOME`, which `dirs::home_dir()` ignores on Windows.
-    // @g.comment -- "resolves the per-user base dir; CERT_X_GEN_HOME overrides the OS home dir for relocation and cross-platform test isolation"
+    // @comment -- "resolves the per-user base dir; CERT_X_GEN_HOME overrides the OS home dir for relocation and cross-platform test isolation"
     fn user_home() -> Option<PathBuf> {
         if let Some(dir) = std::env::var_os("CERT_X_GEN_HOME") {
             if !dir.is_empty() {

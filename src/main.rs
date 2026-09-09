@@ -204,7 +204,7 @@ async fn run(cli: Cli) -> Result<()> {
 /// Map the current platform to the release-asset suffix used by `release.yml`
 /// (e.g. `linux-amd64`, `darwin-arm64`, `windows-amd64`). Returns an error on
 /// platforms we don't publish prebuilt binaries for.
-// @g.comment -- "derives the GitHub release asset identifier for the running OS/arch so self-update fetches the correct binary"
+// @comment -- "derives the GitHub release asset identifier for the running OS/arch so self-update fetches the correct binary"
 fn release_target() -> Result<String> {
     let os = match std::env::consts::OS {
         "macos" => "darwin",
@@ -237,7 +237,7 @@ fn release_target() -> Result<String> {
 /// skip is not an error -- nothing went wrong, cxg simply refuses to hand back
 /// an artefact it could not vouch for -- so it does not take the error path,
 /// which is reserved for cxg itself failing.
-// @g.comment -- "drives the target project's own build system, which executes that project's build scripts as the invoking user"
+// @comment -- "drives the target project's own build system, which executes that project's build scripts as the invoking user"
 // @g.sink Commands.Build -- "executes `cargo build` in the operator-named project directory"
 fn run_build_command(cmd: cli::BuildCommand) -> Result<()> {
     use cert_x_gen::build::{self, InstrumentRequest, Manifest};
@@ -305,7 +305,7 @@ fn run_build_command(cmd: cli::BuildCommand) -> Result<()> {
 /// Release assets are plain (non-archived) per-platform binaries named
 /// `cxg-<os>-<arch>` (see `.github/workflows/release.yml`), so we match on that
 /// suffix via `self_update`'s `target` filter rather than the Rust target triple.
-// @g.comment -- "downloads an untrusted binary artifact from GitHub over TLS and atomically overwrites the on-disk cxg executable"
+// @comment -- "downloads an untrusted binary artifact from GitHub over TLS and atomically overwrites the on-disk cxg executable"
 // @g.source (#github_release) -- "release binary fetched from github.com/Bugb-Technologies/cert-x-gen/releases"
 // @g.sink Commands.Update -- "writes the downloaded executable over the running cxg binary"
 async fn run_update_command(cmd: cli::UpdateCommand) -> Result<()> {
@@ -363,7 +363,7 @@ async fn run_update_command(cmd: cli::UpdateCommand) -> Result<()> {
 static PENTEST_ASSETS: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/pentest");
 
 /// Pentest orchestrator install dir — Python sources copied here on first install.
-// @g.comment -- "resolves the pentest install dir under the user's home; uses dirs::home_dir() so it works on Windows where $HOME is unset (USERPROFILE is used instead)"
+// @comment -- "resolves the pentest install dir under the user's home; uses dirs::home_dir() so it works on Windows where $HOME is unset (USERPROFILE is used instead)"
 fn pentest_home() -> PathBuf {
     if let Some(home) = dirs::home_dir() {
         home.join(".cert-x-gen").join("pentest")
@@ -421,7 +421,7 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
             app_binary,
             auth_sub,
         } => match auth_sub {
-            // @g.comment -- "A subcommand routes to auth.py's browser-free CI paths (import/verify) instead of the interactive `auth login` capture. The capture path's --target/--profile are Option at the clap layer (clap derive won't negate a required parent arg for a subcommand — see cli.rs), and the import/verify subcommands carry their own --profile/--target, so the parent-level bindings are simply unused in these two branches."
+            // @comment -- "A subcommand routes to auth.py's browser-free CI paths (import/verify) instead of the interactive `auth login` capture. The capture path's --target/--profile are Option at the clap layer (clap derive won't negate a required parent arg for a subcommand — see cli.rs), and the import/verify subcommands carry their own --profile/--target, so the parent-level bindings are simply unused in these two branches."
             Some(cli::AuthSubcommand::Import {
                 profile,
                 target,
@@ -494,7 +494,7 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
                 }
             }
             None => {
-                // @g.comment -- "--target/--profile are Option at the clap layer (see cli.rs: clap derive won't negate a required parent arg for the import/verify subcommands), so the interactive-capture path enforces them here. This reproduces the pre-change 'required argument' guard for bare `cxg pentest auth` without a subcommand; the happy path is unchanged."
+                // @comment -- "--target/--profile are Option at the clap layer (see cli.rs: clap derive won't negate a required parent arg for the import/verify subcommands), so the interactive-capture path enforces them here. This reproduces the pre-change 'required argument' guard for bare `cxg pentest auth` without a subcommand; the happy path is unchanged."
                 let (target, profile) = match (target, profile) {
                     (Some(t), Some(p)) => (t, p),
                     _ => {
@@ -534,7 +534,7 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
                 for h in headers {
                     args.extend(["--header".into(), h]);
                 }
-                // @g.comment -- "Forward the operator identity-metadata flags to the Python orchestrator so tier/persona/cohort/tags reach the auth capture and are persisted with the profile"
+                // @comment -- "Forward the operator identity-metadata flags to the Python orchestrator so tier/persona/cohort/tags reach the auth capture and are persisted with the profile"
                 if let Some(t) = tier {
                     args.extend(["--tier".into(), t]);
                 }
@@ -547,7 +547,7 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
                 for t in tags {
                     args.extend(["--tag".into(), t]);
                 }
-                // @g.comment -- "forwards desktop target selection and launch configuration to the Python orchestrator, which owns substrate construction"
+                // @comment -- "forwards desktop target selection and launch configuration to the Python orchestrator, which owns substrate construction"
                 args.push("--target-type".into());
                 args.push(target_type);
                 // @g.sink #operator_app_cmd -- "hands the operator-supplied launch command to the Python orchestrator, which splits and executes it as a child process; cxg itself never executes it"
@@ -673,16 +673,16 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
             if let Some(h) = oast {
                 args.extend(["--oast".into(), h]);
             }
-            // @g.comment -- "forwards the OAST mode, not a session: which factory in pentest/oast.py builds it (external_session vs interactsh_session) is decided on the Python side, so the two CLIs cannot end up disagreeing about whether a canary is pollable"
+            // @comment -- "forwards the OAST mode, not a session: which factory in pentest/oast.py builds it (external_session vs interactsh_session) is decided on the Python side, so the two CLIs cannot end up disagreeing about whether a canary is pollable"
             // @g.sink #operator_oast_server -- "hands the operator-supplied interactsh server URL to the Python orchestrator, which registers the session against it; cxg itself opens no connection here"
-            // @g.comment -- "the bare form is forwarded as the flag ALONE, with no argument, because that is precisely what 'use interactsh's defaults' means downstream — passing an empty string as the value would instead register against a server named '' and fail; clap's empty default_missing_value is a marker for this branch, never a value to relay"
+            // @comment -- "the bare form is forwarded as the flag ALONE, with no argument, because that is precisely what 'use interactsh's defaults' means downstream — passing an empty string as the value would instead register against a server named '' and fail; clap's empty default_missing_value is a marker for this branch, never a value to relay"
             if let Some(server) = oast_interactsh {
                 args.push("--oast-interactsh".into());
                 if !server.is_empty() {
                     args.push(server);
                 }
             }
-            // @g.comment -- "forwards desktop target selection and launch configuration to the Python orchestrator, which owns substrate construction"
+            // @comment -- "forwards desktop target selection and launch configuration to the Python orchestrator, which owns substrate construction"
             args.push("--target-type".into());
             args.push(target_type);
             // @g.sink #operator_app_cmd -- "hands the operator-supplied launch command to the Python orchestrator, which splits and executes it as a child process per identity; cxg itself never executes it"
@@ -698,14 +698,14 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
                 args.push("--host-scan-path".into());
                 args.push(v);
             }
-            // @g.comment -- "Both are pushed only when set, matching every other boolean here: an absent flag leaves the orchestrator's own default in force rather than this layer restating it, so the two CLIs cannot drift apart on what 'off' means."
+            // @comment -- "Both are pushed only when set, matching every other boolean here: an absent flag leaves the orchestrator's own default in force rather than this layer restating it, so the two CLIs cannot drift apart on what 'off' means."
             if attacker_origin {
                 args.push("--attacker-origin".into());
             }
             if allow_raw_socket {
                 args.push("--allow-raw-socket".into());
             }
-            // @g.comment -- "Pushed only when set, like every other boolean here, so an absent flag leaves the orchestrator's own default in force rather than this layer restating it. --no-grpc-reflection matters most for that rule: reflection defaults ON in the orchestrator, so forwarding a false here would silently disable a default this layer does not own."
+            // @comment -- "Pushed only when set, like every other boolean here, so an absent flag leaves the orchestrator's own default in force rather than this layer restating it. --no-grpc-reflection matters most for that rule: reflection defaults ON in the orchestrator, so forwarding a false here would silently disable a default this layer does not own."
             if allow_grpc {
                 args.push("--allow-grpc".into());
             }
@@ -729,7 +729,7 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
             if deterministic_templates {
                 args.push("--deterministic-templates".into());
             }
-            // @g.comment -- "forwards the two dispatch bounds and the recovery opt-out only when the operator actually set them, so an unset flag leaves the orchestrator's own default in force rather than this layer restating it — one default, in one place, that the two CLIs cannot drift apart on"
+            // @comment -- "forwards the two dispatch bounds and the recovery opt-out only when the operator actually set them, so an unset flag leaves the orchestrator's own default in force rather than this layer restating it — one default, in one place, that the two CLIs cannot drift apart on"
             if let Some(v) = template_timeout {
                 args.push("--template-timeout".into());
                 args.push(v.to_string());
@@ -741,7 +741,7 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
             if no_restart {
                 args.push("--no-restart".into());
             }
-            // @g.comment -- "forward the CI auth-store redirect and CI-mode selector only when the operator set them, so an unset flag leaves the orchestrator's ~/.cert-x-gen/auth store and warn-on-dead-session default in force. CXG_CI=1 still reaches the orchestrator through the inherited environment even when --ci is absent."
+            // @comment -- "forward the CI auth-store redirect and CI-mode selector only when the operator set them, so an unset flag leaves the orchestrator's ~/.cert-x-gen/auth store and warn-on-dead-session default in force. CXG_CI=1 still reaches the orchestrator through the inherited environment even when --ci is absent."
             if let Some(d) = auth_dir {
                 args.push("--auth-dir".into());
                 args.push(d.to_string_lossy().to_string());
@@ -2926,7 +2926,7 @@ async fn run_template_command(cmd: cli::TemplateCommand) -> Result<()> {
             Ok(())
         }
 
-        // @g.comment -- "Delegates `cxg template search <query>` to the existing search engine"
+        // @comment -- "Delegates `cxg template search <query>` to the existing search engine"
         TemplateAction::Search {
             query,
             language,
@@ -2979,7 +2979,7 @@ async fn run_template_command(cmd: cli::TemplateCommand) -> Result<()> {
             Ok(())
         }
 
-        // @g.comment -- "Prints all template directory paths with existence status"
+        // @comment -- "Prints all template directory paths with existence status"
         TemplateAction::Pwd => {
             use cert_x_gen::template::PathResolver;
 
@@ -3010,7 +3010,7 @@ async fn run_template_command(cmd: cli::TemplateCommand) -> Result<()> {
             Ok(())
         }
 
-        // @g.comment -- "Reads and prints the skeleton scaffold file for a given language"
+        // @comment -- "Reads and prints the skeleton scaffold file for a given language"
         TemplateAction::Skeleton { language } => {
             use cli::LanguageArg;
 
@@ -3059,7 +3059,7 @@ async fn run_template_command(cmd: cli::TemplateCommand) -> Result<()> {
             Ok(())
         }
 
-        // @g.comment -- "Copies a researcher-authored template file into the user template directory"
+        // @comment -- "Copies a researcher-authored template file into the user template directory"
         TemplateAction::Add { file, dest } => {
             use cert_x_gen::template::PathResolver;
 

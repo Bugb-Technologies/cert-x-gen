@@ -72,7 +72,7 @@ pub async fn install_runtime(runtime_name: &str) -> Result<bool> {
                 Ok(out) if out.status.success() => {
                     tracing::info!("Rust installed successfully via rustup");
                     // Try to source cargo env
-                    // @g.comment -- "resolve ~/.cargo/bin/cargo via dirs::home_dir() for cross-platform support ($HOME is Unix-only)"
+                    // @comment -- "resolve ~/.cargo/bin/cargo via dirs::home_dir() for cross-platform support ($HOME is Unix-only)"
                     let cargo_path = dirs::home_dir()
                         .map(|home| home.join(".cargo").join("bin").join("cargo"))
                         .unwrap_or_else(|| std::path::PathBuf::from("cargo"));
@@ -534,7 +534,7 @@ pub async fn ensure_runtime_available(runtime_name: &str, check_commands: &[&str
 
             // For Rust, also check if cargo is in ~/.cargo/bin
             if runtime_name == "rust" {
-                // @g.comment -- "check for ~/.cargo/bin/cargo using dirs::home_dir() so it resolves correctly on Windows too"
+                // @comment -- "check for ~/.cargo/bin/cargo using dirs::home_dir() so it resolves correctly on Windows too"
                 if let Some(home) = dirs::home_dir() {
                     let cargo_path = home.join(".cargo").join("bin").join("cargo");
                     if cargo_path.exists() {

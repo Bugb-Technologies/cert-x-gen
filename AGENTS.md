@@ -15,10 +15,23 @@ This file is the project's committed home for project-intrinsic agent knowledge:
 
 ## Inline annotations this repo writes about itself
 
-- Every file here carries `@g.*` annotations (see `CLAUDE.md`). `pentest/guardlink.py`'s
-  `parse_inline` is what READS them, and the `@g.` prefix and multi-line descriptions were
-  invisible to it until they were made optional/joined — cert-x-gen's own 3,118 notes read as 1.
-  `pentest/docs/ARCHITECTURE.md` ("Inline annotations") is the authority on what it accepts.
+- Annotations here are **bare GuardLink verbs** (`@comment`, `@exposes`, …). Write new ones
+  that way. The `@g.` prefix is the dialect of Giggs, a discontinued predecessor, and the
+  estate was converted off it — the installed `guardlink` reads no `@g.` verb at all, so the
+  whole corpus was invisible to it.
+- **Two readers, and they do not read the same set.** `pentest/guardlink.py`'s `parse_inline`
+  is cxg's own reader — five verbs, and it still ACCEPTS `@g.` on purpose, so the tolerance
+  tests in `pentest/tests/test_inline_annotation_forms.py` keep their `@g.` fixtures and must
+  not be "converted". `pentest/docs/ARCHITECTURE.md` ("Inline annotations") is the authority
+  on what it accepts. The installed `guardlink` binary is the other reader; `guardlink gal`
+  is its grammar.
+- **`@source` and `@sink` are still in the Giggs form, deliberately.** guardlink has no
+  `@sink` verb, and its `@source` is an unrelated `file:line` anchor directive — a bare
+  `@source (#id) -- "…"` is a hard `guardlink validate` error, not a working annotation. Both
+  need re-expressing in guardlink's grammar, not de-prefixing.
+- **guardlink does not join a wrapped description; `parse_inline` does.** A note whose
+  description runs onto a second comment line is reported by `guardlink validate` as "looks
+  like prose" and is not in its model. That is a guardlink bound, not a defect in the note.
 - **Escape a quote inside a note as `\"`.** An unescaped one truncates a single-line
   description at that point, and on a wrapped note's continuation line it loses the whole
   annotation silently — no error, the note simply stops being read.
