@@ -46,12 +46,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   recorded as real. The example is from guardlink's own `tests/fixtures/expense-api`:
   `@comment -- "Written first as @mitigates #api against #malformed-input using
   #auth-required, which nothing rejected even though the control and the threat have nothing
-  to do with each other"`. This is one defect in three places — on a continuation line
-  (closed earlier), on a line that opens a description running off its end, and on a line
-  where the note opens and closes — and this closes the third. Widening the verb set from
-  five to thirteen is what made it necessary rather than tidy. It was the only annotation the
-  bound removed across all three annotated repositories, and a genuine annotation written
-  after a closed note on the same line is still read.
+  to do with each other"`. This is one defect in three places — on a continuation line, on a
+  line that opens a description running off its end, and on a line where the note opens and
+  closes — and this closes the last two. Widening the verb set from five to thirteen is what
+  made it necessary rather than tidy. It was the only annotation the bound removed across all
+  three annotated repositories, and a genuine annotation written after a closed note on the
+  same line is still read. `@feature` carries its own arm in the span pattern, being the one
+  verb with a quoted argument before the `--`; without it a feature note registered no span
+  and the bound did not reach it, so `@feature "SSO Login" -- "we rejected @exposes App.API
+  to #idor here"` emitted the exposure the sentence says was rejected.
+- **The CONTINUATION-line case is NOT closed and is carried as an open bound** (board card
+  GAP-42). The join refuses to run past such a line, but `parse_inline` visits it again on its
+  own turn with no span, so a verb in a wrapped note's prose is still emitted. The smallest
+  closure was prototyped and measured: it removes 9 fabrications in cert-x-gen but loses 191
+  descriptions in siete and overturns a standing PR-74 decision, so it is filed rather than
+  attempted. `pentest/docs/ARCHITECTURE.md` carries the measurement.
+- **A flow endpoint is no longer narrowed to the asset grammar.** The widening had replaced
+  `@flows`' endpoints with the asset reference, which refuses a bare lowercase word — so
+  `@flows browser -> #api via https` and the same with `s3`, `user-agent` or `3rdparty`
+  stopped being read at all, having been read for as long as cxg has had the verb. A flow that
+  does not match is not a flow with an unread src, it is nothing. Endpoints are bounded on
+  both sides by structure, so the wider shape is restored there and `@audit`/`@assumes` keep
+  the narrow one.
+- **A multi-hop chain no longer stamps one hypothesis as both provider and consumer of the
+  same artifact.** `@flows #api -> #cache -> #db via redis` decomposes into two edges sharing
+  one channel and therefore one artifact name, so `#cache` reached both sides once the edges
+  merged — emitting `// @provides: redis` and `// @requires_artifact: redis` in one template,
+  which the engine reads as a template waiting on an artifact it has not produced yet. The
+  both-ends rule now also applies to the merged record, which is what `apply_chain_edges`
+  reads.
 
 **The instrumentation component — building a target that can earn its verdict**
 - **`cxg build --instrument`** — a new verb that produces an *instrumented* build of a
