@@ -31,6 +31,20 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   by the round that broke it is a regression with paperwork. This happened here: a round
   moved a verb off position 0 in a fixture so its new stop stopped firing, and shipped green
   while silently losing a whole wrapped note.
+- **A test's meaning depends on the code around it.** A later change that adds an early exit
+  can silently empty a test that used to matter, and nothing goes red to say so. The only
+  defence is to ask whether the guard would still FAIL if the thing it guards were removed;
+  if deleting the guarded code leaves the test green, the test is not guarding it. This is a
+  different species from a weakened fixture — nobody edited the test. The nested-annotation
+  stop added an early exit that a 4,000-opener performance fixture hit before the continuation
+  cap was ever approached, so it stopped testing its subject and stayed green.
+- **An asymmetry justifies COMPLETING something, not BUILDING something.** "The same note
+  reads on one line and vanishes when wrapped" is evidence of an oversight only where closing
+  it adds no new discrimination — the `/**` opener was an incomplete marker set and was
+  completed. Where closing it needs new logic, especially logic that weakens an existing
+  safety check, the asymmetry is evidence of a BOUND: document it and file it, do not remove
+  it. The trailing-comment opener is that case (GAP-34); `pentest/guardlink.py`'s
+  `_line_comment_marker` carries the reasoning.
 
 ## Templates
 
