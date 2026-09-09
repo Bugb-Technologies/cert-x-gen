@@ -39,9 +39,10 @@ make cxg read guardlink's grammar, and nothing here should be read as saying it 
   source-legal examples reports 0 errors. Assets may be a dotted path (`App.API`) or a bare
   capitalised identifier; severities accept guardlink's word spellings (all 88 severities in
   guardlink's own model are word form and NOT ONE is a `[P0]` code, so the only spelling cxg
-  admitted was the one the corpus never writes); `@flows` is a chain with an optional `via`
-  (37 of the 123 flows in guardlink's own repository could never become a chain edge, every
-  one failing on a bare destination).
+  admitted was the one the corpus never writes); `@flows` takes an optional `via` and a
+  widened destination (37 of the 123 flows in guardlink's own repository could never become a
+  chain edge, every one failing on a bare destination). A multi-hop chain is NOT read — see
+  below.
 - **Eight verbs cxg had no reader for at all** — `@confirmed`, `@boundary`, `@handles`,
   `@validates`, `@assumes`, `@transfers`, `@feature`, `@owns` — are read. They are not eight
   new parsers: `@assumes`, `@transfers`, `@boundary`, `@handles` and `@validates` reach the
@@ -97,24 +98,21 @@ make cxg read guardlink's grammar, and nothing here should be read as saying it 
   unspaced `->`, and because every group after the chain is optional the match never
   backtracks: `@flows #a->#b->#c via sql -- "d"` SUCCEEDED with a fabricated destination
   `#b-` and no channel and no description at all.
-- **A multi-hop chain no longer stamps one hypothesis as both provider and consumer of the
-  same artifact.** `@flows #api -> #cache -> #db via redis` decomposes into two edges sharing
-  one channel and therefore one artifact name, so `#cache` reached both sides once the edges
-  merged — emitting `// @provides: redis` and `// @requires_artifact: redis` in one template,
-  which the engine reads as a template waiting on an artifact it has not produced yet. The
-  both-ends rule now also applies to the merged record, which is what `apply_chain_edges`
-  reads.
-- **A multi-hop `@flows` declaration is READ but derives no chain edge — a stated bound.**
-  `#api -> #cache -> #db via redis` parses into its two per-edge records and its description
-  reaches the generation prompt as intent context, which is already more than the parser this
-  replaces managed: it read the whole declaration as nothing. No artifact is named from it.
-  **Reading a chain wrongly is worse than not chaining it** — a wrongly derived chain is a
-  false attack finding, the one output this product must never produce. Single-hop chaining is
-  byte-for-byte what it was. Two providers on one artifact remains reachable for single-hop
-  flows and is not closed here: `src_ids` is the id set of every hypothesis on the src asset,
-  so two hypotheses on one asset both provide — the ordinary case, one SARIF result per
-  exposure and several per asset — and two separate declarations sharing a transport name do
-  the same (GAP-47).
+- **A multi-hop `@flows` declaration is not read.** `#api -> #cache -> #db via redis` yields
+  nothing — not a chain, and not a truncated first hop either: because `via` is optional a
+  plain pair pattern would match `#api -> #cache` and stop, reporting an edge with no channel
+  and no description that no human declared, so the pattern refuses a second arrow outright.
+  It was read for four rounds and withdrawn, because it produced five defects and reached no
+  consumer that could justify them — `@flows` is not an intent kind, so a multi-hop
+  description never entered any prompt, and the attacher's records carry no description field
+  at all. **Reading a chain wrongly is worse than not reading it**: a wrongly derived chain is
+  a false attack finding, the one output this product must never produce. The whole feature —
+  parsing, getting a description to a consumer, and chain edges — is board card GAP-49.
+  Single-hop chaining is byte-for-byte what it was, verified in both declaration orders. Two
+  providers on one artifact remains reachable for single-hop flows and is not closed here:
+  `src_ids` is the id set of every hypothesis on the src asset, so two hypotheses on one asset
+  both provide — the ordinary case, one SARIF result per exposure and several per asset — and
+  two separate declarations sharing a transport name do the same (GAP-47).
 - **A hyphen is refused in a bare or dotted reference.** `@exposes User-Store to #sqli`,
   `@exposes App-Name.API to #sqli`, `@assumes App.API-v2`, `@transfers #ddos from App-X to
   Ext.CF`, `@handles user-data on App.API` and `@boundary internal-network and #db` are every
@@ -161,17 +159,19 @@ still fail if the thing it guards were deleted? A guard that cannot fail is wors
 guard, because it reports coverage it does not have.
 
 One more, and it is the cheaper lesson of the two: **a finding that keeps returning in new
-shapes is a cause that has not been named.** The multi-hop `@flows` declaration produced FOUR
-findings across four rounds — a hypothesis both providing and requiring one artifact; a
-declared hop ordering never applied; two providers silently overwriting one artifact key; and
-finally an artifact name that depended on which hypothesis the run iterated first. Each fix
-produced the next. The cause under all four is that a flow record's IDENTITY and its artifact
-NAME were keyed on different tuples: the dedup keys on `(src, dst, channel)` while a hop-scoped
-name derived from `(src, dst, channel, hops)`, so the record that survived decided the
-namespace. Rather than take a fifth symptom fix, the chain-edge half was withdrawn to a stated
-bound and filed as a board card, so whoever picks it up starts from that cause instead of
-rediscovering three symptoms. When the same declaration produces a third finding, stop fixing
-it and go looking for what makes it produce findings.
+shapes is a cause that has not been named.** The multi-hop `@flows` declaration produced FIVE
+findings across five rounds — a hypothesis both providing and requiring one artifact; a
+declared hop ordering never applied; two providers silently overwriting one artifact key; an
+artifact name that depended on which hypothesis the run iterated first; and finally a
+legitimate SINGLE-hop declaration losing its chain edge because a chain was annotated nearer
+the same hypothesis. Each fix produced the next, and the fifth was a regression against main on
+a path this change was supposed to leave alone. The cause under all five is that a flow
+record's IDENTITY and its skip-or-name decision were keyed on different tuples: the dedup keys
+on `(src, dst, channel)` while the added `hops` field decided the outcome, so the record that
+survived the dedup decided the answer. Multi-hop reading is therefore withdrawn entirely rather
+than patched a fifth time, and filed as GAP-49 so whoever picks it up starts from that cause
+instead of rediscovering four symptoms. When the same declaration produces a third finding,
+stop fixing it and go looking for what makes it produce findings.
 
 **The instrumentation component — building a target that can earn its verdict**
 - **`cxg build --instrument`** — a new verb that produces an *instrumented* build of a
