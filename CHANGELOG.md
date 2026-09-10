@@ -15,17 +15,16 @@ Three separate claims, because they are separately true. guardlink's `CLAUDE.md`
 block is a TEACHING SUBSET; `guardlink gal` is the authoritative grammar. This change does not
 make cxg read guardlink's grammar, and nothing here should be read as saying it does.
 
-- **(a) Teaching examples: 1 of 14 → 13 of 14.** guardlink's `CLAUDE.md` teaches fourteen
+- **(a) Teaching examples: 1 of 14 → 12 of 14.** guardlink's `CLAUDE.md` teaches fourteen
   Quick Syntax forms; the installed cxg parser read exactly one of them, the one-line
   `@comment`. A customer who followed guardlink's documentation wrote annotations cxg could
-  not see, and nothing said so. `parse_inline` now reads thirteen — the fourteenth is
-  `@actor`, which that block marks `(definitions file)` and which names no code. Customer
+  not see, and nothing said so. `parse_inline` now reads twelve. The two it does not are
+  `@actor`, which that block marks `(definitions file)` and which names no code, and
+  `@flows`, whose widening was WITHDRAWN — see "What this change withdrew" below. Customer
   source is unchanged; the work is entirely inside cxg.
 - **(b) Additional `gal` forms this change adds**, beyond the teaching subset: `@boundary`'s
   PRIMARY spellings `A and B (#id)` and `A | B` (cxg previously read only `between A and B`,
-  which `gal` calls the alternate), and multi-word `@flows` mechanisms such as `via TLS 1.3`
-  — `gal`'s own example, which cxg truncated to `TLS` and whose description it then dropped
-  entirely.
+  which `gal` calls the alternate).
 - **(c) `gal` forms this change DELIBERATELY LEAVES UNREAD.** `@mitigates`' control clause is
   optional in `gal` and `with` is accepted as a synonym for `using`, so
   `@mitigates db.users against Token Theft -- "Rotation implemented in v2"` — `gal`'s own
@@ -39,10 +38,8 @@ make cxg read guardlink's grammar, and nothing here should be read as saying it 
   source-legal examples reports 0 errors. Assets may be a dotted path (`App.API`) or a bare
   capitalised identifier; severities accept guardlink's word spellings (all 88 severities in
   guardlink's own model are word form and NOT ONE is a `[P0]` code, so the only spelling cxg
-  admitted was the one the corpus never writes); `@flows` takes an optional `via` and a
-  widened destination (37 of the 123 flows in guardlink's own repository could never become a
-  chain edge, every one failing on a bare destination). A multi-hop chain is NOT read — see
-  below.
+  admitted was the one the corpus never writes). `@flows` IS UNCHANGED FROM origin/main — see
+  "What this change withdrew".
 - **Eight verbs cxg had no reader for at all** — `@confirmed`, `@boundary`, `@handles`,
   `@validates`, `@assumes`, `@transfers`, `@feature`, `@owns` — are read. They are not eight
   new parsers: `@assumes`, `@transfers`, `@boundary`, `@handles` and `@validates` reach the
@@ -62,6 +59,42 @@ make cxg read guardlink's grammar, and nothing here should be read as saying it 
   instructions describe, cxg read zero annotations and lost every intent note in guardlink's
   DEFAULT mode. Annotations are attributed to the source file and line their `@source` header
   names, never to the sidecar — matching what the installed binary emits.
+
+
+**What this change withdrew, and why**
+
+`@flows` is byte-for-byte origin/main's behaviour on this head: the same pattern, the same
+`attach_flows_to_hypotheses`, the same `derive_chain_edges`. Verified on twelve shapes —
+plain, trailing period, trailing hyphen, a bare source, a fan-out, multi-hop, via-less, bare
+endpoints, a leading-digit endpoint, a multi-word mechanism and an arrow inside one — every
+one identical to main.
+
+The `@flows` widening was attempted and withdrawn after six rounds. It is not that the
+widening was wrong: via-less flows, bare and dotted endpoints and multi-word mechanisms all
+worked. What did not converge was TRIMMING cxg back to what guardlink accepts. cert-x-gen
+accepts a SUPERSET of guardlink's endpoint grammar and always has — `3rdparty`, `123`,
+`a..b` and `.lead` are hard `Malformed` on the installed binary and origin/main reads all
+four — and each round trimmed one dimension of that superset while holding another constant,
+so every fix was right about the case in front of it and wrong about the dimension nobody
+varied. Twice the result read a form guardlink rejects; twice it refused one guardlink
+accepts.
+
+The minimal withdrawal was measured rather than assumed: reverting only the endpoint
+trimming leaves `# @flows #api -> #cache.` reading a destination `#cache.` that does not
+exist, and that record reaches `derive_chain_edges` as a real chain edge. A consumer-side
+check cannot cover it, because the junk is absorbed INTO the field rather than left over.
+So the withdrawal is total.
+
+The consumer-side refusal of half-read declarations went with it. On this head it is INERT —
+main's `@flows` requires a `via` clause and a `#`-prefixed destination, so no input can
+produce the half-read record it existed to refuse (measured: 0 of 8 shapes). Keeping it
+would have shipped machinery no input can reach.
+
+Filed as **GAP-54** with the six rounds of evidence, the `edge_6705daf7` trace showing an
+invented id reaching a real chain edge, and the cross-product derivation
+`{#-prefixed, bare, dotted} × trailing characters × verbs` that the next attempt should
+START from rather than arrive at. The measurement that motivated the work stands: 37 of the
+123 flows in guardlink's own repository can never become a chain edge.
 
 ### Fixed
 
@@ -184,8 +217,6 @@ make cxg read guardlink's grammar, and nothing here should be read as saying it 
   sides legitimately. Subtracting src from dst answered the cycle by destroying the chain — the
   middle hypothesis's `requires` vanished with nothing logged, and the last was told an earlier
   probe provides an artifact either of two may have put. The merged record is now tested for a
-  PURE PROVIDER, a src that is not also a dst: a cycle has none and is dropped whole at any
-  length, a chain has one and is kept untouched, which is what origin/main derives. The
   per-flow rule that no SINGLE declaration may put one hypothesis on both sides is unchanged.
 - **A hyphen is refused in a bare or dotted reference.** `@exposes User-Store to #sqli`,
   `@exposes App-Name.API to #sqli`, `@assumes App.API-v2`, `@transfers #ddos from App-X to
