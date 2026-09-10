@@ -27,9 +27,25 @@ make cxg read guardlink's grammar, and nothing here should be read as saying it 
   which `gal` calls the alternate). The parenthesised id is `#`-prefixed and dot-free, derived
   one fixture per form from the installed binary — it accepts `(#data-boundary)` and calls
   `(data-boundary)`, `(zone.one)` and `(#zone.one)` hard `Malformed` errors — and a
-  parenthetical the pattern cannot read refuses the whole annotation instead of silently
-  dropping its description. Measured: of the 91 boundary ids across guardlink, siete and
-  cert-x-gen, 0 are written without the `#` and 0 carry a dot, so the narrowing costs nothing.
+  PARENTHETICAL the pattern cannot read refuses the whole annotation instead of silently
+  dropping its description. That guard covers a parenthesis and nothing else — any other unread
+  tail still half-reads, so `@boundary #api and #db extra -- "d"` is `Malformed` on the binary
+  and cxg reads it as its two operands with the description gone. Refusing any unread tail is
+  the general trimming problem GAP-54 carries and is deliberately not attempted. Measured: of
+  the 91 boundary ids across guardlink, siete and cert-x-gen, 0 are written without the `#` and
+  0 carry a dot, so the narrowing costs nothing.
+- **`@handles` reads only the classifications guardlink accepts.** The vocabulary is a CLOSED
+  enumeration — `guardlink gal` spells the verb `@handles <classification> on <asset>` and lists
+  `pii phi financial secrets internal public`, and guardlink's own generated
+  `.guardlink/README.md` writes the same set — but cxg matched any word, so
+  `@handles credentials on App.API -- "d"` was read as a live annotation while the installed
+  binary calls it a hard `Malformed @handles` error. `handles` is in `_INTENT_LABELS`, so that
+  description reached the generation prompt as the author's own statement of intent for a line
+  guardlink says does not exist. The set is now closed and case-insensitive (the binary accepts
+  `PII` and `FINANCIAL` too), verified one fixture per token against guardlink 2.0.0 rather than
+  taken from the reference, and a test re-derives it from the installed binary and fails on
+  drift — skipping cleanly where guardlink is not on PATH. Measured: all 148 classifications
+  across guardlink, siete and cert-x-gen are members, so the narrowing costs nothing.
 - **(c) `gal` forms this change DELIBERATELY LEAVES UNREAD.** `@mitigates`' control clause is
   optional in `gal` and `with` is accepted as a synonym for `using`, so
   `@mitigates db.users against Token Theft -- "Rotation implemented in v2"` — `gal`'s own
@@ -127,7 +143,12 @@ START from rather than arrive at. The measurement that motivated the work stands
   #auth-required, which nothing rejected even though the control and the threat have nothing
   to do with each other"`. This is one defect in three places — on a continuation line, on a
   line that opens a description running off its end, and on a line where the note opens and
-  closes — and this closes the last two. Widening the verb set from five to thirteen is what
+  closes — and this closes the last of those outright and the opening line WHERE THE
+  DESCRIPTION JOINS. An opener whose description never closes anywhere is not covered: the
+  narrowing sits inside `parse_inline`'s join branch, so an unterminated note whose prose names
+  a `@validates` still emits that verb. Those records are desc-less and reach the annotation
+  counter rather than the generation prompt, and the case is filed on GAP-32 beside the
+  continuation line. Widening the verb set from five to thirteen is what
   made it necessary rather than tidy. It was the only annotation the bound removed across all
   three annotated repositories, and a genuine annotation written after a closed note on the
   same line is still read. `@feature` carries its own arm in the span pattern, being the one
