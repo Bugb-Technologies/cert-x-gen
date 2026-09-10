@@ -24,7 +24,12 @@ make cxg read guardlink's grammar, and nothing here should be read as saying it 
   source is unchanged; the work is entirely inside cxg.
 - **(b) Additional `gal` forms this change adds**, beyond the teaching subset: `@boundary`'s
   PRIMARY spellings `A and B (#id)` and `A | B` (cxg previously read only `between A and B`,
-  which `gal` calls the alternate).
+  which `gal` calls the alternate). The parenthesised id is `#`-prefixed and dot-free, derived
+  one fixture per form from the installed binary — it accepts `(#data-boundary)` and calls
+  `(data-boundary)`, `(zone.one)` and `(#zone.one)` hard `Malformed` errors — and a
+  parenthetical the pattern cannot read refuses the whole annotation instead of silently
+  dropping its description. Measured: of the 91 boundary ids across guardlink, siete and
+  cert-x-gen, 0 are written without the `#` and 0 carry a dot, so the narrowing costs nothing.
 - **(c) `gal` forms this change DELIBERATELY LEAVES UNREAD.** `@mitigates`' control clause is
   optional in `gal` and `with` is accepted as a synonym for `using`, so
   `@mitigates db.users against Token Theft -- "Rotation implemented in v2"` — `gal`'s own
