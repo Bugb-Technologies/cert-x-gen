@@ -85,10 +85,16 @@ exist, and that record reaches `derive_chain_edges` as a real chain edge. A cons
 check cannot cover it, because the junk is absorbed INTO the field rather than left over.
 So the withdrawal is total.
 
-The consumer-side refusal of half-read declarations went with it. On this head it is INERT —
-main's `@flows` requires a `via` clause and a `#`-prefixed destination, so no input can
-produce the half-read record it existed to refuse (measured: 0 of 8 shapes). Keeping it
-would have shipped machinery no input can reach.
+Everything downstream of the widening went with it, so nothing in the tree is left describing
+a flow this head cannot read. The consumer-side refusal of half-read declarations is INERT on
+main's `@flows` — it requires a `via` clause and a `#`-prefixed destination, so no input can
+produce the half-read record that refusal existed to act on (measured: 0 of 8 shapes) — and
+the `partial` flag that fed it went with it, producer included. VIA-LESS flows went the same
+way: `derive_chain_edges` skips a flow with no mechanism, so every derived edge carries one,
+and the endpoint-derived artifact name (`edge_<digest>`), the absent-channel branches in
+`apply_chain_edges`, `_chain_block` and `generate_all`'s console line, and the tests pinning
+them are all gone. Keeping any of it would have shipped machinery no input can reach — the
+same defect this branch spent two days filing against other code.
 
 Filed as **GAP-54** with the six rounds of evidence, the `edge_6705daf7` trace showing an
 invented id reaching a real chain edge, and the cross-product derivation
@@ -118,106 +124,6 @@ START from rather than arrive at. The measurement that motivated the work stands
   closure was prototyped and measured: it removes 9 fabrications in cert-x-gen but loses 191
   descriptions in siete and overturns a standing PR-74 decision, so it is filed rather than
   attempted. `pentest/docs/ARCHITECTURE.md` carries the measurement.
-- **A flow endpoint is no longer narrowed to the asset grammar.** The widening had replaced
-  `@flows`' endpoints with the asset reference, which refuses a bare lowercase word — so
-  `@flows browser -> #api via https` and the same with `s3`, `user-agent` or `3rdparty`
-  stopped being read at all, having been read for as long as cxg has had the verb. A flow that
-  does not match is not a flow with an unread src, it is nothing. Endpoints are bounded on
-  both sides by structure, so the wider shape is restored there and `@audit`/`@assumes` keep
-  the narrow one. The endpoint is `#?(?:[\w.]|-(?!>))*(?:\w|-(?!-*>))`: a hyphen reads inside an
-  endpoint (`user-agent`, `#api-cache`) but is refused immediately before `>`, so `@flows #a --> #b`
-  reads as nothing rather than as `#a-` → `#b` — which is also what the installed guardlink
-  does with it. Without that exception a greedy endpoint absorbs the first hyphen of an
-  unspaced `->`, and because every group after the chain is optional the match never
-  backtracks: `@flows #a->#b->#c via sql -- "d"` SUCCEEDED with a fabricated destination
-  `#b-` and no channel and no description at all.
-- **A flow operand no longer absorbs trailing junk into the value it reports.** The endpoint
-  must END on a word character OR A HYPHEN, and each `via` token takes the same arrow rule the
-  endpoint does. That admitted set is DERIVED rather than chosen: 31 candidate trailing
-  characters were put to the installed guardlink 2.0.0, one id per character, and exactly two
-  came back as part of the id — `-` and `_`, the second only because it is already a `\w` —
-  against 29 hard `Malformed` errors (`. ~ : + @ / ! ? * & % $ = < > ^ # , ) ] } ; ' | \ ( [
-  { "`). Before this, `@flows #api -> #cache.` reported the destination `#cache.` and
-  `@flows User -> App.API.` reported `App.API.` — asset ids no human wrote, reaching
-  `h.raw['cxg_flows']` and `report.json` verbatim, both lines hard `Malformed @flows` errors
-  on the installed guardlink 2.0.0 — and `@flows #api -> #cache via redis -> db` reported the
-  mechanism `redis -`, a value matching neither the installed binary (which returns the whole
-  `redis -> db`) nor the single-token run this branch replaced (which returned `redis`). It
-  fires on real code, not only on fixtures: guardlink's own
-  `tests/dashboard-determinism.test.ts` writes a destination interpolated as `App.${name}`,
-  read as the fabricated asset id `App.`. Both rules are TRUNCATIONS, not refusals, **in both
-  endpoint positions** — the operand stops where the author's token stops and the rest is left
-  as a residue, which is what the chain-edge refusal below acts on. The SOURCE position needed
-  a second piece to make that true: the characters the run hands back have somewhere to go
-  after a destination, but after a source the pattern needs `->` next, so
-  `@flows #a. -> #b via x -- "d"` failed outright and lost the channel and the description with
-  it. `_FLOW_ENDPOINT_RESIDUE` consumes exactly what the endpoint hands back — the endpoint's
-  own class minus its word characters — so it now reads `#a` → `#b` with the mechanism and the
-  description intact and the record flagged. The HYPHEN arm of the terminator is the other half
-  of the same loss and needed no residue: `@flows #api -> #cache- via redis -- "d"` was coming
-  back as a bare flagged pair with the mechanism and the description DROPPED, because a residue
-  in the destination position sits where `via` must start — while the installed binary parses
-  that line and returns the target `#cache-`. cxg was narrowing past the tool it exists to
-  widen to, on a form that tool accepts; it now returns `#cache-` too. The terminal hyphen
-  carries a wider arrow lookahead than the internal one (`-(?!-*>)` against `-(?!>)`), without
-  which the first hyphen of an unspaced `-->` would be absorbed and report the id `#a-` for a
-  line whose author wrote `#a-->`. What is still refused outright: a SPACED `@flows #a --> #b`, because the
-  residue class admits no whitespace, and a multi-hop declaration; the installed guardlink
-  2.0.0 calls both `Malformed`. Two further consequences, stated because they are changes
-  rather than repairs: an unspaced `via HTTP->gRPC` reported `HTTP-` before this branch as well
-  and now reports `HTTP` (reading such a mechanism whole, as guardlink does, is **GAP-53** and
-  is deliberately not attempted), and an unspaced `@flows #a--> #b via x` read as nothing
-  before the source allowance and now reads `#a` → `#b` flagged.
-- **A half-read `@flows` declaration builds no chain edge.** Two residues flag a record and
-  `derive_chain_edges` skips a flagged one: an unread operand consumed BEFORE the arrow, which
-  flags unconditionally because nothing else can sit between an endpoint and the arrow after
-  it, and text left behind by a match that read neither a mechanism nor a description.
-  `@flows Browser -> App.API, App.Worker`,
-  `@flows #api -> #cache, s3`, `@flows #api -> #cache (redis)` and
-  `@flows Browser -> App.API for login` are every one a hard `Malformed @flows` error on the
-  installed guardlink 2.0.0, and each was becoming a declared chain hand-off shown to the model
-  under a header calling it the codebase's own declaration rather than a guess. Both endpoint
-  values are the author's own words; the RELATIONSHIP between them is what would be invented.
-  **The parser still emits a partial record for those lines** — a stated limitation, carried in
-  `pentest/docs/ARCHITECTURE.md`, not a defect: only chain-edge construction refuses one.
-  The REGION the TRAILING test applies to was measured against the installed binary rather than
-  reasoned about, and the measurement overturned the obvious rule: once `via` is present that binary
-  reads the rest of the line as the mechanism, so `via redis, s3` and `via TLS/5432` parse
-  clean, and cxg truncating such a mechanism is no evidence the endpoints were misread.
-  Flagging on a residue after a mechanism was tried first and would have been a live regression
-  — 76 declarations across the three annotated repositories, among them guardlink's own
-  `via TLS/5432` and siete's `via GET./health`, every one a clean pair whose chain edge
-  origin/main derives. Scoped to a bare pair it marks 18, all prose or fixtures. What ends a
-  bare pair cleanly is end of line or the enclosing block comment's terminator; a lint pragma
-  does NOT, because `@flows #api -> #cache # FIXME` and `... # noqa: E501` are themselves hard
-  `Malformed` errors on that binary. A general parse-time version of this test, across all
-  thirteen verbs, was built and **withdrawn** — it dropped everyday code such as `@comment`
-  followed by `# noqa: E501`, `# pylint: disable` or `NOSONAR` for a harm only `@flows` has,
-  `@flows` being the only verb cxg turns into a claim about a relationship.
-- **A multi-hop `@flows` declaration is not read.** `#api -> #cache -> #db via redis` yields
-  nothing — not a chain, and not a truncated first hop either: because `via` is optional a
-  plain pair pattern would match `#api -> #cache` and stop, reporting an edge with no channel
-  and no description that no human declared, so the pattern refuses a second arrow outright.
-  It was read for four rounds and withdrawn, because it produced five defects and reached no
-  consumer that could justify them — `@flows` is not an intent kind, so a multi-hop
-  description never entered any prompt, and the attacher's records carry no description field
-  at all. **Reading a chain wrongly is worse than not reading it**: a wrongly derived chain is
-  a false attack finding, the one output this product must never produce. The whole feature —
-  parsing, getting a description to a consumer, and chain edges — is board card GAP-49.
-  Single-hop chaining is byte-for-byte what it was, verified in both declaration orders. Two
-  providers on one artifact remains reachable for single-hop flows and is not closed here:
-  `src_ids` is the id set of every hypothesis on the src asset, so two hypotheses on one asset
-  both provide — the ordinary case, one SARIF result per exposure and several per asset — and
-  two separate declarations sharing a transport name do the same (GAP-47).
-- **A same-channel CHAIN keeps its middle hand-off.** Merging separate declarations onto one
-  transport name puts two different shapes on one edge and they were getting one answer. A
-  CYCLE (`#a -> #b via tok` plus `#b -> #a via tok`) leaves every provider also a requirer, so
-  no probe can run first; a CHAIN (`#a -> #b via tok` plus `#b -> #c via tok`, the shape our
-  own docs steer people toward since multi-hop is not read) puts the MIDDLE hypothesis on both
-  sides legitimately. Subtracting src from dst answered the cycle by destroying the chain — the
-  middle hypothesis's `requires` vanished with nothing logged, and the last was told an earlier
-  probe provides an artifact either of two may have put. The merged record is now tested for a
-  per-flow rule that no SINGLE declaration may put one hypothesis on both sides is unchanged.
 - **A hyphen is refused in a bare or dotted reference.** `@exposes User-Store to #sqli`,
   `@exposes App-Name.API to #sqli`, `@assumes App.API-v2`, `@transfers #ddos from App-X to
   Ext.CF`, `@handles user-data on App.API` and `@boundary internal-network and #db` are every
@@ -229,24 +135,17 @@ START from rather than arrive at. The measurement that motivated the work stands
   endpoint keeps its hyphen as a stated backward-compatibility tolerance, because cxg read
   `user-agent` and `3rdparty` before this widening. Measured at 0 of 2,133 reference values
   across guardlink, siete and cert-x-gen — the narrowing costs no annotation anywhere.
-- **A via-less flow's artifact name no longer shares a namespace with a channel's.** Slugging
-  the endpoint pair the way a channel is slugged made `@flows #a -> #b` and an unrelated flow
-  declared `via a-b` both come out as `a_b` and MERGE onto one artifact — the consumer of one
-  reading whatever the producer of the other put there, on a record reporting `channel: null`
-  while listing a flow that did declare one. Via-less flows also collided with each other over
-  hyphenated ids (`#order -> #api-cache` and `#order-api -> #cache` both slugged to
-  `order_api_cache`). Endpoint-derived names are now `edge_<digest of the pair>`, still pure
-  so both halves of an edge compute one name from one string.
 - **A `.gal` `@source` header is recognised only at the start of a line.** Matched anywhere, a
   note whose own description quoted the header text was consumed as a header — losing its own
   annotation and silently re-attributing every note below it to the quoted path, so a "this is
   by design" note could reach a hypothesis in a different file. Leading whitespace still opens
   a block, because the installed guardlink parses an indented header.
-- **A via-less edge is no longer described to the model as having a channel.** The generation
-  prompt named the artifact but described every edge identically, so a declared `via` was not
-  passed on and an absent one could not be distinguished from it. A declared channel is now
-  named (`PROVIDES 'coupon_code' (declared over coupon.code)`) and an absent one is not
-  mentioned at all.
+- **A chain edge names the mechanism its declaration was written over.** The generation
+  prompt named the artifact but described every edge identically, so the `via` a human wrote
+  was not passed on. The declared channel is now named to the model
+  (`PROVIDES 'coupon_code' (declared over coupon.code)`) and on the console line an operator
+  reads to check what chaining derived. Every derived edge carries one — `via` is mandatory
+  in `_RE_FLOWS` — so there is no absent-channel case to describe.
 
 **What went wrong repeatedly here, and why it was predictable**
 
