@@ -91,13 +91,53 @@ make cxg read guardlink's grammar, and nothing here should be read as saying it 
   stopped being read at all, having been read for as long as cxg has had the verb. A flow that
   does not match is not a flow with an unread src, it is nothing. Endpoints are bounded on
   both sides by structure, so the wider shape is restored there and `@audit`/`@assumes` keep
-  the narrow one. The endpoint is `#?(?:[\w.]|-(?!>))+`: a hyphen reads inside an endpoint
+  the narrow one. The endpoint is `#?(?:[\w.]|-(?!>))*\w`: a hyphen reads inside an endpoint
   (`user-agent`, `#api-cache`) but is refused immediately before `>`, so `@flows #a --> #b`
   reads as nothing rather than as `#a-` → `#b` — which is also what the installed guardlink
   does with it. Without that exception a greedy endpoint absorbs the first hyphen of an
   unspaced `->`, and because every group after the chain is optional the match never
   backtracks: `@flows #a->#b->#c via sql -- "d"` SUCCEEDED with a fabricated destination
   `#b-` and no channel and no description at all.
+- **A flow operand no longer absorbs trailing junk into the value it reports.** The endpoint
+  must END on a word character and each `via` token takes the same arrow rule the endpoint
+  does. Before this, `@flows #api -> #cache.` reported the destination `#cache.` and
+  `@flows User -> App.API.` reported `App.API.` — asset ids no human wrote, reaching
+  `h.raw['cxg_flows']` and `report.json` verbatim, both lines hard `Malformed @flows` errors
+  on the installed guardlink 2.0.0 — and `@flows #api -> #cache via redis -> db` reported the
+  mechanism `redis -`, a value matching neither the installed binary (which returns the whole
+  `redis -> db`) nor the single-token run this branch replaced (which returned `redis`). It
+  fires on real code, not only on fixtures: guardlink's own
+  `tests/dashboard-determinism.test.ts` writes a destination interpolated as `App.${name}`,
+  read as the fabricated asset id `App.`. Both rules are TRUNCATIONS, not refusals — the
+  operand stops where the author's token stops and the rest is left as a residue, which is
+  what the chain-edge refusal below acts on. One further consequence, stated because it is a
+  change rather than a repair: an unspaced `via HTTP->gRPC` reported `HTTP-` before this
+  branch as well and now reports `HTTP`; reading such a mechanism whole, as guardlink does, is
+  **GAP-53** and is deliberately not attempted.
+- **A half-read `@flows` declaration builds no chain edge.** A match that read neither a
+  mechanism nor a description and still leaves text behind is flagged on its record, and
+  `derive_chain_edges` skips such a record. `@flows Browser -> App.API, App.Worker`,
+  `@flows #api -> #cache, s3`, `@flows #api -> #cache (redis)` and
+  `@flows Browser -> App.API for login` are every one a hard `Malformed @flows` error on the
+  installed guardlink 2.0.0, and each was becoming a declared chain hand-off shown to the model
+  under a header calling it the codebase's own declaration rather than a guess. Both endpoint
+  values are the author's own words; the RELATIONSHIP between them is what would be invented.
+  **The parser still emits a partial record for those lines** — a stated limitation, carried in
+  `pentest/docs/ARCHITECTURE.md`, not a defect: only chain-edge construction refuses one.
+  The REGION the test applies to was measured against the installed binary rather than reasoned
+  about, and the measurement overturned the obvious rule: once `via` is present that binary
+  reads the rest of the line as the mechanism, so `via redis, s3` and `via TLS/5432` parse
+  clean, and cxg truncating such a mechanism is no evidence the endpoints were misread.
+  Flagging on a residue after a mechanism was tried first and would have been a live regression
+  — 76 declarations across the three annotated repositories, among them guardlink's own
+  `via TLS/5432` and siete's `via GET./health`, every one a clean pair whose chain edge
+  origin/main derives. Scoped to a bare pair it marks 18, all prose or fixtures. What ends a
+  bare pair cleanly is end of line or the enclosing block comment's terminator; a lint pragma
+  does NOT, because `@flows #api -> #cache # FIXME` and `... # noqa: E501` are themselves hard
+  `Malformed` errors on that binary. A general parse-time version of this test, across all
+  thirteen verbs, was built and **withdrawn** — it dropped everyday code such as `@comment`
+  followed by `# noqa: E501`, `# pylint: disable` or `NOSONAR` for a harm only `@flows` has,
+  `@flows` being the only verb cxg turns into a claim about a relationship.
 - **A multi-hop `@flows` declaration is not read.** `#api -> #cache -> #db via redis` yields
   nothing — not a chain, and not a truncated first hop either: because `via` is optional a
   plain pair pattern would match `#api -> #cache` and stop, reporting an edge with no channel
