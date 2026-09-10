@@ -91,10 +91,21 @@ main's `@flows` — it requires a `via` clause and a `#`-prefixed destination, s
 produce the half-read record that refusal existed to act on (measured: 0 of 8 shapes) — and
 the `partial` flag that fed it went with it, producer included. VIA-LESS flows went the same
 way: `derive_chain_edges` skips a flow with no mechanism, so every derived edge carries one,
-and the endpoint-derived artifact name (`edge_<digest>`), the absent-channel branches in
-`apply_chain_edges`, `_chain_block` and `generate_all`'s console line, and the tests pinning
-them are all gone. Keeping any of it would have shipped machinery no input can reach — the
-same defect this branch spent two days filing against other code.
+and the endpoint-derived artifact name (`edge_<digest>`), the branches that existed to
+describe an edge with no mechanism, and the tests pinning them are all gone. Keeping any of it
+would have shipped machinery no input can reach — the same defect this branch spent two days
+filing against other code.
+
+The generation prompt is therefore byte-identical to origin/main on the chaining path as well.
+A label naming the declared `via` beside each artifact name was written here and REMOVED
+before shipping: an edge is keyed by its SANITISED artifact name, so `via coupon.code` and
+`via coupon-code` merge onto one edge and only the first channel string survives — and the
+label reported that survivor to the other declaration's author as their own mechanism, under
+a header vouching for everything below it as the codebase's own declaration and not a guess.
+The merge is pre-existing, identical on origin/main, and stays open as **GAP-47**; what was
+removed is the claim built on top of it. The operator console still prints
+`(via <channel>)` — unchanged from origin/main, and beside `chain_edges_declared`, which lists
+every declaration folded into the edge.
 
 Filed as **GAP-54** with the six rounds of evidence, the `edge_6705daf7` trace showing an
 invented id reaching a real chain edge, and the cross-product derivation
@@ -140,12 +151,6 @@ START from rather than arrive at. The measurement that motivated the work stands
   annotation and silently re-attributing every note below it to the quoted path, so a "this is
   by design" note could reach a hypothesis in a different file. Leading whitespace still opens
   a block, because the installed guardlink parses an indented header.
-- **A chain edge names the mechanism its declaration was written over.** The generation
-  prompt named the artifact but described every edge identically, so the `via` a human wrote
-  was not passed on. The declared channel is now named to the model
-  (`PROVIDES 'coupon_code' (declared over coupon.code)`) and on the console line an operator
-  reads to check what chaining derived. Every derived edge carries one — `via` is mandatory
-  in `_RE_FLOWS` — so there is no absent-channel case to describe.
 
 **What went wrong repeatedly here, and why it was predictable**
 
