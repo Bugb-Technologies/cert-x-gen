@@ -91,16 +91,20 @@ make cxg read guardlink's grammar, and nothing here should be read as saying it 
   stopped being read at all, having been read for as long as cxg has had the verb. A flow that
   does not match is not a flow with an unread src, it is nothing. Endpoints are bounded on
   both sides by structure, so the wider shape is restored there and `@audit`/`@assumes` keep
-  the narrow one. The endpoint is `#?(?:[\w.]|-(?!>))*\w`: a hyphen reads inside an endpoint
-  (`user-agent`, `#api-cache`) but is refused immediately before `>`, so `@flows #a --> #b`
+  the narrow one. The endpoint is `#?(?:[\w.]|-(?!>))*(?:\w|-(?!-*>))`: a hyphen reads inside an
+  endpoint (`user-agent`, `#api-cache`) but is refused immediately before `>`, so `@flows #a --> #b`
   reads as nothing rather than as `#a-` → `#b` — which is also what the installed guardlink
   does with it. Without that exception a greedy endpoint absorbs the first hyphen of an
   unspaced `->`, and because every group after the chain is optional the match never
   backtracks: `@flows #a->#b->#c via sql -- "d"` SUCCEEDED with a fabricated destination
   `#b-` and no channel and no description at all.
 - **A flow operand no longer absorbs trailing junk into the value it reports.** The endpoint
-  must END on a word character and each `via` token takes the same arrow rule the endpoint
-  does. Before this, `@flows #api -> #cache.` reported the destination `#cache.` and
+  must END on a word character OR A HYPHEN, and each `via` token takes the same arrow rule the
+  endpoint does. That admitted set is DERIVED rather than chosen: 31 candidate trailing
+  characters were put to the installed guardlink 2.0.0, one id per character, and exactly two
+  came back as part of the id — `-` and `_`, the second only because it is already a `\w` —
+  against 29 hard `Malformed` errors (`. ~ : + @ / ! ? * & % $ = < > ^ # , ) ] } ; ' | \ ( [
+  { "`). Before this, `@flows #api -> #cache.` reported the destination `#cache.` and
   `@flows User -> App.API.` reported `App.API.` — asset ids no human wrote, reaching
   `h.raw['cxg_flows']` and `report.json` verbatim, both lines hard `Malformed @flows` errors
   on the installed guardlink 2.0.0 — and `@flows #api -> #cache via redis -> db` reported the
@@ -113,11 +117,18 @@ make cxg read guardlink's grammar, and nothing here should be read as saying it 
   as a residue, which is what the chain-edge refusal below acts on. The SOURCE position needed
   a second piece to make that true: the characters the run hands back have somewhere to go
   after a destination, but after a source the pattern needs `->` next, so
-  `@flows #a. -> #b via x -- "d"` and `@flows user- -> #b via x -- "d"` failed outright and
-  lost the channel and the description with them. `_FLOW_ENDPOINT_RESIDUE` consumes exactly
-  what the endpoint hands back — the endpoint's own class minus its word characters — so those
-  two now read `#a` → `#b` and `user` → `#b` with the mechanism and the description intact and
-  the record flagged. What is still refused outright: a SPACED `@flows #a --> #b`, because the
+  `@flows #a. -> #b via x -- "d"` failed outright and lost the channel and the description with
+  it. `_FLOW_ENDPOINT_RESIDUE` consumes exactly what the endpoint hands back — the endpoint's
+  own class minus its word characters — so it now reads `#a` → `#b` with the mechanism and the
+  description intact and the record flagged. The HYPHEN arm of the terminator is the other half
+  of the same loss and needed no residue: `@flows #api -> #cache- via redis -- "d"` was coming
+  back as a bare flagged pair with the mechanism and the description DROPPED, because a residue
+  in the destination position sits where `via` must start — while the installed binary parses
+  that line and returns the target `#cache-`. cxg was narrowing past the tool it exists to
+  widen to, on a form that tool accepts; it now returns `#cache-` too. The terminal hyphen
+  carries a wider arrow lookahead than the internal one (`-(?!-*>)` against `-(?!>)`), without
+  which the first hyphen of an unspaced `-->` would be absorbed and report the id `#a-` for a
+  line whose author wrote `#a-->`. What is still refused outright: a SPACED `@flows #a --> #b`, because the
   residue class admits no whitespace, and a multi-hop declaration; the installed guardlink
   2.0.0 calls both `Malformed`. Two further consequences, stated because they are changes
   rather than repairs: an unspaced `via HTTP->gRPC` reported `HTTP-` before this branch as well
@@ -165,6 +176,17 @@ make cxg read guardlink's grammar, and nothing here should be read as saying it 
   `src_ids` is the id set of every hypothesis on the src asset, so two hypotheses on one asset
   both provide — the ordinary case, one SARIF result per exposure and several per asset — and
   two separate declarations sharing a transport name do the same (GAP-47).
+- **A same-channel CHAIN keeps its middle hand-off.** Merging separate declarations onto one
+  transport name puts two different shapes on one edge and they were getting one answer. A
+  CYCLE (`#a -> #b via tok` plus `#b -> #a via tok`) leaves every provider also a requirer, so
+  no probe can run first; a CHAIN (`#a -> #b via tok` plus `#b -> #c via tok`, the shape our
+  own docs steer people toward since multi-hop is not read) puts the MIDDLE hypothesis on both
+  sides legitimately. Subtracting src from dst answered the cycle by destroying the chain — the
+  middle hypothesis's `requires` vanished with nothing logged, and the last was told an earlier
+  probe provides an artifact either of two may have put. The merged record is now tested for a
+  PURE PROVIDER, a src that is not also a dst: a cycle has none and is dropped whole at any
+  length, a chain has one and is kept untouched, which is what origin/main derives. The
+  per-flow rule that no SINGLE declaration may put one hypothesis on both sides is unchanged.
 - **A hyphen is refused in a bare or dotted reference.** `@exposes User-Store to #sqli`,
   `@exposes App-Name.API to #sqli`, `@assumes App.API-v2`, `@transfers #ddos from App-X to
   Ext.CF`, `@handles user-data on App.API` and `@boundary internal-network and #db` are every
