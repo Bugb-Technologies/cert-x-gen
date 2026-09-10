@@ -84,14 +84,7 @@ make cxg read guardlink's grammar, and nothing here should be read as saying it 
   own turn with no span, so a verb in a wrapped note's prose is still emitted. The smallest
   closure was prototyped and measured: it removes 9 fabrications in cert-x-gen but loses 191
   descriptions in siete and overturns a standing PR-74 decision, so it is filed rather than
-  attempted. `pentest/docs/ARCHITECTURE.md` carries the measurement. The widening also makes
-  cert-x-gen's own documentation an input to itself: `App.API` is now an asset, so a comment
-  that explains the parser by writing a verb next to its arguments becomes an annotation of
-  `guardlink.py` — two such notes were read this way on this branch and reworded to spell the
-  verb apart from its arguments. Rewording one comment is a treadmill rather than a fix, and the
-  comments most likely to trip it are the ones EXPLAINING the parser. The class — cxg reads a
-  verb ANYWHERE in a comment where guardlink requires it to open one — is board card GAP-48,
-  whose real fix was measured at 365 of 10,079 annotations and is not attempted here.
+  attempted. `pentest/docs/ARCHITECTURE.md` carries the measurement.
 - **A flow endpoint is no longer narrowed to the asset grammar.** The widening had replaced
   `@flows`' endpoints with the asset reference, which refuses a bare lowercase word — so
   `@flows browser -> #api via https` and the same with `s3`, `user-agent` or `3rdparty`
@@ -115,10 +108,8 @@ make cxg read guardlink's grammar, and nothing here should be read as saying it 
   at all. **Reading a chain wrongly is worse than not reading it**: a wrongly derived chain is
   a false attack finding, the one output this product must never produce. The whole feature —
   parsing, getting a description to a consumer, and chain edges — is board card GAP-49.
-  Single-hop chaining is unchanged by the withdrawal itself; it did change earlier in this
-  branch, under the merged-record rule below, and no byte-for-byte parity with main is claimed
-  for it. Two providers on one artifact remains reachable for single-hop flows and is not
-  closed here:
+  Single-hop chaining is byte-for-byte what it was, verified in both declaration orders. Two
+  providers on one artifact remains reachable for single-hop flows and is not closed here:
   `src_ids` is the id set of every hypothesis on the src asset, so two hypotheses on one asset
   both provide — the ordinary case, one SARIF result per exposure and several per asset — and
   two separate declarations sharing a transport name do the same (GAP-47).
@@ -133,76 +124,6 @@ make cxg read guardlink's grammar, and nothing here should be read as saying it 
   endpoint keeps its hyphen as a stated backward-compatibility tolerance, because cxg read
   `user-agent` and `3rdparty` before this widening. Measured at 0 of 2,133 reference values
   across guardlink, siete and cert-x-gen — the narrowing costs no annotation anywhere.
-- **The both-ends rule is re-applied to the MERGED chain-edge record.** Each individual flow
-  was already refused if it put one hypothesis on both sides, but merging is what can produce
-  that state after every flow was clean: two separate declarations sharing a channel share an
-  artifact name, so one pointing each way leaves the same hypothesis carrying `@provides` and
-  `@requires_artifact` for it — which the engine reads as a template waiting on an artifact it
-  has itself produced. `src` wins, and an edge left with no `dst` is dropped rather than
-  emitted one-sided. This CHANGES single-hop chaining, measured by executing base `128de49`'s
-  `derive_chain_edges` against this branch's on identical hypotheses: `#a -> #b via tok` plus
-  `#b -> #a via tok` gave `{tok: src=[a,b], dst=[a,b]}` and now yields no edge at all, and
-  `#a -> #b via tok` plus `#b -> #c via tok` gave `dst=[b,c]` and now gives `dst=[c]`. Both
-  differences are the rule doing its work.
-- **A declaration is now read WHOLE or not at all.** Every clause after a verb's mandatory
-  arguments is optional, so a search-based pattern could not fail on a malformed declaration —
-  it succeeded on the prefix it understood and dropped the rest in silence. Of 29 characters
-  placed after a flow's destination, 27 produced a `src`/`dst` pair the author never wrote,
-  with the channel and the description gone, and that pair reached `derive_chain_edges` and
-  `report.json` under a header calling it the codebase's own declaration; `@audit #api!`,
-  `@validates #ctl for App.API!` and `@boundary internet and api.gateway, db (#edge)` are the
-  same defect on other verbs, and the installed guardlink answers `Malformed` for every one. A
-  match is now discarded when the line up to the next ANNOTATION carries either a clause of the
-  verb's own grammar or an unread REFERENCE of the widened asset grammar. The clause set is
-  DERIVED from `_VERB_CLAUSES`, the same tuple each verb's pattern is composed from, so it covers
-  every clause that verb has; a hand-kept list of two — a description and `@flows`' ` via ` —
-  reported an `@exposes` written `App.API to #sqli cwe:CWE-89 [high]` with the severity silently
-  dropped. The reference test is the half no clause set can reach, because the junk in a
-  malformed declaration is usually an OPERAND — a second endpoint, a second threat — and its
-  shape is `_ASSET_REF`, composed from `_ASSET_REF_ALTERNATIVES`, not `#` alone: keyed on `#` it
-  refused a dropped `#db` but read a `@flows` written `Browser -> App.API, App.Worker` as a whole
-  Browser-to-App.API flow, the dropped operand being exactly the dotted and capitalised forms the
-  widening admitted, and that pair reached `derive_chain_edges`. It is guardlink's own
-  discrimination, read off the tool — 2.0.0 answers `Malformed … could not parse arguments
-  (looks structural — found a #reference)` for all of them. An UNCLOSED description is
-  deliberately not such a clause, and its prose is not searched for an operand either: that is a
-  note the author did not finish, cxg's settled behaviour of reading the mandatory arguments
-  with no `desc` is unchanged, and 4 of the 7 such notes across the three corpora carry a
-  sentence-initial capital that would otherwise have overturned it by accident. Measured over
-  the grammar's dimensions rather than over shapes seen failing — terminator × every combination
-  of each verb's clauses present or absent × one unread operand per alternative of the reference
-  grammar, 4,788 shapes across all thirteen verbs — 654 read as a partial while the reference
-  half was keyed on `#` (every one in the dotted and capitalised columns, 327 each) and 0 do
-  now; the clause half is not redundant, since the out-of-order severity above carries no stray
-  reference. Each dimension of that bar is checked against the parser's own tables, so a verb, a
-  clause or a reference form added without a sample fails the suite. What is NOT refused is
-  trailing text in which no token is a reference of the widened grammar — lowercase words: a
-  `@flows` written `Browser -> App.API for login` still reads as a Browser-to-App.API pair that
-  reaches `derive_chain_edges`, which 2.0.0 calls Malformed on its `->` keyword (the second arm
-  of its discrimination, a leftover structural keyword, which cxg does not implement), and an
-  `@audit` written `App.API!` still reads, which 2.0.0 reports as prose. That residue is pinned
-  in the suite and stated in `pentest/docs/ARCHITECTURE.md`. Measured across guardlink, siete
-  and cert-x-gen against the base of this branch, keyed on file, line and verb: 0 descriptions
-  shortened, 290 annotations gained a description they had been losing, 425 read that did not
-  read before, and 421 no longer read — 399 of them one generated dashboard HTML file in
-  guardlink rendering source lines inside `<span>` markup, and the other 22 fixture source inside
-  string literals, prose explaining a verb, or hard `Malformed` errors on 2.0.0, each named in
-  `pentest/docs/ARCHITECTURE.md`. The widened reference test alone stops 613 reads against the
-  head that keyed it on `#`, 0 of them with the verb opening its comment, and 2.0.0 reads 607 of
-  the 613 as `Malformed` and 4 as prose.
-- **The completeness region ends at the next ANNOTATION, not at the next at-sign.** Bounding it
-  at any `@` collapsed the region to nothing whenever a comment named a person, which is an
-  ordinary thing to write: `@audit #api @alice -- "please review the bcrypt comparison"` read as
-  an audit with the description gone, and `@flows User -> App.API @team via HTTPS -- "login
-  path"` lost the channel AND the note while still reaching `derive_chain_edges` as a declared
-  edge. The `@` must now be followed by one of the thirteen verbs, derived from `_VERB_RULES`.
-  The installed 2.0.0 calls the first line `Malformed @audit annotation`.
-- **Threat and control references may be DOTTED, and a `via` mechanism may carry `/`, `{`
-  and `}`.** Both were measured against the installed binary rather than inferred: it validates
-  `#shared-lib.injection` clean and returns `GET./items`, `HTTPS/443` and `GET./{stem}` whole,
-  while cxg stopped at the dot and at the slash and — the description no longer sitting where
-  the pattern expected it — dropped the description behind it. 23 annotations across the three
-  corpora were reading a truncated reference or channel and no note.
 - **A via-less flow's artifact name no longer shares a namespace with a channel's.** Slugging
   the endpoint pair the way a channel is slugged made `@flows #a -> #b` and an unrelated flow
   declared `via a-b` both come out as `a_b` and MERGE onto one artifact — the consumer of one
@@ -224,13 +145,10 @@ make cxg read guardlink's grammar, and nothing here should be read as saying it 
 
 **What went wrong repeatedly here, and why it was predictable**
 
-Review of this change turned up **nine** defects where a written claim exceeded what the code
+Review of this change turned up **six** defects where a written claim exceeded what the code
 does — the consumer table, the closed-severity set, the "one defect closed in three places"
-claim, the endpoint grammar, the chain-block note on where artifact names come from, the
-headline itself, two sentences in `ARCHITECTURE.md` still saying a multi-hop declaration
-decomposes per edge after that reading was withdrawn, and this file's own claim that single-hop
-chaining was byte-for-byte what it was — plus **two false guards**: tests whose assertions
-passed identically whether
+claim, the endpoint grammar, the chain-block note on where artifact names come from, and the
+headline itself — plus **two false guards**: tests whose assertions passed identically whether
 or not the thing they guarded had regressed. These are not unrelated tidy-ups, and the
 structural reason is worth stating because it predicts the defect rather than regretting it:
 **a change to what a parser ACCEPTS falsifies documentation at a higher rate than most
