@@ -108,15 +108,27 @@ make cxg read guardlink's grammar, and nothing here should be read as saying it 
   `redis -> db`) nor the single-token run this branch replaced (which returned `redis`). It
   fires on real code, not only on fixtures: guardlink's own
   `tests/dashboard-determinism.test.ts` writes a destination interpolated as `App.${name}`,
-  read as the fabricated asset id `App.`. Both rules are TRUNCATIONS, not refusals — the
-  operand stops where the author's token stops and the rest is left as a residue, which is
-  what the chain-edge refusal below acts on. One further consequence, stated because it is a
-  change rather than a repair: an unspaced `via HTTP->gRPC` reported `HTTP-` before this
-  branch as well and now reports `HTTP`; reading such a mechanism whole, as guardlink does, is
-  **GAP-53** and is deliberately not attempted.
-- **A half-read `@flows` declaration builds no chain edge.** A match that read neither a
-  mechanism nor a description and still leaves text behind is flagged on its record, and
-  `derive_chain_edges` skips such a record. `@flows Browser -> App.API, App.Worker`,
+  read as the fabricated asset id `App.`. Both rules are TRUNCATIONS, not refusals, **in both
+  endpoint positions** — the operand stops where the author's token stops and the rest is left
+  as a residue, which is what the chain-edge refusal below acts on. The SOURCE position needed
+  a second piece to make that true: the characters the run hands back have somewhere to go
+  after a destination, but after a source the pattern needs `->` next, so
+  `@flows #a. -> #b via x -- "d"` and `@flows user- -> #b via x -- "d"` failed outright and
+  lost the channel and the description with them. `_FLOW_ENDPOINT_RESIDUE` consumes exactly
+  what the endpoint hands back — the endpoint's own class minus its word characters — so those
+  two now read `#a` → `#b` and `user` → `#b` with the mechanism and the description intact and
+  the record flagged. What is still refused outright: a SPACED `@flows #a --> #b`, because the
+  residue class admits no whitespace, and a multi-hop declaration; the installed guardlink
+  2.0.0 calls both `Malformed`. Two further consequences, stated because they are changes
+  rather than repairs: an unspaced `via HTTP->gRPC` reported `HTTP-` before this branch as well
+  and now reports `HTTP` (reading such a mechanism whole, as guardlink does, is **GAP-53** and
+  is deliberately not attempted), and an unspaced `@flows #a--> #b via x` read as nothing
+  before the source allowance and now reads `#a` → `#b` flagged.
+- **A half-read `@flows` declaration builds no chain edge.** Two residues flag a record and
+  `derive_chain_edges` skips a flagged one: an unread operand consumed BEFORE the arrow, which
+  flags unconditionally because nothing else can sit between an endpoint and the arrow after
+  it, and text left behind by a match that read neither a mechanism nor a description.
+  `@flows Browser -> App.API, App.Worker`,
   `@flows #api -> #cache, s3`, `@flows #api -> #cache (redis)` and
   `@flows Browser -> App.API for login` are every one a hard `Malformed @flows` error on the
   installed guardlink 2.0.0, and each was becoming a declared chain hand-off shown to the model
@@ -124,8 +136,8 @@ make cxg read guardlink's grammar, and nothing here should be read as saying it 
   values are the author's own words; the RELATIONSHIP between them is what would be invented.
   **The parser still emits a partial record for those lines** — a stated limitation, carried in
   `pentest/docs/ARCHITECTURE.md`, not a defect: only chain-edge construction refuses one.
-  The REGION the test applies to was measured against the installed binary rather than reasoned
-  about, and the measurement overturned the obvious rule: once `via` is present that binary
+  The REGION the TRAILING test applies to was measured against the installed binary rather than
+  reasoned about, and the measurement overturned the obvious rule: once `via` is present that binary
   reads the rest of the line as the mechanism, so `via redis, s3` and `via TLS/5432` parse
   clean, and cxg truncating such a mechanism is no evidence the endpoints were misread.
   Flagging on a residue after a mechanism was tried first and would have been a live regression
