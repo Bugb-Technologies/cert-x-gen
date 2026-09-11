@@ -9,6 +9,208 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+**cxg reads the annotation forms guardlink TEACHES, and some of what it accepts**
+
+Three separate claims, because they are separately true. guardlink's `CLAUDE.md` Quick Syntax
+block is a TEACHING SUBSET; `guardlink gal` is the authoritative grammar. This change does not
+make cxg read guardlink's grammar, and nothing here should be read as saying it does.
+
+- **(a) Teaching examples: 1 of 14 → 12 of 14.** guardlink's `CLAUDE.md` teaches fourteen
+  Quick Syntax forms; the installed cxg parser read exactly one of them, the one-line
+  `@comment`. A customer who followed guardlink's documentation wrote annotations cxg could
+  not see, and nothing said so. `parse_inline` now reads twelve. The two it does not are
+  `@actor`, which that block marks `(definitions file)` and which names no code, and
+  `@flows`, whose widening was WITHDRAWN — see "What this change withdrew" below. Customer
+  source is unchanged; the work is entirely inside cxg.
+- **(b) Additional `gal` forms this change adds**, beyond the teaching subset: `@boundary`'s
+  PRIMARY spellings `A and B (#id)` and `A | B` (cxg previously read only `between A and B`,
+  which `gal` calls the alternate). The parenthesised id is `#`-prefixed and dot-free, derived
+  one fixture per form from the installed binary — it accepts `(#data-boundary)` and calls
+  `(data-boundary)`, `(zone.one)` and `(#zone.one)` hard `Malformed` errors — and a
+  PARENTHETICAL the pattern cannot read refuses the whole annotation instead of silently
+  dropping its description. That guard covers a parenthesis and nothing else — any other unread
+  tail still half-reads, so `@boundary #api and #db extra -- "d"` is `Malformed` on the binary
+  and cxg reads it as its two operands with the description gone. Refusing any unread tail is
+  the general trimming problem GAP-54 carries and is deliberately not attempted. Measured: of
+  the 91 boundary ids across guardlink, siete and cert-x-gen, 0 are written without the `#` and
+  0 carry a dot, so the narrowing costs nothing.
+- **`@handles` reads only the classifications guardlink accepts.** The vocabulary is a CLOSED
+  enumeration — `guardlink gal` spells the verb `@handles <classification> on <asset>` and lists
+  `pii phi financial secrets internal public`, and guardlink's own generated
+  `.guardlink/README.md` writes the same set — but cxg matched any word, so
+  `@handles credentials on App.API -- "d"` was read as a live annotation while the installed
+  binary calls it a hard `Malformed @handles` error. `handles` is in `_INTENT_LABELS`, so that
+  description reached the generation prompt as the author's own statement of intent for a line
+  guardlink says does not exist. The set is now closed and case-insensitive (the binary accepts
+  `PII` and `FINANCIAL` too), verified one fixture per token against guardlink 2.0.0 rather than
+  taken from the reference, and a test re-derives it from the installed binary and fails on
+  drift — skipping cleanly where guardlink is not on PATH. Measured: all 148 classifications
+  across guardlink, siete and cert-x-gen are members, so the narrowing costs nothing.
+- **(c) `gal` forms this change DELIBERATELY LEAVES UNREAD.** `@mitigates`' control clause is
+  optional in `gal` and `with` is accepted as a synonym for `using`, so
+  `@mitigates db.users against Token Theft -- "Rotation implemented in v2"` — `gal`'s own
+  second example — validates and parses on the installed binary and cxg still reads nothing
+  for it. This is a decision, not a to-do: nothing consumes `@mitigates` (see the consumer
+  table below), so widening it would add annotations no reader reads. Filed as **GAP-44**,
+  blocked on **GAP-43**, which is where "should an inline declaration with no SARIF result
+  behind it become a hypothesis?" gets settled.
+- **The grammar was widened to what the INSTALLED guardlink accepts**, not to what an
+  instruction file describes: `guardlink validate` over a fixture carrying all thirteen
+  source-legal examples reports 0 errors. Assets may be a dotted path (`App.API`) or a bare
+  capitalised identifier; severities accept guardlink's word spellings (all 88 severities in
+  guardlink's own model are word form and NOT ONE is a `[P0]` code, so the only spelling cxg
+  admitted was the one the corpus never writes). `@flows` IS UNCHANGED FROM origin/main — see
+  "What this change withdrew".
+- **Eight verbs cxg had no reader for at all** — `@confirmed`, `@boundary`, `@handles`,
+  `@validates`, `@assumes`, `@transfers`, `@feature`, `@owns` — are read. They are not eight
+  new parsers: `@assumes`, `@transfers`, `@boundary`, `@handles` and `@validates` reach the
+  generation prompt as intent context, labelled with the verb their author wrote, and
+  `@confirmed`, `@feature` and `@owns` are **recognised and consumed by nothing**, which is a
+  stated contract rather than an omission. `@exposes`, `@mitigates` and `@audit` are in that
+  same unconsumed group — six of the thirteen verbs in all, splitting three deliberate
+  (`@confirmed`, `@feature`, `@owns`) and three actionable (`@exposes`, `@mitigates`,
+  `@audit`, unconsumed because of GAP-43 rather than by decision). Hypotheses come from the SARIF,
+  not from inline annotations, so an exposure declared inline with no matching SARIF result
+  is invisible to cxg today; that is GAP-43 and is not decided here. Promoting `@confirmed` — a human asserting an
+  exploit is real — into the context that decides whether a finding is a real vulnerability
+  is an evidence-standard product call, not a parser change.
+- **`.gal` sidecars are read.** `guardlink init` writes EXTERNAL annotation mode by default,
+  putting annotations in `.guardlink/annotations/<path>.gal` and leaving source files bare.
+  `.gal` is not a source extension, so on a repository set up the way guardlink's own
+  instructions describe, cxg read zero annotations and lost every intent note in guardlink's
+  DEFAULT mode. Annotations are attributed to the source file and line their `@source` header
+  names, never to the sidecar — matching what the installed binary emits.
+
+
+**What this change withdrew, and why**
+
+`@flows` is byte-for-byte origin/main's behaviour on this head: the same pattern, the same
+`attach_flows_to_hypotheses`, the same `derive_chain_edges`. Verified on twelve shapes —
+plain, trailing period, trailing hyphen, a bare source, a fan-out, multi-hop, via-less, bare
+endpoints, a leading-digit endpoint, a multi-word mechanism and an arrow inside one — every
+one identical to main.
+
+The `@flows` widening was attempted and withdrawn after six rounds. It is not that the
+widening was wrong: via-less flows, bare and dotted endpoints and multi-word mechanisms all
+worked. What did not converge was TRIMMING cxg back to what guardlink accepts. cert-x-gen
+accepts a SUPERSET of guardlink's endpoint grammar and always has — `3rdparty`, `123`,
+`a..b` and `.lead` are hard `Malformed` on the installed binary and origin/main reads all
+four — and each round trimmed one dimension of that superset while holding another constant,
+so every fix was right about the case in front of it and wrong about the dimension nobody
+varied. Twice the result read a form guardlink rejects; twice it refused one guardlink
+accepts.
+
+The minimal withdrawal was measured rather than assumed: reverting only the endpoint
+trimming leaves `# @flows #api -> #cache.` reading a destination `#cache.` that does not
+exist, and that record reaches `derive_chain_edges` as a real chain edge. A consumer-side
+check cannot cover it, because the junk is absorbed INTO the field rather than left over.
+So the withdrawal is total.
+
+Everything downstream of the widening went with it, so nothing in the tree is left describing
+a flow this head cannot read. The consumer-side refusal of half-read declarations is INERT on
+main's `@flows` — it requires a `via` clause and a `#`-prefixed destination, so no input can
+produce the half-read record that refusal existed to act on (measured: 0 of 8 shapes) — and
+the `partial` flag that fed it went with it, producer included. VIA-LESS flows went the same
+way: `derive_chain_edges` skips a flow with no mechanism, so every derived edge carries one,
+and the endpoint-derived artifact name (`edge_<digest>`), the branches that existed to
+describe an edge with no mechanism, and the tests pinning them are all gone. Keeping any of it
+would have shipped machinery no input can reach — the same defect this branch spent two days
+filing against other code.
+
+The generation prompt is therefore byte-identical to origin/main on the chaining path as well.
+A label naming the declared `via` beside each artifact name was written here and REMOVED
+before shipping: an edge is keyed by its SANITISED artifact name, so `via coupon.code` and
+`via coupon-code` merge onto one edge and only the first channel string survives — and the
+label reported that survivor to the other declaration's author as their own mechanism, under
+a header vouching for everything below it as the codebase's own declaration and not a guess.
+The merge is pre-existing, identical on origin/main, and stays open as **GAP-47**; what was
+removed is the claim built on top of it. The operator console still prints
+`(via <channel>)` — unchanged from origin/main, and beside `chain_edges_declared`, which lists
+every declaration folded into the edge.
+
+Filed as **GAP-54** with the six rounds of evidence, the `edge_6705daf7` trace showing an
+invented id reaching a real chain edge, and the cross-product derivation
+`{#-prefixed, bare, dotted} × trailing characters × verbs` that the next attempt should
+START from rather than arrive at. The measurement that motivated the work stands: 37 of the
+123 flows in guardlink's own repository can never become a chain edge.
+
+### Fixed
+
+- **A verb written inside a note's own description is no longer read as an annotation.** A
+  human explaining which mitigation they deliberately did NOT write had that mitigation
+  recorded as real. The example is from guardlink's own `tests/fixtures/expense-api`:
+  `@comment -- "Written first as @mitigates #api against #malformed-input using
+  #auth-required, which nothing rejected even though the control and the threat have nothing
+  to do with each other"`. This is one defect in three places — on a continuation line, on a
+  line that opens a description running off its end, and on a line where the note opens and
+  closes — and this closes the last of those outright and the opening line WHERE THE
+  DESCRIPTION JOINS. An opener whose description never closes anywhere is not covered: the
+  narrowing sits inside `parse_inline`'s join branch, so an unterminated note whose prose names
+  a `@validates` still emits that verb. Those records are desc-less and reach the annotation
+  counter rather than the generation prompt, and the case is filed on GAP-32 beside the
+  continuation line. Widening the verb set from five to thirteen is what
+  made it necessary rather than tidy. It was the only annotation the bound removed across all
+  three annotated repositories, and a genuine annotation written after a closed note on the
+  same line is still read. `@feature` carries its own arm in the span pattern, being the one
+  verb with a quoted argument before the `--`; without it a feature note registered no span
+  and the bound did not reach it, so `@feature "SSO Login" -- "we rejected @exposes App.API
+  to #idor here"` emitted the exposure the sentence says was rejected.
+- **The CONTINUATION-line case is NOT closed and is carried as an open bound** (board card
+  GAP-32). The join refuses to run past such a line, but `parse_inline` visits it again on its
+  own turn with no span, so a verb in a wrapped note's prose is still emitted. The smallest
+  closure was prototyped and measured: it removes 9 fabrications in cert-x-gen but loses 191
+  descriptions in siete and overturns a standing PR-74 decision, so it is filed rather than
+  attempted. `pentest/docs/ARCHITECTURE.md` carries the measurement.
+- **A hyphen is refused in a bare or dotted reference.** `@exposes User-Store to #sqli`,
+  `@exposes App-Name.API to #sqli`, `@assumes App.API-v2`, `@transfers #ddos from App-X to
+  Ext.CF` and `@boundary internal-network and #db` are every one a hard `Malformed` error on
+  the installed guardlink 2.0.0, and cxg read all five as live annotations — `@assumes` and
+  `@boundary` carrying their descriptions into the generation prompt as the author's stated
+  intent, so a note guardlink calls malformed arrived labelled as one a human wrote. Where the
+  asset comes last and the description is optional (`@audit`, `@assumes`, `@handles`) the
+  refusal covers the WHOLE annotation rather than degrading into a match that reports an asset
+  the author never wrote with the description silently gone. A hyphen after `#` stays legal
+  (`#prepared-stmts` is guardlink's own spelling), as does `@owns`' owner token
+  (`security-team`, likewise). The flow endpoint keeps its hyphen as a stated
+  backward-compatibility tolerance, because cxg read `user-agent` and `3rdparty` before this
+  widening. Measured at 0 of 2,133 reference values across guardlink, siete and cert-x-gen —
+  the narrowing costs no annotation anywhere.
+- **A `.gal` `@source` header is recognised only at the start of a line.** Matched anywhere, a
+  note whose own description quoted the header text was consumed as a header — losing its own
+  annotation and silently re-attributing every note below it to the quoted path, so a "this is
+  by design" note could reach a hypothesis in a different file. Leading whitespace still opens
+  a block, because the installed guardlink parses an indented header.
+
+**What went wrong repeatedly here, and why it was predictable**
+
+Review of this change turned up **six** defects where a written claim exceeded what the code
+does — the consumer table, the closed-severity set, the "one defect closed in three places"
+claim, the endpoint grammar, the chain-block note on where artifact names come from, and the
+headline itself — plus **two false guards**: tests whose assertions passed identically whether
+or not the thing they guarded had regressed. These are not unrelated tidy-ups, and the
+structural reason is worth stating because it predicts the defect rather than regretting it:
+**a change to what a parser ACCEPTS falsifies documentation at a higher rate than most
+changes, because the documentation's whole subject is what it accepts** — every widening
+invalidates some sentence describing the old bound, including sentences in files the diff does
+not touch. Both false guards were found by asking of each test the same question: would it
+still fail if the thing it guards were deleted? A guard that cannot fail is worse than no
+guard, because it reports coverage it does not have.
+
+One more, and it is the cheaper lesson of the two: **a finding that keeps returning in new
+shapes is a cause that has not been named.** The multi-hop `@flows` declaration produced FIVE
+findings across five rounds — a hypothesis both providing and requiring one artifact; a
+declared hop ordering never applied; two providers silently overwriting one artifact key; an
+artifact name that depended on which hypothesis the run iterated first; and finally a
+legitimate SINGLE-hop declaration losing its chain edge because a chain was annotated nearer
+the same hypothesis. Each fix produced the next, and the fifth was a regression against main on
+a path this change was supposed to leave alone. The cause under all five is that a flow
+record's IDENTITY and its skip-or-name decision were keyed on different tuples: the dedup keys
+on `(src, dst, channel)` while the added `hops` field decided the outcome, so the record that
+survived the dedup decided the answer. Multi-hop reading is therefore withdrawn entirely rather
+than patched a fifth time, and filed as GAP-49 so whoever picks it up starts from that cause
+instead of rediscovering four symptoms. When the same declaration produces a third finding,
+stop fixing it and go looking for what makes it produce findings.
+
 **The instrumentation component — building a target that can earn its verdict**
 - **`cxg build --instrument`** — a new verb that produces an *instrumented* build of a
   compiled target, so the CLI Security Baseline's low-level classes reach real

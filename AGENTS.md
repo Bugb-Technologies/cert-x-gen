@@ -20,11 +20,39 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   estate was converted off it — the installed `guardlink` reads no `@g.` verb at all, so the
   whole corpus was invisible to it.
 - **Two readers, and they do not read the same set.** `pentest/guardlink.py`'s `parse_inline`
-  is cxg's own reader — five verbs, and it still ACCEPTS `@g.` on purpose, so the tolerance
-  tests in `pentest/tests/test_inline_annotation_forms.py` keep their `@g.` fixtures and must
-  not be "converted". `pentest/docs/ARCHITECTURE.md` ("Inline annotations") is the authority
-  on what it accepts. The installed `guardlink` binary is the other reader; `guardlink gal`
-  is its grammar.
+  is cxg's own reader — thirteen verbs since 2026-09-09, when it was widened to the forms
+  guardlink's Quick Syntax block TEACHES (a subset; `guardlink gal` is the grammar, and cxg
+  does not read all of it — `@mitigates`' optional control clause and its `with` synonym are
+  deliberately unread, GAP-44) — and it still ACCEPTS `@g.` on purpose, so the
+  tolerance tests in `pentest/tests/test_inline_annotation_forms.py` keep their `@g.` fixtures
+  and must not be "converted". `pentest/docs/ARCHITECTURE.md` ("Inline annotations") is the
+  authority on what it accepts, including which verbs have a CONSUMER: `@confirmed`,
+  `@feature` and `@owns` are recognised and deliberately consumed by nothing, and that is a
+  stated contract, not an omission. The installed `guardlink` binary is the other reader;
+  `guardlink gal` is its grammar.
+- **Widen to what the installed guardlink ACCEPTS, never to what an instruction file teaches.**
+  The two disagree: guardlink rejects `@exposes Dotted.Path (#id) to #threat` and bare
+  `@source (#id)` as hard `validate` errors (SPEC 2.3 reserves the parenthesised id for
+  definition verbs — board card GAP-36), so cxg must not read them either. Check a form by
+  running `guardlink validate` over a fixture before building a reader for it.
+- **A verb written inside a note's own description is not an annotation.** Prose explaining a
+  verb, or recording a mitigation deliberately NOT written, must not be read as one — the real
+  case is in guardlink's `tests/fixtures/expense-api`. This is one defect in three places
+  (continuation line, opening line, and a note that opens and closes on one line); the LAST is
+  closed outright, the OPENING line only where the description JOINS — the narrowing sits inside
+  `parse_inline`'s join branch, so an opener that never closes anywhere still emits a verb quoted
+  in its prose — and any new verb widens the surface of all three. **The CONTINUATION line, and
+  an opener whose join FAILS, are OPEN BOUNDS — board card GAP-32.** The join stopping at a
+  continuation line is not the fix: `parse_inline` reaches that line again on its own turn and
+  emits. Do not attempt the closure
+  without re-reading the measurement in `pentest/docs/ARCHITECTURE.md` — the obvious one loses
+  191 descriptions in siete and overturns a standing PR-74 decision. Until it is closed, prose
+  in this estate must spell a verb apart from its arguments (`` `@flows` `` then
+  `` `#p -> #q` ``), because this parser reads its own source. GAP-32 is one specific way a
+  broader root cause fires: cxg reads a verb ANYWHERE in a comment where guardlink requires it
+  to open one (**GAP-48**). Cite GAP-32 for the continuation line and GAP-48 for the general
+  case; do not merge them, and note that GAP-48's proposed anchor has a `.gal` trap — sidecar
+  lines carry no comment marker, so a naive anchor drops every sidecar annotation.
 - **`@source` and `@sink` are still in the Giggs form, deliberately.** guardlink has no
   `@sink` verb, and its `@source` is an unrelated `file:line` anchor directive — a bare
   `@source (#id) -- "…"` is a hard `guardlink validate` error, not a working annotation. Both
