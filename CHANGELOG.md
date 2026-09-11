@@ -163,15 +163,18 @@ START from rather than arrive at. The measurement that motivated the work stands
   attempted. `pentest/docs/ARCHITECTURE.md` carries the measurement.
 - **A hyphen is refused in a bare or dotted reference.** `@exposes User-Store to #sqli`,
   `@exposes App-Name.API to #sqli`, `@assumes App.API-v2`, `@transfers #ddos from App-X to
-  Ext.CF`, `@handles user-data on App.API` and `@boundary internal-network and #db` are every
-  one a hard `Malformed` error on the installed guardlink 2.0.0, and cxg read all six as live
-  annotations — `@assumes`, `@boundary` and `@handles` carrying their descriptions into the
-  generation prompt as the author's stated intent, so a note guardlink calls malformed arrived
-  labelled as one a human wrote. A hyphen after `#` stays legal (`#prepared-stmts` is
-  guardlink's own spelling), as does `@owns`' owner token (`security-team`, likewise). The flow
-  endpoint keeps its hyphen as a stated backward-compatibility tolerance, because cxg read
-  `user-agent` and `3rdparty` before this widening. Measured at 0 of 2,133 reference values
-  across guardlink, siete and cert-x-gen — the narrowing costs no annotation anywhere.
+  Ext.CF` and `@boundary internal-network and #db` are every one a hard `Malformed` error on
+  the installed guardlink 2.0.0, and cxg read all five as live annotations — `@assumes` and
+  `@boundary` carrying their descriptions into the generation prompt as the author's stated
+  intent, so a note guardlink calls malformed arrived labelled as one a human wrote. Where the
+  asset comes last and the description is optional (`@audit`, `@assumes`, `@handles`) the
+  refusal covers the WHOLE annotation rather than degrading into a match that reports an asset
+  the author never wrote with the description silently gone. A hyphen after `#` stays legal
+  (`#prepared-stmts` is guardlink's own spelling), as does `@owns`' owner token
+  (`security-team`, likewise). The flow endpoint keeps its hyphen as a stated
+  backward-compatibility tolerance, because cxg read `user-agent` and `3rdparty` before this
+  widening. Measured at 0 of 2,133 reference values across guardlink, siete and cert-x-gen —
+  the narrowing costs no annotation anywhere.
 - **A `.gal` `@source` header is recognised only at the start of a line.** Matched anywhere, a
   note whose own description quoted the header text was consumed as a header — losing its own
   annotation and silently re-attributing every note below it to the quoted path, so a "this is
