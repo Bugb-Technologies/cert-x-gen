@@ -57,10 +57,8 @@ the argument does not carry and is not relied on.)
 
 **Why that figure still names 39962c5 and still holds.** It was re-measured at each head that
 changed the parser: 0c7a9fb read 5,648 and 39962c5 reads 5,648, a delta of **0** — the terminator
-narrowing 39962c5 landed moves nothing there. The only parser change after 39962c5 is a WIDENING
-of `@feature`'s quoted name, which can read more and never less, and it moves nothing on any
-corpus reachable here: zero `@feature` lines carry a backslash-escaped quote in their name across
-cert-x-gen, guardlink's tree, or the local siete checkout. **The siete slice itself was NOT
+narrowing 39962c5 landed moves nothing there. The parsers at 0c7a9fb, 39962c5 and HEAD each emit
+an identical **3,491** annotations over this worktree. **The siete slice itself was NOT
 re-measured after 39962c5**, because 733c0fb is not fetched into any local siete clone — that is
 stated rather than papered over, and it is the one step of this figure a reader cannot repeat here.
 
