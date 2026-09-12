@@ -14,8 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 `report.json` gains three keys and every finding gains five. The report carries `scan_id` — the
 session directory's name, so a ledger entry months later traces back to the `audit.jsonl` that
-produced it — and `findings`, the confirmed set serialised a second time under the name
-guardlink's scan ingest reads. Both names are carried because neither can be renamed from here:
+produced it — and `findings`, the confirmed set under a second name, the one guardlink's scan
+ingest reads. Both names are carried because neither can be renamed from here:
 siete reads `confirmed_findings`, guardlink reads `findings`. Refutations
 (`mitigation_verifications`) and unresolved triage (`ambiguous`) are deliberately excluded, since
 the ingest can only ever write `confirmed`.
@@ -36,6 +36,19 @@ test, not a list of the producers to exclude — so a probe cxg synthesised itse
 crash observation carry none and are left unmatched rather than stapled to a neighbour. A mutated
 retry inherits its parent's identity and `@id` deterministically instead of depending on the model
 to reproduce the headers.
+
+Entitlement is not enough on its own: the provenance must also be unambiguous. `_dedupe_by_probe_shape`
+collapses every hypothesis sharing `(method, path, function_name)` onto one template, and where the
+collapsed group does not agree on one `(file, line, asset, threat)` all five identity keys are
+WITHHELD — the prompt is told about the merged-away members, so a finding may demonstrate any of
+them while carrying only the survivor's location, and the ingest joins on location first. Findings
+there are left unmatched, which is what that path was before an identity was carried at all. The
+members the collapse dropped now appear in `not_selected_threats` with a reason stating that a
+bigger `--max-templates` does not reach them; previously they appeared nowhere. On the legacy
+browser path the same rule removes one pre-existing line: an AI-synthesised probe no longer
+attaches the `threat_id` of the vuln-class representative it was invoked with, for exactly the
+reason that path carries no annotation, asset or threat either. Every site that attaches an
+identity is now tabulated with its proof in `pentest/docs/ARCHITECTURE.md`.
 
 A stamped location can drift between runs. A reused template is re-stamped from the hypothesis it
 is being reused for; a replayed one whose stamp no guardlink hypothesis in the run corroborates has

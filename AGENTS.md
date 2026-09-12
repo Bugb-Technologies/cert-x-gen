@@ -156,9 +156,23 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   confirms whatever exposure sits at that line today. `_cache_key` cannot be taught about the
   location — the digest is the on-disk template filename and siete recomputes it through cxg's
   own `_cache_key`, so changing the formula orphans every operator's cache and silently loses
-  correlation — so the drift is answered by re-stamping a reused template and by dropping the
-  identity of a replayed one the run's hypotheses do not corroborate. `pentest/docs/ARCHITECTURE.md`
-  § "Drift in a reused template" is the authority.
+  correlation — so the drift is answered by DROPPING the identity of any loaded template the run's
+  hypotheses do not corroborate. That withdrawal is the LIVE defence and it runs on BOTH the
+  generating and the replay branch; do not narrow it to the replay branch on the reasoning that a
+  generating run has already re-stamped its reuses. `_reuse_cached_template`'s re-stamp is
+  DEFENSIVE: `generate_all` makes a fresh `session-<timestamp>` directory unless its caller passes
+  a `session_dir`, which the orchestrator does not, so nothing on the production generating path is
+  cached to re-stamp. Keep it anyway — it is the write side of the same rule.
+  `pentest/docs/ARCHITECTURE.md` § "Drift in a reused template" is the authority.
+- **An ambiguous provenance gets NO identity, not a precise wrong one.** `_dedupe_by_probe_shape`
+  collapses every hypothesis sharing one probe shape onto a single template, so where the group
+  does not agree on one `(file, line, asset, threat)` the survivor's five identity keys are
+  withheld and its findings are left unmatched. The criterion is the DISAGREEMENT, not the
+  `[merged classes: …]` note, which is only a symptom; the dropped members land in
+  `not_selected_threats`, whose remedy is not a bigger `--max-templates`. Every site that attaches
+  an identity, with the proof beside it, is tabulated in `pentest/docs/ARCHITECTURE.md`
+  § "Every site that attaches an exposure identity, and its proof" — a new site belongs in that
+  table or it does not belong in the code.
 - **Only a hypothesis `parse_sarif` built is stamped with an exposure identity.** The gate is the
   POSITIVE `Hypothesis.from_sarif`, never a list of the synthesisers to exclude — cxg mints
   hypotheses of its own (Electron IPC, `--discover-routes`) whose file and line name no annotation,
