@@ -40,17 +40,24 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   must not be read as one — the real case is in guardlink's `tests/fixtures/expense-api`.
   **GAP-48 is CLOSED** (2026-09-12): a verb is read only where a comment body begins, matching
   the installed guardlink. `pentest/docs/ARCHITECTURE.md` § "A verb must OPEN the comment body"
-  is the authority — the three places a body begins, the `.gal` half, and the measurement.
-  Two things there are easy to get wrong twice. A body opens after a comment opener ANYWHERE on
-  the line, because narrowing to line-start would drop 295 real trailing-comment notes; and it
-  opens again where a previous description CLOSED, because siete writes 22 real annotations that
-  way and a marker-only rule dropped every one. Both are pinned. The openers include `<!--`,
-  because guardlink reads an HTML-comment annotation in a `.html` file and narrowing PAST the
-  binary is forbidden as firmly as widening past it. Two residues are filed rather than closed,
-  both recorded in that section so they are not re-derived: **GAP-52**, display markup where a
-  real `#` or `//` sits immediately before a verb and still reads (the mid-line opener rule that
-  keeps trailing comments working is what admits it), and **GAP-56**, a second annotation on a
-  TRAILING comment being silently dropped.
+  is the authority — the two places a body begins, the `.gal` half, and the measurement.
+  A body opens after a comment opener ANYWHERE on the line — narrowing to line-start would drop
+  295 real trailing-comment notes — and after the block-comment `*` marker at the start of a
+  trimmed line, and nowhere else. The openers include `<!--`, because guardlink reads an
+  HTML-comment annotation in a `.html` file and narrowing PAST the binary is forbidden as firmly
+  as widening past it. **A third start, chaining a body wherever a description had CLOSED, was
+  tried and REMOVED — do not rebuild it.** Any quoted word followed by a verb satisfied it, so
+  `#`-prose-quote-verb read in cxg and as nothing in guardlink, and guardlink calls a chained
+  comment a hard `Malformed` error: cxg may extend where the authority is SILENT and may not read
+  what it REFUSES. Removing it converges with the binary and costs nothing measurable — the walk
+  reads byte-identical annotations across all three corpora with it and without it, and the 22
+  siete notes recorded as its justification do not reproduce. **So cxg reads AT MOST ONE
+  annotation from any comment — trailing, whole-line, HTML or block — and a second is silently
+  dropped.** That is uniform, which retires the trailing-comment-only asymmetry GAP-56 named;
+  cxg still reads that FIRST annotation where guardlink reads none, and extending the refusal to
+  the whole line is not authorised. One residue is filed rather than closed: **GAP-52**, display
+  markup where a real `#` or `//` sits immediately before a verb and still reads, which the
+  mid-line opener rule that keeps trailing comments working is what admits.
 - **Closing GAP-48 did NOT close GAP-32, though the card predicted it would.** A verb on a
   CONTINUATION line does open that line's comment body, so the rule admits it and must; the
   continuation line remains an open bound. What GAP-48 did close, besides prose generally, is
