@@ -71,8 +71,9 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   more than guardlink and refusing what it accepts are the same defect, and the second is the one
   derivations keep committing. **A cross-product does not eliminate the blind spot; it relocates
   it to the choice of which dimensions to cross** — so read what the grid does NOT cross, written
-  beside its tables, before trusting a claim it supports. The severity bracket is the one it
-  still holds constant, and `_SEV` is a known surviving superset there.
+  beside its tables, before trusting a claim it supports. The severity bracket and `@boundary`'s
+  separator are two dimensions it still holds constant, and each carries a known surviving
+  superset there (`_SEV`, `_RE_BOUNDARY`).
   `pentest/docs/ARCHITECTURE.md` § "The END BOUND" carries the derivation and the numbers.
 - **ANY CORPUS FIGURE THAT SHIPS MUST NAME THE CORPUS COMMIT.** A count measured against an
   unnamed or stale checkout is not a measurement, it is an anecdote with a number on it. A round
