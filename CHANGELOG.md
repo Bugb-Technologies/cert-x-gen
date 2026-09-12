@@ -55,9 +55,9 @@ all — separating them needs the anchor hash `guardlink sarif` does not export,
 guardlink change. The third is cxg's own and is closable here: a run that loaded no model
 withdraws nothing, which is correct, but its stamps then reach report.json unchecked and an empty
 `identity_withdrawn` cannot be told apart from "checked, nothing refused" — the marker that would
-distinguish them is filed, not built. Separately, and not one of the three, `guardlink sarif`
-omits an exposure carrying a declared `@mitigates`, so cxg is never offered it at all (measured on
-temporal: 1 of 142).
+distinguish them is deliberately not built here, and untracked. Separately, and not one of the
+three, `guardlink sarif` omits an exposure carrying a declared `@mitigates`, so cxg is never
+offered it at all (measured on temporal: 1 of 142).
 `pentest/docs/ARCHITECTURE.md` § "The exposure identity a finding carries" is the authority.
 
 **cxg reads the annotation forms guardlink TEACHES, and some of what it accepts**

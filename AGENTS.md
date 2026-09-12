@@ -79,6 +79,13 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   different species from a weakened fixture — nobody edited the test. The nested-annotation
   stop added an early exit that a 4,000-opener performance fixture hit before the continuation
   cap was ever approached, so it stopped testing its subject and stayed green.
+- **A correction is itself a generator of false claims.** The sentence written to fix a false
+  sentence is written at the moment the author feels most certain they finally understand the
+  thing, which is exactly when they stop checking. It happened here: the edit that removed
+  "neither closable from cxg" from bound 3 introduced "filed rather than built here" in the same
+  paragraph, and no card had been filed. Prefer DELETING a false sentence to REPLACING it. When a
+  replacement is necessary, make it a statement verifiable at the instant of writing — never one
+  whose truth depends on a future act by anyone, including the author.
 - **An asymmetry justifies COMPLETING something, not BUILDING something.** "The same note
   reads on one line and vanishes when wrapped" is evidence of an oversight only where closing
   it adds no new discrimination — the `/**` opener was an incomplete marker set and was
