@@ -167,14 +167,24 @@ START from rather than arrive at. The measurement that motivated the work stands
   is withdrawn. What settles it is not the size of that number but whose reader can see it: the
   installed guardlink parses the exact shape those 22 are written in — a wrapped note whose
   closing line carries a second verb after its quote — to `annotations_parsed 0`, and the
-  one-line form to a hard `Malformed` error. Every one of the 22 was a note only cxg could see.
+  one-line form to a hard `Malformed` error — and not only on that fixture: `guardlink parse` over
+  siete reads 44 annotations in the whole repository, none on any of the 22 lines.
 
-  **cert-x-gen therefore reads AT MOST ONE annotation from any single comment — trailing,
-  whole-line, HTML or block — and a second one after the first's closing quote is SILENTLY
-  DROPPED.** That is uniform now rather than a trailing-comment asymmetry, which is what board
-  card GAP-56 was filed for. The residual left standing and NOT built on: cxg reads that first
-  annotation where guardlink reads none, since the binary rejects the whole line; extending the
-  refusal to the whole line is new logic on the wrapped-note path and is deliberately not done.
+  **What that removes is a MECHANISM, not a count.** Gone is the body start at a closed
+  description quote, so a second annotation no longer chains off a quote alone: `x = 1 #
+  @comment -- "first" @audit #real-api -- "second"` yields the comment and drops the audit,
+  identically as a trailing or a whole-line comment. NOT gone is chaining behind a second
+  comment OPENER — openers are honoured wherever they occur on a line, the rule that keeps a
+  trailing comment readable — so `x = 1 # @comment -- "n" // @audit #a -- "s"` still reads two,
+  as do the whole-line, `/* … */` and `<!-- … -->` spellings, all measured. The installed
+  guardlink reads ZERO from every one of those lines, so cxg reads MORE than the binary there;
+  that is the GAP-52 family mechanism, a real marker immediately before a verb, and is carried
+  on that card. An earlier draft of this entry claimed cert-x-gen reads at most one annotation
+  per comment: that sentence was false in all four spellings and is withdrawn, not qualified.
+  The bound the parser does implement is per line and per verb KIND, not per comment. What
+  board card GAP-56 was filed for does survive: a trailing comment and a whole-line comment
+  behave identically, counterexample included. Extending the refusal to the whole line is new
+  logic on the wrapped-note path and is deliberately not done.
 
   What was actually run against the installed guardlink 2.0.0, rather than a blanket claim: the
   marker table (`//`, `  //`, `//@`, `///`, `//!`, `#`, `##`, `/*`, `/**`, `<!--`, a
@@ -223,19 +233,24 @@ START from rather than arrive at. The measurement that motivated the work stands
   276 was classified: 245 sit on lines that are not comments at all — test-fixture string
   literals, template text, generated display markup — 9 are prose on a comment line that names a
   verb while explaining it, and 22 are the chained second annotations described above.
-  **So 254 of the 276 are fabrications and 22 are notes a human did write — every one of which
-  the installed guardlink reads as zero.** Nothing a reader of the binary could see is lost.
+  **So 254 of the 276 are fabrications and 22 are notes a human did write.** Whether the binary
+  can see any of them was measured rather than inferred: `guardlink parse` over the three corpora
+  reads 510 + 44 + 1,544 annotations, and intersecting their `location.file`/`location.line` with
+  the 970 records cxg stops reading gives the empty set — on not one of those lines does guardlink
+  read anything at all.
 
   Two scope notes. cxg still reads a trailing comment on a code line where guardlink reads
   nothing, deliberately — but the corpora do not argue for it, and the claim that they do is
   withdrawn: narrowing to an opener at the start of a trimmed line costs 223 annotations
   (guardlink 78, of which 24 are the dashboard's own phantom reads; siete 62; cert-x-gen 83),
-  and every one is the fabrication class — 199 inside a string literal, 24 generated markup,
-  none written beside code. The rule is kept because the shape it serves is one cxg accepts by
+  and all 223 classify into the fabrication class — 199 inside a string literal, 24 generated
+  markup — by a quote-parity test whose residue and a random sample were re-read by hand, which
+  found none written beside code. The rule is kept because the shape it serves is one cxg accepts by
   design and because narrowing is a separate decision to measure on its own, not because of a
   corpus count (board card GAP-34). A `.gal` sidecar line
-  carrying TWO annotations now yields the first and not both — the same one-per-line bound as a
-  source comment, not a sidecar special case — and against the binary that is CONVERGENCE rather
+  carrying TWO annotations now yields the first and not both — and here, unlike in a source
+  comment, no second marker can reopen the chain, since a sidecar line has exactly one body start
+  and honours no marker at all — and against the binary that is CONVERGENCE rather
   than loss: guardlink refuses such a line outright as malformed and reads ZERO from it, while
   the one-per-line form it actually emits parses as two. cxg stopped reading something guardlink
   never read. And closing this did NOT
