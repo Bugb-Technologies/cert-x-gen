@@ -44,7 +44,13 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   Two things there are easy to get wrong twice. A body opens after a comment opener ANYWHERE on
   the line, because narrowing to line-start would drop 295 real trailing-comment notes; and it
   opens again where a previous description CLOSED, because siete writes 22 real annotations that
-  way and a marker-only rule dropped every one. Both are pinned.
+  way and a marker-only rule dropped every one. Both are pinned. The openers include `<!--`,
+  because guardlink reads an HTML-comment annotation in a `.html` file and narrowing PAST the
+  binary is forbidden as firmly as widening past it. Two residues are filed rather than closed,
+  both recorded in that section so they are not re-derived: **GAP-52**, display markup where a
+  real `#` or `//` sits immediately before a verb and still reads (the mid-line opener rule that
+  keeps trailing comments working is what admits it), and **GAP-56**, a second annotation on a
+  TRAILING comment being silently dropped.
 - **Closing GAP-48 did NOT close GAP-32, though the card predicted it would.** A verb on a
   CONTINUATION line does open that line's comment body, so the rule admits it and must; the
   continuation line remains an open bound. What GAP-48 did close, besides prose generally, is

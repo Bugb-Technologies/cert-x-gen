@@ -146,8 +146,8 @@ START from rather than arrive at. The measurement that motivated the work stands
   comment closed one instance; the comments most likely to trip it are the ones EXPLAINING the
   parser, so that was a treadmill rather than a fix.
 
-  A comment body begins after an opener (`//`, `#`, `/*`) anywhere on the line, after the
-  block-comment body marker `*` at the start of a trimmed line only, and where a previous
+  A comment body begins after an opener (`//`, `#`, `/*`, `<!--`) anywhere on the line, after
+  the block-comment body marker `*` at the start of a trimmed line only, and where a previous
   annotation's description closed on a comment line. In a `.gal` sidecar it begins at the first
   non-space character — sidecar lines carry no comment marker, and that is the trap the card
   names: a naive anchor drops every sidecar annotation, and `.gal` reading is a shipped
@@ -155,20 +155,38 @@ START from rather than arrive at. The measurement that motivated the work stands
   refusal was checked against the installed guardlink 2.0.0 with `guardlink parse`, not against
   an instruction file.
 
+  `<!--` is in that list because the binary is the authority in BOTH directions. `.html` is a
+  deliberate member of the shared walk filter, guardlink reads
+  `<!-- @exposes #x to #t -- "d" -->` in a `.html` file, and a server-rendered template is
+  exactly where a customer annotates a form for #csrf or #xss — so omitting it would have
+  narrowed cxg PAST the tool it is aligning to and dropped a real note in silence, which is
+  forbidden as firmly as accepting more. **Its cost, stated so it is not read later as a
+  regression: exactly 3 annotations are re-admitted across the corpora**, all of them
+  TypeScript test-fixture string literals in guardlink's own suite (`tests/review.test.ts:180`
+  and `:193`, `tests/dashboard-determinism.test.ts:144`) — the same string-literal residue
+  GAP-48 already leaves elsewhere, since a marker before the verb is indistinguishable from a
+  trailing comment. A wrapped HTML note is still not joined: the continuation line of an HTML
+  comment carries no marker, the same stated bound as a wrapped trailing comment (GAP-34).
+
   **Measured on today's main, not inherited from the card.** Across guardlink, siete and
-  cert-x-gen the walk read 10,311 annotations before and 9,365 after — 951 dropped, 9.2%. One
+  cert-x-gen the walk read 10,311 annotations before and 9,368 after — 948 dropped, 9.2%. One
   file dominates: guardlink's generated `docs/examples/threat-dashboard.html` falls from 713
-  phantom reads to 24, so excluding it the cost is 257 of 9,598, **2.7%** (guardlink 211,
-  siete 9, cert-x-gen 37). Every drop was classified: 248 sit on lines that are not comments at
+  phantom reads to 24, so excluding it the cost is 254 of 9,598, **2.6%** (guardlink 208,
+  siete 9, cert-x-gen 37). Every drop was classified: 245 sit on lines that are not comments at
   all — test-fixture string literals, template text, generated display markup — and 9 are prose
-  naming a verb inside backticks while explaining it. **No real annotation is lost.** A
+  on a comment line that names a verb while explaining it, seven of them inside backticks.
+  **No real annotation is lost.** A
   marker-only rule did drop 22 real siete notes, four of them threat-surface claims, written as
   a second annotation beginning where the previous one's description closed; the third
   body-start rule above is what keeps them, and they are pinned.
 
-  Two scope notes. cxg still reads a trailing comment on a code line where guardlink reads
+  Three scope notes. cxg still reads a trailing comment on a code line where guardlink reads
   nothing, deliberately: 295 such notes are real annotations, and narrowing to guardlink there
-  would drop them rather than any fabrication (board card GAP-34). And closing this did NOT
+  would drop them rather than any fabrication (board card GAP-34). A `.gal` sidecar line
+  carrying TWO annotations now yields the first and not both, and that is CONVERGENCE rather
+  than loss — run against the binary, guardlink refuses such a line outright as malformed and
+  reads ZERO from it, while the one-per-line form it actually emits parses as two. cxg stopped
+  reading something guardlink never read. And closing this did NOT
   subsume the continuation-line case as GAP-48 predicted — a verb on a continuation line does
   open that line's comment body — so **GAP-32 stands as filed**. What it did close besides
   prose generally is the opener whose join FAILS, whose quoted verb sits mid-line.
