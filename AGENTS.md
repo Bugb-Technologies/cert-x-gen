@@ -125,6 +125,28 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   `pentest/docs/ARCHITECTURE.md` § `scope.py` is the authority;
   `pentest/tests/test_scope_file_refusal.py` pins every half.
 
+## The finding -> exposure join (`guardlink hypothesis confirm --from-scan`)
+
+- `pentest/docs/ARCHITECTURE.md` § "The exposure identity a finding carries" is the authority:
+  what report.json puts on the wire, why the key is `{file, line}` and not `(asset, threat, file)`,
+  and the residue that is still open. `pentest/tests/fixtures/shared-threat-name/README.md` carries
+  the collision the key exists for.
+- **Re-measuring the join needs a COPY of the target repository.** `importScan` writes
+  `.guardlink/hypotheses.json` into the root it is pointed at, and `--from-scan` refuses a report
+  outside that root, so a measurement against a real corpus copies the repo (`git archive HEAD |
+  tar -x`) and puts the report inside the copy. Delete the ledger between shapes or the second
+  measurement starts from the first one's outcome.
+- **cxg cannot confirm what `guardlink sarif` does not emit.** The SARIF omits an exposure that
+  carries a declared `@mitigates`, so that exposure never becomes a hypothesis and stays
+  `untested` however well the join works. Measured on temporal: 1 of 142. `--mitigation-mode`
+  selects among the hypotheses cxg was given; it cannot recover one it never received.
+- `parse_sarif` also reads guardlink's `confirmed-exploitable` results as hypotheses. Their
+  location is the `@confirmed` line, which is not an `@exposes` line, so findings derived from
+  them cannot join by location and fall to the `(asset, threat)` tier. Measured on temporal: 7 of
+  148 results, of which 4 joined on the fallback and 3 were refused as ambiguous.
+- **`.gitignore` ignores `*.json` tree-wide.** A fixture that needs a JSON file needs `git add -f`
+  or an allow-list line; `.sarif` is not affected.
+
 ## Instrumentation preflight
 
 - `detect_instrumentation` (`src/engine/common.rs`) reads the **symbol table**, never the
