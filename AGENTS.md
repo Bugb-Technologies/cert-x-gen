@@ -35,6 +35,28 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   `@source (#id)` as hard `validate` errors (SPEC 2.3 reserves the parenthesised id for
   definition verbs — board card GAP-36), so cxg must not read them either. Check a form by
   running `guardlink validate` over a fixture before building a reader for it.
+- **guardlink's grammar is a TABLE in its source, and that is the authority to derive from.**
+  `guardlink gal` teaches by example and enumerates no character class; the grammar itself is
+  the `PATTERNS` table in `src/parser/parse-line.ts`, built from ~10 named constants
+  (`TAG_SEGMENT`, `ASSET_REF`, `ID_DEF`, …), with `comment-strip.ts` defining what is stripped
+  before matching. Find the checkout with `readlink -f $(which guardlink)` — the installed
+  binary is a symlink into it — then VERIFY before trusting it: `dist/parser/parse-line.js`
+  must carry the same constants as `src`, since only `dist` is what runs. One derivation from
+  that table explained every dimension six rounds of hand-trimming had missed one at a time.
+  Do not hand-write a grammar, and do not derive one axis while holding another constant.
+- **Every `PATTERNS` entry is anchored `^…$`, so cxg carries an END BOUND** (`_RE_ANNOTATION_TAIL`
+  in `pentest/guardlink.py`): an annotation must consume the rest of its line, bar a comment
+  terminator, a separated trailing code comment, a further at-token, or an unclosed description.
+  `@flows` is EXEMPT — its `via` clause is unbounded in guardlink, so bounding cxg's narrower
+  single-token mechanism would refuse what the binary accepts. It applies only to an UNJOINED
+  line, because guardlink does not join a wrapped description and so has no verdict on one.
+  `pentest/docs/ARCHITECTURE.md` § "The END BOUND" carries the derivation and the numbers.
+- **The cross-product is re-runnable; use it rather than reasoning about either parser.**
+  `test_no_form_the_installed_guardlink_refuses_is_read_as_a_declaration` puts
+  {operand form} × {trailing character} × {verb} to the installed binary and fails on drift,
+  skipping where guardlink is absent. Any change to a verb pattern should be measured through
+  it. Check a candidate rule in BOTH directions: reading more than guardlink and refusing what
+  it accepts are the same defect, and the second is the one derivations keep committing.
 - **A verb written inside a note's own description is not an annotation.** Prose explaining a
   verb, or recording a mitigation deliberately NOT written, must not be read as one — the real
   case is in guardlink's `tests/fixtures/expense-api`. This is one defect in three places
@@ -46,9 +68,12 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   continuation line is not the fix: `parse_inline` reaches that line again on its own turn and
   emits. Do not attempt the closure
   without re-reading the measurement in `pentest/docs/ARCHITECTURE.md` — the obvious one loses
-  191 descriptions in siete and overturns a standing PR-74 decision. Until it is closed, prose
+  191 descriptions in siete and overturns a standing PR-74 decision. The END BOUND NARROWED
+  both without closing either: a continuation line whose quoted verb leaves a TAIL no longer
+  emits, one that ends the line still does. Until they are closed, prose
   in this estate must spell a verb apart from its arguments (`` `@flows` `` then
-  `` `#p -> #q` ``), because this parser reads its own source. GAP-32 is one specific way a
+  `` `#p -> #q` ``), because this parser reads its own source — and BACKTICKING the verb is what
+  actually protects it, the pattern then needing whitespace where the backtick sits. GAP-32 is one specific way a
   broader root cause fires: cxg reads a verb ANYWHERE in a comment where guardlink requires it
   to open one (**GAP-48**). Cite GAP-32 for the continuation line and GAP-48 for the general
   case; do not merge them, and note that GAP-48's proposed anchor has a `.gal` trap — sidecar
