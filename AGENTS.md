@@ -158,8 +158,12 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   and a negative list is correct only until the next one is added. When the identity is withdrawn
   from an uncorroborated template, `@threat_id` goes with the four headers: guardlink derives it
   from asset, threat and file with no line, so it names a file's surviving sibling just as wrongly.
-  Two measured bounds are stated in `pentest/docs/ARCHITECTURE.md` § "The exposure identity a
-  finding carries"; the second needs a **guardlink** change (`guardlink sarif` does not export the
+  A reused template's re-stamp moves the same five. **An EMPTY hypothesis list withdraws nothing** —
+  it is the absence of a check, not a disproof, and an ordinary `--template-dir` replay against a
+  codebase with no `whitebox/findings.sarif` produces one. Every withdrawal is recorded in
+  report.json under `identity_withdrawn`, which is the only trace of the one drift case cxg cannot
+  detect. Two measured bounds are stated in `pentest/docs/ARCHITECTURE.md` § "The exposure identity
+  a finding carries"; the second needs a **guardlink** change (`guardlink sarif` does not export the
   anchor hash) and must not be approximated here.
 - **`.gitignore` ignores `*.json` tree-wide.** A fixture that needs a JSON file needs `git add -f`
   or an allow-list line; `.sarif` is not affected.
