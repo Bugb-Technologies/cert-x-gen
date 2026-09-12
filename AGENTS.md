@@ -44,19 +44,33 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   must carry the same constants as `src`, since only `dist` is what runs. One derivation from
   that table explained every dimension six rounds of hand-trimming had missed one at a time.
   Do not hand-write a grammar, and do not derive one axis while holding another constant.
-- **Every `PATTERNS` entry is anchored `^…$`, so cxg carries an END BOUND** (`_RE_ANNOTATION_TAIL`
-  in `pentest/guardlink.py`): an annotation must consume the rest of its line, bar a comment
-  terminator, a separated trailing code comment, a further at-token, or an unclosed description.
-  `@flows` is EXEMPT — its `via` clause is unbounded in guardlink, so bounding cxg's narrower
-  single-token mechanism would refuse what the binary accepts. It applies only to an UNJOINED
-  line, because guardlink does not join a wrapped description and so has no verdict on one.
-  `pentest/docs/ARCHITECTURE.md` § "The END BOUND" carries the derivation and the numbers.
+- **Every `PATTERNS` entry is anchored `^…$` (28 of 28, checked over `dist`), so cxg carries an
+  END BOUND** (`_RE_ANNOTATION_TAIL` in `pentest/guardlink.py`): an annotation must consume the
+  rest of its line, bar a comment terminator, a further at-token, or an unclosed description —
+  plus, for `@comment` ALONE, a separated trailing code comment. That one-verb limit is the
+  binary's: with ` # noqa` appended, `@comment` is the only verb it leaves SILENT and the other
+  twelve are hard `Malformed` errors, so extending there is allowed and extending elsewhere is
+  reading a form guardlink refuses. Keep it — a lint pragma must not cost an author their
+  intent note. `@flows` is EXEMPT from the bound entirely, because its `via` clause is unbounded
+  in guardlink; that exemption is WIDER than its justification (a flow WITH a description and a
+  trailing pragma is `Malformed` there and read here) and is a stated divergence, not a gap.
+- **The bound is only ever as right as the clause in front of it.** Every tail it refuses is a
+  clause cxg declined to read, so a clause NARROWER than the shared grammar turns valid work
+  into a silent zero. That is not hypothetical: landing the bound over a `#`-only threat
+  reference and a hard-coded `cwe:`-then-`owasp:` tail cost 72 shapes guardlink models. Before
+  adding or tightening a clause, measure the OTHER direction.
 - **The cross-product is re-runnable; use it rather than reasoning about either parser.**
-  `test_no_form_the_installed_guardlink_refuses_is_read_as_a_declaration` puts
-  {operand form} × {trailing character} × {verb} to the installed binary and fails on drift,
-  skipping where guardlink is absent. Any change to a verb pattern should be measured through
-  it. Check a candidate rule in BOTH directions: reading more than guardlink and refusing what
-  it accepts are the same defect, and the second is the one derivations keep committing.
+  `test_no_form_the_installed_guardlink_refuses_is_read_as_a_declaration` and
+  `…_accepts_is_refused_outside_a_stated_bound` put 9,152 cells of {endpoint form} ×
+  {trailing character} × {verb × operand position} × {threat/control operand} × {ext-ref tail}
+  to the installed binary and fail on drift, skipping where guardlink is absent. Any change to a
+  verb pattern should be measured through it. Check a candidate rule in BOTH directions: reading
+  more than guardlink and refusing what it accepts are the same defect, and the second is the one
+  derivations keep committing. **A cross-product does not eliminate the blind spot; it relocates
+  it to the choice of which dimensions to cross** — so read what the grid does NOT cross, written
+  beside its tables, before trusting a claim it supports. The severity bracket is the one it
+  still holds constant, and `_SEV` is a known surviving superset there.
+  `pentest/docs/ARCHITECTURE.md` § "The END BOUND" carries the derivation and the numbers.
 - **A verb written inside a note's own description is not an annotation.** Prose explaining a
   verb, or recording a mitigation deliberately NOT written, must not be read as one — the real
   case is in guardlink's `tests/fixtures/expense-api`. This is one defect in three places
