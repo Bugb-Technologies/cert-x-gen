@@ -152,6 +152,15 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   correlation — so the drift is answered by re-stamping a reused template and by dropping the
   identity of a replayed one the run's hypotheses do not corroborate. `pentest/docs/ARCHITECTURE.md`
   § "Drift in a reused template" is the authority.
+- **Only a hypothesis `parse_sarif` built is stamped with an exposure identity.** The gate is the
+  POSITIVE `Hypothesis.from_sarif`, never a list of the synthesisers to exclude — cxg mints
+  hypotheses of its own (Electron IPC, `--discover-routes`) whose file and line name no annotation,
+  and a negative list is correct only until the next one is added. When the identity is withdrawn
+  from an uncorroborated template, `@threat_id` goes with the four headers: guardlink derives it
+  from asset, threat and file with no line, so it names a file's surviving sibling just as wrongly.
+  Two measured bounds are stated in `pentest/docs/ARCHITECTURE.md` § "The exposure identity a
+  finding carries"; the second needs a **guardlink** change (`guardlink sarif` does not export the
+  anchor hash) and must not be approximated here.
 - **`.gitignore` ignores `*.json` tree-wide.** A fixture that needs a JSON file needs `git add -f`
   or an allow-list line; `.sarif` is not affected.
 
