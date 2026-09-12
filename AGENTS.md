@@ -35,24 +35,27 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   `@source (#id)` as hard `validate` errors (SPEC 2.3 reserves the parenthesised id for
   definition verbs — board card GAP-36), so cxg must not read them either. Check a form by
   running `guardlink validate` over a fixture before building a reader for it.
-- **A verb written inside a note's own description is not an annotation.** Prose explaining a
-  verb, or recording a mitigation deliberately NOT written, must not be read as one — the real
-  case is in guardlink's `tests/fixtures/expense-api`. This is one defect in three places
-  (continuation line, opening line, and a note that opens and closes on one line); the LAST is
-  closed outright, the OPENING line only where the description JOINS — the narrowing sits inside
-  `parse_inline`'s join branch, so an opener that never closes anywhere still emits a verb quoted
-  in its prose — and any new verb widens the surface of all three. **The CONTINUATION line, and
-  an opener whose join FAILS, are OPEN BOUNDS — board card GAP-32.** The join stopping at a
-  continuation line is not the fix: `parse_inline` reaches that line again on its own turn and
-  emits. Do not attempt the closure
-  without re-reading the measurement in `pentest/docs/ARCHITECTURE.md` — the obvious one loses
-  191 descriptions in siete and overturns a standing PR-74 decision. Until it is closed, prose
-  in this estate must spell a verb apart from its arguments (`` `@flows` `` then
-  `` `#p -> #q` ``), because this parser reads its own source. GAP-32 is one specific way a
-  broader root cause fires: cxg reads a verb ANYWHERE in a comment where guardlink requires it
-  to open one (**GAP-48**). Cite GAP-32 for the continuation line and GAP-48 for the general
-  case; do not merge them, and note that GAP-48's proposed anchor has a `.gal` trap — sidecar
-  lines carry no comment marker, so a naive anchor drops every sidecar annotation.
+- **A verb must OPEN a comment body, and one written inside a note's own description is not an
+  annotation.** Prose explaining a verb, or recording a mitigation deliberately NOT written,
+  must not be read as one — the real case is in guardlink's `tests/fixtures/expense-api`.
+  **GAP-48 is CLOSED** (2026-09-12): a verb is read only where a comment body begins, matching
+  the installed guardlink. `pentest/docs/ARCHITECTURE.md` § "A verb must OPEN the comment body"
+  is the authority — the three places a body begins, the `.gal` half, and the measurement.
+  Two things there are easy to get wrong twice. A body opens after a comment opener ANYWHERE on
+  the line, because narrowing to line-start would drop 295 real trailing-comment notes; and it
+  opens again where a previous description CLOSED, because siete writes 22 real annotations that
+  way and a marker-only rule dropped every one. Both are pinned.
+- **Closing GAP-48 did NOT close GAP-32, though the card predicted it would.** A verb on a
+  CONTINUATION line does open that line's comment body, so the rule admits it and must; the
+  continuation line remains an open bound. What GAP-48 did close, besides prose generally, is
+  the opener whose join FAILS — that verb sits mid-line and is now refused. The join stopping at
+  a continuation line is still not the fix: `parse_inline` reaches that line again on its own
+  turn and emits. Do not attempt the closure without re-reading the measurement in
+  `pentest/docs/ARCHITECTURE.md` — the obvious one loses 191 descriptions in siete and overturns
+  a standing PR-74 decision. Prose in this estate must still not BEGIN a comment line with a
+  verb followed by its arguments, because this parser reads its own source; spelling the verb
+  apart from them (`` `@flows` `` then `` `#p -> #q` ``) remains the safe habit, though a verb
+  named mid-sentence is now inert.
 - **`@source` and `@sink` are still in the Giggs form, deliberately.** guardlink has no
   `@sink` verb, and its `@source` is an unrelated `file:line` anchor directive — a bare
   `@source (#id) -- "…"` is a hard `guardlink validate` error, not a working annotation. Both
