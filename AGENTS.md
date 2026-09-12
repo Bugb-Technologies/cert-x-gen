@@ -47,8 +47,13 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   the rule is kept as a decision of its own, not on a count — and after the block-comment `*`
   marker at the start of a trimmed line, and nowhere else. The openers include `<!--`, because
   guardlink reads an HTML-comment annotation in a `.html` file and narrowing PAST the binary is
-  forbidden as firmly as widening past it. **A third start, chaining a body wherever a description
-  had CLOSED, was tried and REMOVED — do not rebuild it.** Any quoted word followed by a verb
+  forbidden as firmly as widening past it — WITHIN THE DOMAIN THE TWO SHARE, which is the files
+  cxg actually opens. Where guardlink reads a language `_TEXT_EXTS` does not carry, being narrower
+  is meaningless rather than wrong: board card **GAP-57**, six SPEC 2.9 comment styles cxg does
+  not honour, is that case and is a stated bound, not a gap to close.
+  `pentest/docs/ARCHITECTURE.md` carries the measurement; extend `_TEXT_EXTS` and the opener set
+  together or neither. **A third start, chaining a body wherever a description had CLOSED, was
+  tried and REMOVED — do not rebuild it.** Any quoted word followed by a verb
   satisfied it, so `#`-prose-quote-verb read in cxg and as nothing in guardlink, and guardlink
   calls a chained comment a hard `Malformed` error: cxg may extend where the authority is SILENT
   and may not read what it REFUSES. Removing it DOES cost: the 22 siete notes recorded as its
@@ -59,11 +64,13 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   verb still yields both, in all four spellings.** guardlink reads zero from every such line, so
   cxg reads more than the binary there; that is the GAP-52 mechanism, not a separate defect. A
   sentence here once claimed at most one annotation per comment and was measured false; the bound
-  the parser implements is per line and per verb KIND. GAP-56 survives on its own terms — a
-  trailing comment and a whole-line comment behave identically — and extending the refusal to the
-  whole line is not authorised. One residue is filed rather than closed: **GAP-52**, display
-  markup where a real `#` or `//` sits immediately before a verb and still reads, which the
-  mid-line opener rule that keeps trailing comments working is what admits.
+  the parser implements is per line and per verb KIND. **GAP-56 is CLOSED as obsolete**: the rule
+  that created the trailing-comment asymmetry was removed, so a trailing comment and a whole-line
+  comment now behave identically — that identity is why the card closed, not a residue of it. Do
+  not re-file or re-investigate it. Extending the refusal to the whole line is separate and is not
+  authorised. One residue is filed rather than closed: **GAP-52**, display markup where a real `#`
+  or `//` sits immediately before a verb and still reads, which the mid-line opener rule that keeps
+  trailing comments working is what admits.
 - **Closing GAP-48 did NOT close GAP-32, though the card predicted it would.** A verb on a
   CONTINUATION line does open that line's comment body, so the rule admits it and must; the
   continuation line remains an open bound. What GAP-48 did close, besides prose generally, is

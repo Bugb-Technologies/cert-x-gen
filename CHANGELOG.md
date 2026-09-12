@@ -196,10 +196,12 @@ START from rather than arrive at. The measurement that motivated the work stands
   that is the GAP-52 family mechanism, a real marker immediately before a verb, and is carried
   on that card. An earlier draft of this entry claimed cert-x-gen reads at most one annotation
   per comment: that sentence was false in all four spellings and is withdrawn, not qualified.
-  The bound the parser does implement is per line and per verb KIND, not per comment. What
-  board card GAP-56 was filed for does survive: a trailing comment and a whole-line comment
-  behave identically, counterexample included. Extending the refusal to the whole line is new
-  logic on the wrapped-note path and is deliberately not done.
+  The bound the parser does implement is per line and per verb KIND, not per comment. **Board card
+  GAP-56 is closed as obsolete**: the rule that created the trailing-comment asymmetry was removed,
+  so a trailing comment and a whole-line comment now behave identically, counterexample included —
+  that identity is the reason the card closed rather than something left over from it. Extending
+  the refusal to the whole line is separate, is new logic on the wrapped-note path, and is
+  deliberately not done.
 
   What was actually run against the installed guardlink 2.0.0, rather than a blanket claim: the
   marker table (`//`, `  //`, `//@`, `///`, `//!`, `#`, `##`, `/*`, `/**`, `<!--`, a
@@ -216,7 +218,10 @@ START from rather than arrive at. The measurement that motivated the work stands
   `<!-- @exposes #x to #t -- "d" -->` in a `.html` file, and a server-rendered template is
   exactly where a customer annotates a form for #csrf or #xss — so omitting it would have
   narrowed cxg PAST the tool it is aligning to and dropped a real note in silence, which is
-  forbidden as firmly as accepting more. **Its cost, stated so it is not read later as a
+  forbidden as firmly as accepting more — within the domain the two share, the qualifier board
+  card GAP-57 sharpened and `pentest/docs/ARCHITECTURE.md` carries: where guardlink reads a
+  language `_TEXT_EXTS` does not, being narrower is meaningless rather than wrong, which is why
+  the six further SPEC 2.9 comment styles are a stated bound and not a widening. **Its cost, stated so it is not read later as a
   regression: exactly 3 annotations are re-admitted across the corpora**, all of them
   TypeScript test-fixture string literals in guardlink's own suite (`tests/review.test.ts:180`
   and `:193`, `tests/dashboard-determinism.test.ts:144`) — the same string-literal residue
