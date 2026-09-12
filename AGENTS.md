@@ -45,7 +45,7 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   that table explained every dimension six rounds of hand-trimming had missed one at a time.
   Do not hand-write a grammar, and do not derive one axis while holding another constant.
 - **Every `PATTERNS` entry is anchored `^…$` (28 of 28, checked over `dist`), so cxg carries an
-  END BOUND** (`_TAIL_RULES` in `pentest/guardlink.py`): an annotation must consume the
+  END BOUND** (`_tail_rule` in `pentest/guardlink.py`): an annotation must consume the
   rest of its line, bar a comment terminator WHOSE OPENER IS ON THAT LINE (guardlink strips one
   only through anchored patterns that require it, so a free-floating terminator reads forms the
   binary calls Malformed; `-}` and `*)` are dropped outright, since no extension cxg walks uses
