@@ -9,6 +9,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+**A finding carries the identity of the exposure it tested, so
+`guardlink hypothesis confirm --from-scan` can settle a hypothesis**
+
+`report.json` gains three keys and every finding gains five. The report carries `scan_id` — the
+session directory's name, so a ledger entry months later traces back to the `audit.jsonl` that
+produced it — and `findings`, the confirmed set serialised a second time under the name
+guardlink's scan ingest reads. Both names are carried because neither can be renamed from here:
+siete reads `confirmed_findings`, guardlink reads `findings`. Refutations
+(`mitigation_verifications`) and unresolved triage (`ambiguous`) are deliberately excluded, since
+the ingest can only ever write `confirmed`.
+
+Each finding carries `annotation: {file, line}`, `asset`, `threat`, `template_id` and a one-line
+`title` derived from its description, so the ingest joins it to the exposure the probe was
+actually testing rather than falling through to CWE — the loosest tier, and the only one that can
+attach a finding to an exposure it never tested. The identity rides in the template's own
+`@exposure_file` / `@exposure_line` / `@exposure_asset` / `@exposure_threat` headers, because a
+`--template-dir` replay loads no SARIF and a header is the only carrier it has. The line is part
+of the key because `(asset, threat, file)` is not unique in practice: temporal carries six groups
+where one file holds two exposures with the same asset and threat, and guardlink's own `threatId`
+cannot separate them either.
+
+Only a hypothesis guardlink's SARIF produced is entitled to an identity — a positive `from_sarif`
+test, not a list of the producers to exclude — so a probe cxg synthesised itself (Electron IPC,
+`--discover-routes`, a CONFIG claim), an AI-written or hand-written template and the engine's own
+crash observation carry none and are left unmatched rather than stapled to a neighbour. A mutated
+retry inherits its parent's identity and `@id` deterministically instead of depending on the model
+to reproduce the headers.
+
+A stamped location can drift between runs. A reused template is re-stamped from the hypothesis it
+is being reused for; a replayed one whose stamp no guardlink hypothesis in the run corroborates has
+all five identity keys withdrawn in memory — the four headers and `@threat_id`, which guardlink
+derives from asset, threat and file with no line, so it names a file's surviving sibling just as
+wrongly. The probe still runs and is still reported; only its claim about WHICH exposure it tests
+is dropped, and every withdrawal is recorded in the new `identity_withdrawn` (one record per
+template the run LOADED whose stamp it refused, which is not the same as one per template that
+ran). A run that loaded no guardlink SARIF hypothesis checked nothing and therefore withdraws
+nothing.
+
+Two bounds are stated rather than approximated. An exposure that merely MOVED loses a true
+identity, which is accepted: a missed join is silence and recoverable, a wrong join is a
+confirmation a human has to catch later. And a stamped exposure deleted while a same-asset,
+same-threat sibling comes to sit on exactly the stamped line cannot be detected from this side at
+all — separating them needs the anchor hash `guardlink sarif` does not export, so it needs a
+guardlink change. `guardlink sarif` also omits an exposure carrying a declared `@mitigates`, so cxg
+is never offered it (measured on temporal: 1 of 142).
+`pentest/docs/ARCHITECTURE.md` § "The exposure identity a finding carries" is the authority.
+
 **cxg reads the annotation forms guardlink TEACHES, and some of what it accepts**
 
 Three separate claims, because they are separately true. guardlink's `CLAUDE.md` Quick Syntax

@@ -392,8 +392,14 @@ each prompt to `$BUGB_BRIDGE_URL` (with `Authorization: Bearer $BUGB_BRIDGE_TOKE
 reads the completion back — an editor/CI integration point rather than a local CLI. When
 `--ai-provider auto` is used, the bridge is preferred whenever `$BUGB_BRIDGE_URL` is set.
 
-Findings in `report.json` carry a `threat_id` linking each finding back to the originating
-guardlink hypothesis (`null` for AI/mutation-synthesised probes).
+Findings in `report.json` carry the identity of the exposure they tested — the annotation's
+`{file, line}`, its `asset` and `threat`, and guardlink's `threat_id` — so
+`guardlink hypothesis confirm --from-scan report.json` joins each confirmation straight back to
+the claim it settles. A probe with no originating guardlink exposure carries none and is left
+unmatched (an AI-synthesised template, or one generated for a hypothesis cxg minted itself from
+Electron IPC or `--discover-routes`); a mutated retry inherits its parent's. See
+[pentest architecture](pentest/docs/ARCHITECTURE.md) § "The exposure identity a finding carries"
+for the join, its two measured bounds, and the `identity_withdrawn` record.
 
 ---
 

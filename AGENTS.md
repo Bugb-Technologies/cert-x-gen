@@ -165,9 +165,10 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   an annotation location. The same subset is the only thing allowed to corroborate a stamp, because
   only guardlink's own exposures are stamped. Every withdrawal is recorded in report.json under
   `identity_withdrawn` — every template LOADED whose stamp was refused, which is not the same as
-  every template that ran — and it is the only trace of the one drift case cxg cannot detect. Two measured bounds are stated in `pentest/docs/ARCHITECTURE.md` § "The exposure identity
-  a finding carries"; the second needs a **guardlink** change (`guardlink sarif` does not export the
-  anchor hash) and must not be approximated here.
+  every template that ran — and it is the only trace of the one drift case cxg cannot detect.
+  Two measured bounds are stated in `pentest/docs/ARCHITECTURE.md` § "The exposure identity a
+  finding carries"; the second needs a **guardlink** change (`guardlink sarif` does not export
+  the anchor hash) and must not be approximated here.
 - **`.gitignore` ignores `*.json` tree-wide.** A fixture that needs a JSON file needs `git add -f`
   or an allow-list line; `.sarif` is not affected.
 
