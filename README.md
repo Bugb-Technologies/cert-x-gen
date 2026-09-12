@@ -399,7 +399,7 @@ the claim it settles. A probe with no originating guardlink exposure carries non
 unmatched (an AI-synthesised template, or one generated for a hypothesis cxg minted itself from
 Electron IPC or `--discover-routes`); a mutated retry inherits its parent's. See
 [pentest architecture](pentest/docs/ARCHITECTURE.md) § "The exposure identity a finding carries"
-for the join, its two measured bounds, and the `identity_withdrawn` record.
+for the join, its measured bounds, and the `identity_withdrawn` record.
 
 ---
 
