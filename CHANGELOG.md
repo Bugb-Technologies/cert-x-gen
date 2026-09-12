@@ -47,13 +47,16 @@ template the run LOADED whose stamp it refused, which is not the same as one per
 ran). A run that loaded no guardlink SARIF hypothesis checked nothing and therefore withdraws
 nothing.
 
-Two bounds are stated rather than approximated. An exposure that merely MOVED loses a true
+Three bounds are stated rather than approximated. An exposure that merely MOVED loses a true
 identity, which is accepted: a missed join is silence and recoverable, a wrong join is a
 confirmation a human has to catch later. And a stamped exposure deleted while a same-asset,
 same-threat sibling comes to sit on exactly the stamped line cannot be detected from this side at
 all — separating them needs the anchor hash `guardlink sarif` does not export, so it needs a
 guardlink change. `guardlink sarif` also omits an exposure carrying a declared `@mitigates`, so cxg
-is never offered it (measured on temporal: 1 of 142).
+is never offered it (measured on temporal: 1 of 142). The third is cxg's own and is closable
+here: a run that loaded no model withdraws nothing, which is correct, but its stamps then reach
+report.json unchecked and an empty `identity_withdrawn` cannot be told apart from "checked,
+nothing refused" — the marker that would distinguish them is filed, not built.
 `pentest/docs/ARCHITECTURE.md` § "The exposure identity a finding carries" is the authority.
 
 **cxg reads the annotation forms guardlink TEACHES, and some of what it accepts**
