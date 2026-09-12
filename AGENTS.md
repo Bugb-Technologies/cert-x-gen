@@ -158,11 +158,14 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   and a negative list is correct only until the next one is added. When the identity is withdrawn
   from an uncorroborated template, `@threat_id` goes with the four headers: guardlink derives it
   from asset, threat and file with no line, so it names a file's surviving sibling just as wrongly.
-  A reused template's re-stamp moves the same five. **An EMPTY hypothesis list withdraws nothing** —
-  it is the absence of a check, not a disproof, and an ordinary `--template-dir` replay against a
-  codebase with no `whitebox/findings.sarif` produces one. Every withdrawal is recorded in
-  report.json under `identity_withdrawn`, which is the only trace of the one drift case cxg cannot
-  detect. Two measured bounds are stated in `pentest/docs/ARCHITECTURE.md` § "The exposure identity
+  A reused template's re-stamp moves the same five. **A run holding no `from_sarif` hypothesis
+  withdraws nothing** — that is the absence of a check, not a disproof, and it is the SARIF SUBSET
+  that decides, never the length of `hyps`: a desktop run appends `electron_surface.extract` and
+  `--discover-routes` appends its own, so the list is non-empty while nothing in it can corroborate
+  an annotation location. The same subset is the only thing allowed to corroborate a stamp, because
+  only guardlink's own exposures are stamped. Every withdrawal is recorded in report.json under
+  `identity_withdrawn` — every template LOADED whose stamp was refused, which is not the same as
+  every template that ran — and it is the only trace of the one drift case cxg cannot detect. Two measured bounds are stated in `pentest/docs/ARCHITECTURE.md` § "The exposure identity
   a finding carries"; the second needs a **guardlink** change (`guardlink sarif` does not export the
   anchor hash) and must not be approximated here.
 - **`.gitignore` ignores `*.json` tree-wide.** A fixture that needs a JSON file needs `git add -f`
