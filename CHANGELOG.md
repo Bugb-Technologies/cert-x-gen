@@ -43,9 +43,10 @@ tolerance. Cells guardlink reads and cxg refuses fell to **91**, below the base 
 a stated bound.
 
 **What it cost on a live corpus, with every build named.** Corpus siete `main` 733c0fb
-(PR #121, 2026-09-12); cxg base ad24ea1; cxg measured at **39962c5**; guardlink 2.0.0. cxg base
-reads **5,745** annotations in that tree and 39962c5 reads **5,648** — **97 no longer read**, by kind
-`@exposes` 69, `@confirmed` 11, `@comment` 9, `@audit` 4, `@mitigates` 4. guardlink models 558
+(PR #121, 2026-09-12); cxg base **4b342e6**; cxg measured at **d18e2578**; guardlink 2.0.0. cxg
+base reads **5,745** annotations in that tree and d18e2578 reads **5,648** — **97 no longer
+read**, by kind `@exposes` 69, `@confirmed` 11, `@comment` 9, `@audit` 4, `@mitigates` 4.
+guardlink models 558
 annotations there and reads **0 of the 97**, so none of them is a form the shared grammar
 accepts. Exactly **1** is a description opener written as a bare trailing `--` with the quote on
 the next line; the end bound refuses that spelling on purpose, because `-- "` is two tokens and
@@ -55,10 +56,8 @@ class `_RE_DESC_TAIL_TRAILING` already refuses. (guardlink's own `LINE_MARKERS` 
 as a comment marker, but none of the 11 extensions cxg walks uses it that way, so that half of
 the argument does not carry and is not relied on.)
 
-**Why that figure still names 39962c5 and still holds.** It was re-measured at each head that
-changed the parser: 0c7a9fb read 5,648 and 39962c5 reads 5,648, a delta of **0** — the terminator
-narrowing 39962c5 landed moves nothing there. The parsers at 0c7a9fb, 39962c5 and HEAD each emit
-an identical **3,491** annotations over this worktree. **The siete slice itself was NOT
+**The figure at each head that changed the parser.** 0c7a9fb read 5,648 and 39962c5 reads 5,648,
+a delta of **0**. No round after d18e2578 changes parser code. **The siete slice itself was NOT
 re-measured after 39962c5**, because 733c0fb is not fetched into any local siete clone — that is
 stated rather than papered over, and it is the one step of this figure a reader cannot repeat here.
 
