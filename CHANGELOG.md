@@ -152,6 +152,21 @@ START from rather than arrive at. The measurement that motivated the work stands
   and that is the trap the card names: a naive anchor drops every sidecar annotation, and
   `.gal` reading is a shipped feature. Verified at 80 sidecar annotations before and after.
 
+  Between the opener and the body a run of the marker's final character is consumed, then up to
+  three DECORATION characters from `!`, `<`, `^` and `|`. That set is guardlink 2.0.0's, probed
+  one ASCII punctuation character at a time after `//` and after `#`; the binary refuses `-`,
+  `=`, `:`, `.`, `>` and `*`, and refuses a fourth decoration, and so does cxg. This was a
+  REGRESSION the branch introduced and then fixed rather than a widening anybody wanted: `///<`,
+  `/**<`, `//!<`, `//<`, `#<`, `//|` and `//^` are read by the binary and were read by cxg at
+  4b342e6, and this branch read NONE of them until the set was spelled out — the Doxygen
+  after-member markers, in four languages that are all in the walk's extension list. It converges
+  both ways, since cxg still refuses `//-`, which 4b342e6 wrongly read. The corpora are silent on
+  it — none of the three contains such a spelling — so the justification is binary agreement, and
+  on this branch that is the third time the corpus count would have decided it wrongly. The
+  `<!--` opener takes neither a run nor a decoration, measured the same way: `<!---`, `<!--<`,
+  `<!--^`, `<!--!` and `<!--|` all parse to zero, with `guardlink validate` naming the character
+  and saying the line is not parsed, and cxg read `<!---` until this rule spelled the exception.
+
   A THIRD body start — wherever a previous description had CLOSED, so that one comment could
   carry several annotations — was written and then REMOVED, and it is worth recording why
   rather than only that. It defeated the rule it was bounding: any quoted word followed by a
@@ -188,9 +203,12 @@ START from rather than arrive at. The measurement that motivated the work stands
 
   What was actually run against the installed guardlink 2.0.0, rather than a blanket claim: the
   marker table (`//`, `  //`, `//@`, `///`, `//!`, `#`, `##`, `/*`, `/**`, `<!--`, a
-  block-comment `*` body line), the `.html` fixture, the two `.gal` shapes, and the refusals —
-  a verb behind prose, a `TODO:`, a `-` bullet, a `(`, a quoted word, and both chained forms —
-  each through `guardlink parse` and `guardlink validate` one fixture at a time. Everything
+  block-comment `*` body line), the decoration table (`///<`, `/**<`, `//!<`, `//<`, `#<`, `//|`,
+  `//^`), every ASCII punctuation character after `//` and after `#` one at a time, the `.html`
+  fixture, the two `.gal` shapes, and the refusals — a verb behind prose, a `TODO:`, a `-` bullet,
+  a `(`, a quoted word, both chained forms, `//-`, a fourth decoration character, and the `<!--`
+  decoration and run — each through `guardlink parse` and `guardlink validate` one fixture at a
+  time. Everything
   else this entry describes is cxg's own reach, which the binary does not read at all.
 
   `<!--` is in that list because the binary is the authority in BOTH directions. `.html` is a
