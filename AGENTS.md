@@ -144,6 +144,14 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   location is the `@confirmed` line, which is not an `@exposes` line, so findings derived from
   them cannot join by location and fall to the `(asset, threat)` tier. Measured on temporal: 7 of
   148 results, of which 4 joined on the fallback and 3 were refused as ambiguous.
+- **A stale exposure location does not MISS, it lands on the wrong claim.** The ingest joins on
+  location before it consults asset and threat, so a template whose stamped line has drifted
+  confirms whatever exposure sits at that line today. `_cache_key` cannot be taught about the
+  location — the digest is the on-disk template filename and siete recomputes it through cxg's
+  own `_cache_key`, so changing the formula orphans every operator's cache and silently loses
+  correlation — so the drift is answered by re-stamping a reused template and by dropping the
+  identity of a replayed one the run's hypotheses do not corroborate. `pentest/docs/ARCHITECTURE.md`
+  § "Drift in a reused template" is the authority.
 - **`.gitignore` ignores `*.json` tree-wide.** A fixture that needs a JSON file needs `git add -f`
   or an allow-list line; `.sarif` is not affected.
 
