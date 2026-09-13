@@ -9,6 +9,86 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+**cxg's acceptance set is DERIVED from guardlink's grammar table, in both directions (GAP-54)**
+
+cert-x-gen accepted a superset of guardlink's grammar along a different dimension for every
+verb, so it could act on "threats" guardlink says were never validly declared. Six rounds of
+hand-trimming did not converge. This derives the rule instead of trimming toward it, from the
+`PATTERNS` table in `src/parser/parse-line.ts` (2.0.0) and the constants it is built from.
+
+- **An END BOUND.** 28 of the 28 entries in that table are anchored `^…$` over the
+  marker-stripped line — checked entry by entry over `dist`, since `dist` is what runs — so an
+  annotation that leaves text unconsumed is a hard `validate` error there, **not a shorter
+  annotation**, which is what cxg silently produced. One rule, replacing the per-verb trimming.
+  It closes a fabrication as well as truncations: `@boundary #api| and #db -- "d"` used to
+  report a trust boundary between `#api` and the keyword `and`, with the description dropped.
+- **Operand classes spelled from guardlink's own constants**, not from the shapes anyone met:
+  ASCII (`\w` is Unicode-aware in Python, so `#café` read here and is `Malformed` there), every
+  dotted segment opening on a letter or underscore (`App.2fa` likewise), threats and controls
+  routed through `TAG_REF` so a dotted cross-repo id such as `#shared-lib.injection` reads, and
+  an external-ref tail of ANY count, ANY order and ANY key, as `EXT_REFS_OPT` has it.
+- **A trailing lint pragma is read for `@comment` alone.** Measured one fixture per verb:
+  `@comment` is the only verb the installed 2.0.0 leaves silent with ` # noqa` appended; the
+  other twelve are hard `Malformed` errors. Extending where guardlink is silent is allowed;
+  reading a form it refuses is not. Kept for `@comment` as a decision, not a gap — a lint pragma
+  must not cost an author their intent note.
+
+**Scope of the claim.** Measured across a 9,152-cell cross-product put to the installed binary,
+in three slices: {15 endpoint forms} × {32 trailing characters} × {14 verb × asset positions},
+the same forms and characters × {4 threat/control positions}, and {8 ext-ref tails} × {32
+trailing characters} × {2 verbs that take one}. Cells cxg reads and guardlink refuses fell from
+**2,324 to 32** — all 32 the `@flows` source endpoint, a documented backward-compatibility
+tolerance. Cells guardlink reads and cxg refuses fell to **91**, below the base commit's own 97:
+15 `@flows` endpoints and 76 bare-word or quoted forms cxg states it does not read, **0** outside
+a stated bound.
+
+**What it cost on a live corpus, with every build named.** Corpus siete `main` 733c0fb
+(PR #121, 2026-09-12); cxg base **4b342e6**; cxg measured at **d18e2578**; guardlink 2.0.0. cxg
+base reads **5,745** annotations in that tree and d18e2578 reads **5,648** — **97 no longer
+read**, by kind `@exposes` 69, `@confirmed` 11, `@comment` 9, `@audit` 4, `@mitigates` 4.
+guardlink models 558
+annotations there and reads **0 of the 97**, so none of them is a form the shared grammar
+accepts. Exactly **1** is a description opener written as a bare trailing `--` with the quote on
+the next line; the end bound refuses that spelling on purpose, because `-- "` is two tokens and
+the quote is what proves a description was opened on that line alone, while a bare trailing `--`
+proves nothing and would make any trailing double dash an opener — the arbitrary-trailing-prose
+class `_RE_DESC_TAIL_TRAILING` already refuses. (guardlink's own `LINE_MARKERS` does treat `--`
+as a comment marker, but none of the 11 extensions cxg walks uses it that way, so that half of
+the argument does not carry and is not relied on.)
+
+**The figure at each head that changed the parser.** 0c7a9fb read 5,648 and 39962c5 reads 5,648,
+a delta of **0**. No round after d18e2578 changes parser code. **The siete slice itself was NOT
+re-measured after 39962c5**, because 733c0fb is not fetched into any local siete clone — that is
+stated rather than papered over, and it is the one step of this figure a reader cannot repeat here.
+
+**A comment TERMINATOR is admitted only where its OPENER is on the same line.** guardlink strips
+one through anchored patterns that require the matching opener, so the free-floating form cxg
+first shipped read `*)`, `-}`, `-->` and `*/` after an annotation in a `.py` file — each a hard
+`Malformed` error on the binary — plus a block-comment body line ending `*/`. `-}` and `*)` are
+dropped outright: no extension cxg walks uses `{-` or `(*`. The grid does not cross this
+dimension; it was derived from `comment-strip.ts` and is now named beside the grid's tables.
+
+**A CROSS-PRODUCT DOES NOT ELIMINATE THE BLIND SPOT; IT RELOCATES IT TO THE CHOICE OF WHICH
+DIMENSIONS TO CROSS.** This is the law the card earns, and it is not rhetorical. The end bound
+first landed measured on a grid that held two dimensions constant — the threat/control operand
+and the ext-ref tail — and along exactly those two it turned 72 shapes guardlink models into
+silent zeroes, because the bound is only ever as right as the clause in front of it. Both are
+crossed now, both directions are gated
+(`test_no_form_the_installed_guardlink_refuses_is_read_as_a_declaration` and
+`…_accepts_is_refused_outside_a_stated_bound`), and what is still NOT crossed is written down
+beside the tables. Known surviving superset, filed not fixed: `_SEV`'s `[A-Z]?\d+` half reads
+`[P9]`, `[Z12]` and `[7]`, each a hard `Malformed @exposes` error on the binary; the grid does
+not vary the severity bracket at all. Known stated divergence: `@flows` is exempt from the end
+bound wholesale, which is wider than its justification — guardlink accepts a trailed flow only
+when there is no description to bound its `via` clause. Known structural follow-up, filed on
+GAP-32: the walk and the JOIN now disagree about what an annotation is — `_annotations_on_line`
+requires the end bound and `_join_wrapped_description`'s nested-annotation stop still uses the
+raw `_VERB_RULES` patterns, where the two rules were identical before this change.
+
+**Any corpus figure in this entry names the commit it was measured on.** A count measured
+against an unnamed or stale checkout is not a measurement; the 66 an earlier round nearly
+shipped here counted annotations that no longer exist.
+
 **cxg reads the annotation forms guardlink TEACHES, and some of what it accepts**
 
 Three separate claims, because they are separately true. guardlink's `CLAUDE.md` Quick Syntax
@@ -30,8 +110,10 @@ make cxg read guardlink's grammar, and nothing here should be read as saying it 
   PARENTHETICAL the pattern cannot read refuses the whole annotation instead of silently
   dropping its description. That guard covers a parenthesis and nothing else — any other unread
   tail still half-reads, so `@boundary #api and #db extra -- "d"` is `Malformed` on the binary
-  and cxg reads it as its two operands with the description gone. Refusing any unread tail is
-  the general trimming problem GAP-54 carries and is deliberately not attempted. Measured: of
+  and cxg reads it as its two operands with the description gone. Refusing any unread tail was
+  the general trimming problem GAP-54 carries and is **now closed by the END BOUND** described
+  above, which supersedes this sentence: the parenthesis guard is no longer the only thing
+  refusing an unread tail. Measured: of
   the 91 boundary ids across guardlink, siete and cert-x-gen, 0 are written without the `#` and
   0 carry a dot, so the narrowing costs nothing.
 - **`@handles` reads only the classifications guardlink accepts.** The vocabulary is a CLOSED
