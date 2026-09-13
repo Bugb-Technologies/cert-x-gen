@@ -218,9 +218,20 @@ START from rather than arrive at. The measurement that motivated the work stands
 
 ### Fixed
 
-- **TWO measured places where cert-x-gen still reads what enters no guardlink model, and this
-  branch closed NEITHER.** Nothing in this entry should be read as cert-x-gen having stopped
-  reading what guardlink refuses; by these two routes it still does.
+- **FOUR measured places where cert-x-gen still reads what enters no guardlink model, and this
+  branch closed NONE of them: GAP-69, GAP-72, GAP-73, GAP-74.** Nothing in this entry should be
+  read as cert-x-gen having stopped reading what enters no guardlink model; by these four routes
+  it still does. An earlier draft of this entry said TWO, naming only the first two, and that
+  count is withdrawn as an undercount rather than narrowed to "the two filed".
+
+  **The test is whether the annotation ENTERS GUARDLINK'S MODEL, not whether guardlink complains.**
+  Only GAP-69 is an exclusion the binary makes deliberately and records; GAP-72, GAP-73 and GAP-74
+  are SILENCE — 0 `guardlink validate` errors, the file reported unannotated by `guardlink parse`.
+  Silence does not license reading: if "does not error" were the test, cxg could read arbitrary
+  text, because the binary does not error on that either. All four were measured at parser 29549ef
+  against the installed guardlink 2.0.0, one file per shape, reading the verdict from guardlink's
+  own model. `pentest/docs/ARCHITECTURE.md` is the authority and carries the measurements; the two
+  new cards are summarised below rather than re-derived.
 
   **`@shield` regions (board card GAP-69).** cxg honours no `@shield:begin`/`@shield:end` region,
   so it reads annotations the installed guardlink DELIBERATELY EXCLUDES from its model — **36**
@@ -257,6 +268,30 @@ START from rather than arrive at. The measurement that motivated the work stands
   other change in this entry. Guarding the run with `marker != _BLOCK_BODY_MARKER` takes that
   differential to zero in both directions and costs 0 annotations across the three corpora, so
   the count is not what decided it; the shape of the fix is.
+
+  **The UNTERMINATED HTML comment (board card GAP-73).** `<!--` opens a comment body in cxg and
+  the binary additionally requires the comment to CLOSE. `<!-- @audit #api -- "d" -->` in a
+  `.html` file is read by BOTH; the same line without its `-->` is read here and reported
+  unannotated there, with `guardlink validate` clean. The closed control is what makes the
+  missing terminator the discriminator rather than HTML comments generally — and rather than the
+  mid-line form, which the line-start opener rule of this branch already refuses on both sides.
+  Carried as a BOUND for the reason the others are: closing it adds a terminator requirement
+  carried by one opener alone, which is new discrimination, and the `<!--` opener itself is
+  load-bearing and stays.
+
+  **The `@comment` PRAGMA TAIL (board card GAP-74).** `// @comment -- "x" # noqa` in a `.js` file
+  is read here while guardlink reports the file unannotated with 0 errors and 1 "looks like prose"
+  warning. It is admitted by `_PRAGMA_TAIL_ALTERNATIVE` — a comment marker plus whitespace or end
+  of line, appended to the tail rule only for `_PRAGMA_TOLERANT_VERBS`, which is `{comment}` alone
+  — and is **not** the admission GAP-65 describes, which is the `\s+@\w` at-token rule reaching
+  every bounded verb. Proven orthogonal by disabling each alternative in turn over a two-line
+  fixture carrying both shapes: removing the pragma alternative leaves only the at-token case,
+  removing the at-token alternative leaves only the pragma case. The two also sit on opposite
+  sides of the silence/refusal line — guardlink calls `// @audit #api -- "y" @later` a hard
+  `Malformed` error where it merely stays silent on the pragma. Cite GAP-74 for this one and
+  GAP-65 for the at-token one; neither covers the other. The admission is kept deliberately, so
+  that a lint pragma does not cost an author their intent note, and being deliberate is not the
+  same as entering guardlink's model — which is why it is counted here.
 
   **The decoration boundary is the JOIN's rule and is scoped to it.** `_decorations_after` is the
   one spelling of WHICH characters decorate a marker and how many; `_marker_tail_decorations` adds

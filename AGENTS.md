@@ -77,9 +77,15 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   and its residue measures ZERO on guardlink f3b36ce, siete 7df5848 and cert-x-gen 4b342e6. Zero
   there is a fact about that corpus at those commits, not a property of the code, so do not read
   it as the card being closed.
-- **TWO measured places where cxg reads what enters no guardlink model, both LIVE, both filed.**
-  The rule that cxg may extend where the authority is SILENT and may not read what it REFUSES is
-  the standard this estate holds itself to, NOT a description of where it already stands.
+- **FOUR measured places where cxg reads what enters no guardlink model, all LIVE, all filed:
+  GAP-69, GAP-72, GAP-73, GAP-74.** The rule that cxg may extend where the authority is SILENT
+  and may not read what it REFUSES is the standard this estate holds itself to, NOT a description
+  of where it already stands. A "TWO" here was an undercount and is withdrawn. The test is whether
+  the annotation ENTERS GUARDLINK'S MODEL, not whether guardlink complains: only GAP-69 is an
+  exclusion the binary makes deliberately and records, and GAP-72, GAP-73 and GAP-74 are SILENCE —
+  0 `validate` errors, file reported unannotated. Silence does not license reading, or cxg could
+  read arbitrary text on the same argument. `pentest/docs/ARCHITECTURE.md` carries the
+  measurements for all four and is the authority; do not restate them here.
 - **`@shield` regions — board card GAP-69.** cxg honours no `@shield:begin`/`@shield:end` region,
   so it reads annotations the installed guardlink DELIBERATELY EXCLUDES from its model —
   **36** across guardlink f3b36ce, siete 7df5848 and cert-x-gen 4b342e6, all in guardlink's own
@@ -110,6 +116,20 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   than an admission removed, which is the opposite of every other change on this branch. Guarding
   the run with `marker != _BLOCK_BODY_MARKER` takes that differential to zero and costs 0
   annotations on the three corpora, so the count is not what decided it; the shape of the fix is.
+- **The UNTERMINATED HTML comment — board card GAP-73.** `<!--` opens a body here and the binary
+  also requires the comment to CLOSE: `<!-- @audit #api -- "d" -->` in a `.html` file reads 1 on
+  both, and the same line without `-->` reads 1 here and 0 there, with `validate` clean. The
+  missing terminator is the discriminator, not HTML comments and not the mid-line case, which both
+  readers already refuse. The `<!--` opener stays; it and the tail terminator are two rules that
+  name the same characters.
+- **The `@comment` PRAGMA TAIL — board card GAP-74.** `// @comment -- "x" # noqa` in a `.js` reads
+  here and is silence there (0 errors, 1 "looks like prose" warning, file unannotated), admitted by
+  `_PRAGMA_TAIL_ALTERNATIVE` for `_PRAGMA_TOLERANT_VERBS` = `{comment}` alone. **Distinct from
+  GAP-65**, which is the `\s+@\w` at-token rule reaching every bounded verb — proven orthogonal by
+  disabling each alternative in turn, and the at-token shape is a hard `Malformed` error in
+  guardlink where the pragma one is silent. Cite GAP-74 for one and GAP-65 for the other; do not
+  merge them. Keeping the admission is deliberate (a lint pragma must not cost an author their
+  intent note) and deliberate is not the same as modelled, which is why it is counted.
 - **The decoration boundary belongs to the JOIN, not to the body start, and merging them is a
   measured regression.** `_decorations_after` says WHICH characters decorate a marker and how many;
   `_marker_tail_decorations` adds the join's rule that the run counts only where whitespace or end
