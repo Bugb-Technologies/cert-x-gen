@@ -41,10 +41,10 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   **GAP-48 is CLOSED** (2026-09-12): a verb is read only where a comment body begins, matching
   the installed guardlink. `pentest/docs/ARCHITECTURE.md` § "A verb must OPEN the comment body"
   is the authority — the two places a body begins, the `.gal` half, and the measurement.
-  A body opens after a comment opener ANYWHERE on the line — narrowing to line-start would drop
-  223 annotations over guardlink f3b36ce, siete 7df5848 and cert-x-gen 4b342e6, all 223 classified
-  as string literals or generated markup rather than notes, so the CORPUS ARGUES FOR narrowing and
-  the rule is kept as a decision of its own, not on a count — and after the block-comment `*`
+  A body opens after a comment opener ANYWHERE on the line — narrowing to line-start DROPPED
+  223 annotations over guardlink f3b36ce, siete 7df5848 and cert-x-gen 4b342e6, a cost PAID in
+  a0bd9ba and not one a later round would pay, all 223 classified as string literals or generated
+  markup rather than notes — and after the block-comment `*`
   marker at the start of a trimmed line, and nowhere else. The openers include `<!--`, because
   guardlink reads an HTML-comment annotation in a `.html` file and narrowing PAST the binary is
   forbidden as firmly as widening past it — WITHIN THE DOMAIN THE TWO SHARE, which is the files

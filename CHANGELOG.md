@@ -221,13 +221,14 @@ START from rather than arrive at. The measurement that motivated the work stands
   forbidden as firmly as accepting more — within the domain the two share, the qualifier board
   card GAP-57 sharpened and `pentest/docs/ARCHITECTURE.md` carries: where guardlink reads a
   language `_TEXT_EXTS` does not, being narrower is meaningless rather than wrong, which is why
-  the six further SPEC 2.9 comment styles are a stated bound and not a widening. **Its cost, stated so it is not read later as a
-  regression: exactly 3 annotations are re-admitted across the corpora**, all of them
-  TypeScript test-fixture string literals in guardlink's own suite (`tests/review.test.ts:180`
-  and `:193`, `tests/dashboard-determinism.test.ts:144`) — the same string-literal residue
-  GAP-48 already leaves elsewhere, since a marker before the verb is indistinguishable from a
-  trailing comment. A wrapped HTML note is still not joined: the continuation line of an HTML
-  comment carries no marker, the same stated bound as a wrapped trailing comment (GAP-34).
+  the six further SPEC 2.9 comment styles are a stated bound and not a widening. **Its cost on
+  corpus (A) is now ZERO annotations re-admitted**, re-derived 2026-09-13 with the parser at
+  a0bd9ba. It was 3 when the opener was added — all of them TypeScript test-fixture string
+  literals in guardlink's own suite (`tests/review.test.ts:180` and `:193`,
+  `tests/dashboard-determinism.test.ts:144`) — and every one of the 3 carries its `<!--`
+  mid-line, so the later narrowing to a line-start opener refuses them. A wrapped HTML note is
+  still not joined: the continuation line of an HTML comment carries no marker, the same stated
+  bound as a wrapped trailing comment (GAP-34).
 
   **Measured 2026-09-13 over guardlink f3b36ce, siete 7df5848 and cert-x-gen 4b342e6, with
   both parsers run over the SAME trees.** Every corpus figure in this entry was taken there, because
@@ -239,38 +240,42 @@ START from rather than arrive at. The measurement that motivated the work stands
   7f331ea with siete bc64e78, whose siete is not an ancestor of siete main); those figures are
   withdrawn wherever they appeared.
 
-  The walk read 10,311 annotations before and 9,346 after: **965 fewer, 9.4%.** 970 records
-  disappear and 5 come back, disclosed rather than netted because netting them is what produced
-  the arithmetic gap in the figures this entry replaces. Each of the 5 pairs with one of the 970
-  at the same file, line and kind — a record whose FIELDS changed rather than one newly read —
-  and all 5 sit on a single line of the dashboard: line 7,566, which is 341,627 characters long,
-  in a file of 8,418 lines and 1,268,772 bytes. Line NUMBER 7,566, character COUNT 341,627; an
-  earlier entry printed the line number as though it were the character count. The five kinds
-  are `@exposes`, `@mitigates`, `@flows`, `@audit` and `@boundary`.
+  The walk read 10,311 annotations with the parser at 4b342e6 and 9,123 with the parser at
+  a0bd9ba: **1,188 fewer, 11.5%.** Nothing is added and nothing returns with CHANGED FIELDS. The 5
+  field-change records an earlier set of these figures disclosed are gone, because the single
+  dashboard line that produced them no longer parses at all; that line is kept on record because
+  the two numbers describing it are easy to confuse — `docs/examples/threat-dashboard.html` line
+  NUMBER 7,566, character COUNT 341,627, in a file of 8,418 lines and 1,268,772 bytes.
 
-  One file dominates: guardlink's generated `docs/examples/threat-dashboard.html` falls from
-  713 phantom reads to 24 (694 dropped, the 5 field changes added), so excluding it the walk
-  reads 9,598 before and 9,322 after — 276, **2.9%**, with nothing added. Both decompositions
-  close: 694 + 276 = 970 gone against 965 net, and per repository guardlink 1,578 → 681, siete
-  5,221 → 5,190, cert-x-gen 3,512 → 3,475, whose nets are 897 + 31 + 37 = 965. Every one of the
-  276 was classified: 245 sit on lines that are not comments at all — test-fixture string
-  literals, template text, generated display markup — 9 are prose on a comment line that names a
-  verb while explaining it, and 22 are the chained second annotations described above.
-  **So 254 of the 276 are fabrications and 22 are notes a human did write.** Whether the binary
+  One file dominates: that generated dashboard falls from **713 phantom reads to 0**, so
+  excluding it the walk reads 9,598 before and 9,123 after — 475, **4.9%**, with nothing added.
+  Both decompositions close: 713 + 475 = 1,188, and per repository guardlink 1,578 → 603, siete
+  5,221 → 5,128, cert-x-gen 3,512 → 3,392, whose nets are 975 + 93 + 120 = 1,188. Sidecars are
+  unchanged at 80 → 80. Every one of the 475 was classified: 444 sit on lines that are not
+  comments at all — test-fixture string literals, template text, generated display markup — 9
+  are prose on a comment line that names a verb while explaining it, and 22 are the chained
+  second annotations described above, all 22 in siete.
+  **So 453 of the 475 are fabrications and 22 are notes a human did write.** Whether the binary
   can see any of them was measured rather than inferred: `guardlink parse` over the three corpora
   reads 510 + 44 + 1,544 annotations, and intersecting their `location.file`/`location.line` with
-  the 970 records cxg stops reading gives the empty set — on not one of those lines does guardlink
-  read anything at all.
+  the 1,188 records cxg stops reading gives the empty set — on not one of those lines does
+  guardlink read anything at all.
 
-  Two scope notes. cxg still reads a trailing comment on a code line where guardlink reads
-  nothing, deliberately — but the corpora do not argue for it, and the claim that they do is
-  withdrawn: narrowing to an opener at the start of a trimmed line costs 223 annotations
+  **The 1,188 is the cost ESTIMATE, never the reason.** The reason is authority-matching:
+  guardlink reads nothing from a trailing comment on a code line, measured over six shapes in
+  six languages, so a customer who writes `const DEBUG = 1; // @exposes …` stops having that
+  note read by cxg AND guardlink already read nothing from it, which makes cxg match the
+  authority rather than lose to it. These three repositories are not a sample of customer code,
+  so the count bounds what WE lose and says nothing about what a customer writes.
+
+  Two scope notes. Narrowing to an opener at the start of a trimmed line cost 223 annotations
   (guardlink 78, of which 24 are the dashboard's own phantom reads; siete 62; cert-x-gen 83),
-  and all 223 classify into the fabrication class — 199 inside a string literal, 24 generated
-  markup — by a quote-parity test whose residue and a random sample were re-read by hand, which
-  found none written beside code. The rule is kept because the shape it serves is one cxg accepts by
-  design and because narrowing is a separate decision to measure on its own, not because of a
-  corpus count (board card GAP-34). A `.gal` sidecar line
+  and that is a cost PAID in a0bd9ba rather than one a later round would pay: the walk read
+  9,346 at 6c958a6 and reads 9,123 at a0bd9ba, so those 223 are the narrowing's slice of the
+  1,188 above. All 223 classify into the fabrication class — 199 inside a string literal, 24
+  generated markup — by a quote-parity test whose residue and a random sample were re-read by
+  hand, which found none written beside code. Board card GAP-34 carries the open/wrapped half.
+  A `.gal` sidecar line
   carrying TWO annotations now yields the first and not both — and here, unlike in a source
   comment, no second marker can reopen the chain, since a sidecar line has exactly one body start
   and honours no marker at all — and against the binary that is CONVERGENCE rather
