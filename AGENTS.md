@@ -56,9 +56,16 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   include `<!--`, because
   guardlink reads an HTML-comment annotation in a `.html` file and narrowing PAST the binary is
   forbidden as firmly as widening past it — WITHIN THE DOMAIN THE TWO SHARE, which is the files
-  cxg actually opens. Where guardlink reads a language `_TEXT_EXTS` does not carry, being narrower
-  is meaningless rather than wrong: board card **GAP-57**, six SPEC 2.9 comment styles cxg does
-  not honour, is that case and is a stated bound, not a gap to close.
+  cxg actually opens. Board card **GAP-57**, the six SPEC 2.9 comment styles cxg does not honour,
+  is a stated bound and NOT an instance of that domain qualifier — guardlink's
+  `stripCommentPrefix` is not keyed on extension (only `commentStyleForExt` is, for continuation
+  detection), so the binary strips them in every file it opens, measured at 83ad8a6 against 2.0.0
+  as 6 of 6 read INSIDE the walked extensions (`--`, `;`, `REM`, `'`, `'''` in `.py`, `%` in
+  `.js`). Declining them is still right, and the figure is the reason: in those extensions only a
+  string literal or a line of code can match one, so honouring them at line start adds 47 records
+  across guardlink f3b36ce, siete 7df5848 and cert-x-gen 4b342e6, every one a line whose first
+  character is a quote, while the four non-quote openers add 0 and lose 0 — and `'` and `'''`
+  would make cxg read a Python string literal as a comment.
   `pentest/docs/ARCHITECTURE.md` carries the measurement; extend `_TEXT_EXTS` and the opener set
   together or neither. **A third start, chaining a body wherever a description had CLOSED, was
   tried and REMOVED — do not rebuild it.** Any quoted word followed by a verb
@@ -77,15 +84,25 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   and its residue measures ZERO on guardlink f3b36ce, siete 7df5848 and cert-x-gen 4b342e6. Zero
   there is a fact about that corpus at those commits, not a property of the code, so do not read
   it as the card being closed.
-- **FOUR measured places where cxg reads what enters no guardlink model, all LIVE, all filed:
-  GAP-69, GAP-72, GAP-73, GAP-74.** The rule that cxg may extend where the authority is SILENT
-  and may not read what it REFUSES is the standard this estate holds itself to, NOT a description
-  of where it already stands. A "TWO" here was an undercount and is withdrawn. The test is whether
-  the annotation ENTERS GUARDLINK'S MODEL, not whether guardlink complains: only GAP-69 is an
-  exclusion the binary makes deliberately and records, and GAP-72, GAP-73 and GAP-74 are SILENCE —
-  0 `validate` errors, file reported unannotated. Silence does not license reading, or cxg could
-  read arbitrary text on the same argument. `pentest/docs/ARCHITECTURE.md` carries the
-  measurements for all four and is the authority; do not restate them here.
+- **cxg reads annotations that enter no guardlink model by AT LEAST these routes, and the list is
+  NOT claimed to be exhaustive:** GAP-69 (`@shield` regions), GAP-72 (the double-star body run),
+  GAP-73 (the unterminated HTML comment), GAP-74 (the `@comment` pragma tail), and the tail
+  admissions on GAP-65 (any at-token after a complete annotation, and a second closed
+  description). The rule that cxg may extend where the authority is SILENT and may not read what
+  it REFUSES is the standard this estate holds itself to, NOT a description of where it already
+  stands, and the test is whether the annotation ENTERS GUARDLINK'S MODEL rather than whether
+  guardlink complains — silence does not license reading, or cxg could read arbitrary text on the
+  same argument. `pentest/docs/ARCHITECTURE.md` is the authority for every route.
+- **DO NOT PUBLISH A COUNT OF THEM.** Three rounds shipped three totals and each was falsified by
+  the next reading, including the round whose job was fixing the total: a count is a completeness
+  claim about a set nobody has enumerated, so the step to remove is writing one, not getting one
+  right. And the routes the totals omitted were the WORSE half — GAP-69 is a deliberate recorded
+  exclusion and GAP-72, GAP-73 and GAP-74 are mere SILENCE, while every tail admission is a HARD
+  REFUSAL: measured at 83ad8a6 against guardlink 2.0.0, the binary reports 1 error and 0 model
+  records for each of `// @audit #api -- "y" @later`, `// @audit #api -- "a" -- "b"`,
+  `// @flows #api -> #db via redis -- "d" # noqa` and
+  `# @comment -- "closed note" @audit #real-api -- "second"`, and cxg reads one live annotation
+  from every one.
 - **`@shield` regions — board card GAP-69.** cxg honours no `@shield:begin`/`@shield:end` region,
   so it reads annotations the installed guardlink DELIBERATELY EXCLUDES from its model —
   **36** across guardlink f3b36ce, siete 7df5848 and cert-x-gen 4b342e6, all in guardlink's own

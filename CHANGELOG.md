@@ -218,20 +218,32 @@ START from rather than arrive at. The measurement that motivated the work stands
 
 ### Fixed
 
-- **FOUR measured places where cert-x-gen still reads what enters no guardlink model, and this
-  branch closed NONE of them: GAP-69, GAP-72, GAP-73, GAP-74.** Nothing in this entry should be
-  read as cert-x-gen having stopped reading what enters no guardlink model; by these four routes
-  it still does. An earlier draft of this entry said TWO, naming only the first two, and that
-  count is withdrawn as an undercount rather than narrowed to "the two filed".
+- **cert-x-gen still reads annotations that enter no guardlink model by AT LEAST these routes, and
+  this branch closed none of them — the list is NOT claimed to be exhaustive:** GAP-69 (`@shield`
+  regions), GAP-72 (the double-star body run), GAP-73 (the unterminated HTML comment), GAP-74 (the
+  `@comment` pragma tail), and the tail admissions on GAP-65 (any at-token after a complete
+  annotation, and a second closed description). Nothing in this entry should be read as cert-x-gen
+  having stopped reading what enters no guardlink model; by these routes it still does.
 
-  **The test is whether the annotation ENTERS GUARDLINK'S MODEL, not whether guardlink complains.**
-  Only GAP-69 is an exclusion the binary makes deliberately and records; GAP-72, GAP-73 and GAP-74
-  are SILENCE — 0 `guardlink validate` errors, the file reported unannotated by `guardlink parse`.
-  Silence does not license reading: if "does not error" were the test, cxg could read arbitrary
-  text, because the binary does not error on that either. All four were measured at parser 29549ef
-  against the installed guardlink 2.0.0, one file per shape, reading the verdict from guardlink's
-  own model. `pentest/docs/ARCHITECTURE.md` is the authority and carries the measurements; the two
-  new cards are summarised below rather than re-derived.
+  **No total is published, and the absence is the correction.** Drafts of this entry said TWO and
+  then FOUR; both were falsified by the next reading, the second by the round sent to fix the
+  first. A count is a completeness claim about a set nobody has enumerated, so the failing step
+  was writing one at all. "At least these, and not claimed to be all" survives a later discovery
+  where a number does not.
+
+  **The routes those totals omitted were the WORSE half.** The test is whether the annotation
+  ENTERS GUARDLINK'S MODEL, not whether guardlink complains, and by it the enumerated cases are
+  the mild ones: GAP-69 is an exclusion the binary makes deliberately and records, while GAP-72,
+  GAP-73 and GAP-74 are mere SILENCE — 0 `guardlink validate` errors, the file reported
+  unannotated by `guardlink parse`. Silence does not license reading: if "does not error" were the
+  test, cxg could read arbitrary text, because the binary does not error on that either. The tail
+  admissions are HARD REFUSALS, and measured at 83ad8a6 against the installed guardlink 2.0.0,
+  one directory per shape with records counted from guardlink's own model, it reports 1 error and
+  0 records for each of `// @audit #api -- "y" @later`, `// @audit #api -- "a" -- "b"`,
+  `// @flows #api -> #db via redis -- "d" # noqa` and
+  `# @comment -- "closed note" @audit #real-api -- "second"` while cert-x-gen reads one live
+  annotation from every one. `pentest/docs/ARCHITECTURE.md` is the authority and carries the
+  measurements; the routes below are summarised rather than re-derived.
 
   **`@shield` regions (board card GAP-69).** cxg honours no `@shield:begin`/`@shield:end` region,
   so it reads annotations the installed guardlink DELIBERATELY EXCLUDES from its model — **36**
