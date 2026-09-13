@@ -196,6 +196,8 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   and a negative list is correct only until the next one is added. When the identity is withdrawn
   from an uncorroborated template, `@threat_id` goes with the four headers: guardlink derives it
   from asset, threat and file with no line, so it names a file's surviving sibling just as wrongly.
+  A template that stamps NO location — which a collapse withholding only the location keys now
+  produces — is checked on that id alone, against the ids the loaded hypotheses carry.
   A reused template's re-stamp moves the same five. **A run holding no `from_sarif` hypothesis
   withdraws nothing** — that is the absence of a check, not a disproof, and it is the SARIF SUBSET
   that decides, never the length of `hyps`: a desktop run appends `electron_surface.extract` and

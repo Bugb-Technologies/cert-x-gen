@@ -61,14 +61,15 @@ identity is now tabulated with its proof in `pentest/docs/ARCHITECTURE.md`.
 
 A stamped location can drift between runs. A reused template is re-stamped from the hypothesis it
 is being reused for; a replayed one whose stamp no guardlink hypothesis in the run corroborates has
-all five identity keys withdrawn in memory — the four headers and `@threat_id`, which guardlink
+every identity key it holds withdrawn in memory — the four headers and `@threat_id`, which guardlink
 derives from asset, threat and file with no line, so it names a file's surviving sibling just as
 wrongly. The probe still runs and is still reported; only its claim about WHICH exposure it tests
 is dropped, and every refusal is recorded in the new `identity_withdrawn`, whose records name
 their own `cause`: `uncorroborated_stamp` for a template the run LOADED whose stamp it refused
 (which is not the same as one per template that ran), and `ambiguous_collapse` for the collapse
-above. A run that loaded no guardlink SARIF hypothesis checked nothing and therefore withdraws
-nothing.
+above. A template that stamps no location and carries only a `@threat_id` is checked on that id,
+against the ids the loaded hypotheses carry. A run that loaded no guardlink SARIF hypothesis
+checked nothing and therefore withdraws nothing.
 
 Three bounds are stated rather than approximated. An exposure that merely MOVED loses a true
 identity, which is accepted: a missed join is silence and recoverable, a wrong join is a
