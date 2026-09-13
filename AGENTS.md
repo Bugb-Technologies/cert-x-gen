@@ -97,13 +97,30 @@ This file is the project's committed home for project-intrinsic agent knowledge:
 - **The DOUBLE-STAR body run — board card GAP-72.** `_body_start_after` consumes a run of the
   marker's final character for every non-HTML marker, so a line whose trimmed start is `**` opens
   a comment body in cxg while the binary reads nothing from it. Measured exhaustively rather than
-  sampled: over all 4,680 line-start prefixes of length 1-4 drawn from `/ # * ! < ^ | space`,
-  cxg and guardlink 2.0.0 diverge on exactly 46, and EVERY one is a repeated `*`, every one cxg 1
-  / guardlink 0. It is carried as a BOUND rather than fixed here because narrowing it means
+  sampled, and RE-DERIVED 2026-09-13 on this branch head against guardlink 2.0.0 after the
+  decoration boundary was scoped back to the join — the figure is what that run reports, not what
+  an earlier commit claimed: over all 4,680 line-start prefixes of length 1-4 drawn from
+  `/ # * ! < ^ | space`, one file per prefix carrying `@audit #api -- "d"` and the verdict read
+  from guardlink's own model, the two diverge on 46, every one cxg 1 / guardlink 0, and every one
+  begins — after any leading spaces — with a DOUBLED `*`. Zero in the other direction, which is the
+  half a narrowing breaks first and the half the figure exists to defend. Identical over `.js` and
+  `.py`, since both readers key on the marker rather than the extension. It is carried as a BOUND
+  rather than fixed here because narrowing it means
   special-casing the double star out of general marker-run handling — new discrimination rather
   than an admission removed, which is the opposite of every other change on this branch. Guarding
   the run with `marker != _BLOCK_BODY_MARKER` takes that differential to zero and costs 0
   annotations on the three corpora, so the count is not what decided it; the shape of the fix is.
+- **The decoration boundary belongs to the JOIN, not to the body start, and merging them is a
+  measured regression.** `_decorations_after` says WHICH characters decorate a marker and how many;
+  `_marker_tail_decorations` adds the join's rule that the run counts only where whitespace or end
+  of text follows it, because there a decoration against TEXT may be the author's own character.
+  At a body start there is no description to protect and consuming the run is how the verb is
+  found, so the same rule there loses whole annotations: with the boundary shared, `//!@audit`,
+  `///<@audit`, `//!<@audit`, `/**<@audit`, `/*!@audit`, `#<@audit`, `##<@audit` and a block-comment
+  ` *<@audit` body line each read 1 on guardlink 2.0.0 and 0 here. A RULE IS SCOPED TO THE QUESTION
+  IT ANSWERED; sharing an implementation is not evidence of sharing a rule.
+  `_FLUSH_BODY_STARTS` in `pentest/tests/test_inline_annotation_forms.py` pins those spellings on
+  BOTH sides — our parser and the installed binary — and is what goes red if the two merge again.
 - **Closing GAP-48 did NOT close GAP-32, though the card predicted it would.** A verb on a
   CONTINUATION line does open that line's comment body, so the rule admits it and must; the
   continuation line remains an open bound. What GAP-48 did close, besides prose generally, is
@@ -166,11 +183,12 @@ This file is the project's committed home for project-intrinsic agent knowledge:
 - **A verb written inside a note's own description is not an annotation.** Prose explaining a
   verb, or recording a mitigation deliberately NOT written, must not be read as one — the real
   case is in guardlink's `tests/fixtures/expense-api`. This is one defect in three places
-  (continuation line, opening line, and a note that opens and closes on one line); the LAST is
-  closed outright, the OPENING line only where the description JOINS — the narrowing sits inside
-  `parse_inline`'s join branch, so an opener that never closes anywhere still emits a verb quoted
-  in its prose — and any new verb widens the surface of all three. **The CONTINUATION line, and
-  an opener whose join FAILS, are OPEN BOUNDS — board card GAP-32.** The join stopping at a
+  (continuation line, opening line, and a note that opens and closes on one line); the LAST TWO are
+  closed outright, and any new verb widens the surface of all three. The opening line is closed by
+  the OPENING RULE and not by the narrowing inside `parse_inline`'s join branch: a verb quoted in an
+  unterminated note sits mid-line, so it opens no body whether or not the join succeeded — measured
+  on this head, an unterminated note naming a `@validates`, a `@handles` or a `@boundary` emits
+  nothing. **The CONTINUATION line is the OPEN BOUND — board card GAP-32.** The join stopping at a
   continuation line is not the fix: `parse_inline` reaches that line again on its own turn and
   emits. Do not attempt the closure
   without re-reading the measurement in `pentest/docs/ARCHITECTURE.md` — the obvious one loses

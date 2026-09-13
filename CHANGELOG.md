@@ -243,14 +243,33 @@ START from rather than arrive at. The measurement that motivated the work stands
   marker's final character for every non-HTML marker, so a line whose trimmed start is `**` opens
   a comment body in cxg while guardlink reads nothing from it — the `**` block-comment
   continuation style is a real C-derived convention, so this is reachable in ordinary source.
-  Measured exhaustively rather than sampled: over all 4,680 line-start prefixes of length 1-4
-  drawn from `/ # * ! < ^ | space`, cxg and guardlink 2.0.0 diverge on exactly 46, and EVERY one
-  is a repeated `*`, every one cxg 1 / guardlink 0. It is carried as a BOUND rather than fixed
+  Measured exhaustively rather than sampled, and RE-DERIVED 2026-09-13 on this branch head
+  against guardlink 2.0.0 once the decoration boundary was scoped back to the join — the figure
+  below is what that run reports, not what an earlier commit in this entry claimed. Over all
+  4,680 line-start prefixes of length 1-4 drawn from `/ # * ! < ^ | space`, one file per prefix
+  carrying `@audit #api -- "d"` and the verdict read from guardlink's own model, cxg and
+  guardlink 2.0.0 diverge on 46, every one cxg 1 / guardlink 0, and every one begins — after any
+  leading spaces — with a DOUBLED `*`. Zero in the other direction. Identical over `.js` and
+  `.py`, since both readers key on the marker and not the extension. It is carried as a BOUND
+  rather than fixed
   here because narrowing it means special-casing the double star out of general marker-run
   handling — new discrimination rather than an admission removed, which is the opposite of every
   other change in this entry. Guarding the run with `marker != _BLOCK_BODY_MARKER` takes that
   differential to zero in both directions and costs 0 annotations across the three corpora, so
   the count is not what decided it; the shape of the fix is.
+
+  **The decoration boundary is the JOIN's rule and is scoped to it.** `_decorations_after` is the
+  one spelling of WHICH characters decorate a marker and how many; `_marker_tail_decorations` adds
+  the rule that the run counts only where whitespace or end of text follows, and only the join
+  calls it. That rule was briefly shared with the body-start step and narrowed it past the binary:
+  a decoration flush against a verb made the body start land on the decoration, so `//!@audit`,
+  `///<@audit`, `//!<@audit`, `/**<@audit`, `/*!@audit`, `#<@audit`, `##<@audit`, `//<@audit`,
+  `//^@audit`, `//|@audit` and a block-comment ` *<@audit` body line each read 1 on guardlink
+  2.0.0 and 0 here, while the spaced control `//! @audit` read on both. The two callers ask
+  different questions — at the join a decoration against TEXT may be a character the author typed,
+  at a body start nothing but the annotation follows it and consuming the run is how the verb is
+  found — so the boundary lives with the question it answered. `_FLUSH_BODY_STARTS` pins all
+  eleven spellings against the parser AND against the installed binary.
 
 - **A verb must now OPEN a comment body to be read as an annotation (board card GAP-48).**
   cxg's patterns are search-based, so a verb sitting anywhere in ordinary prose parsed as a
