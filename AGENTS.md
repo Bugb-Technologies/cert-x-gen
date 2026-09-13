@@ -56,16 +56,19 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   include `<!--`, because
   guardlink reads an HTML-comment annotation in a `.html` file and narrowing PAST the binary is
   forbidden as firmly as widening past it — WITHIN THE DOMAIN THE TWO SHARE, which is the files
-  cxg actually opens. Board card **GAP-57**, the six SPEC 2.9 comment styles cxg does not honour,
-  is a stated bound and NOT an instance of that domain qualifier — guardlink's
-  `stripCommentPrefix` is not keyed on extension (only `commentStyleForExt` is, for continuation
-  detection), so the binary strips them in every file it opens, measured at 83ad8a6 against 2.0.0
-  as 6 of 6 read INSIDE the walked extensions (`--`, `;`, `REM`, `'`, `'''` in `.py`, `%` in
-  `.js`). Declining them is still right, and the figure is the reason: in those extensions only a
+  cxg actually opens. Board card **GAP-57** — the six comment styles cxg does not honour, being
+  `--`, `%`, `;`, `'` and `REM` from SPEC 2.9 plus `;;` as 2.9.1's repeat run of `;` — is a stated
+  bound and NOT an instance of that domain qualifier: guardlink's `stripCommentPrefix` is not
+  keyed on extension (only `commentStyleForExt` is, for continuation detection), so the binary
+  strips them in every file it opens, measured at d52040b against 2.0.0 over those six and no
+  others as 6 of 6 read INSIDE the walked extensions (`--`, `;`, `;;`, `'`, `REM` in `.py`, `%` in
+  `.js`; cxg 0 for every one), the four non-quote styles among them being the 4 of 4 that carry
+  the reason. Declining them is still right, and the figure is why: in those extensions only a
   string literal or a line of code can match one, so honouring them at line start adds 47 records
   across guardlink f3b36ce, siete 7df5848 and cert-x-gen 4b342e6, every one a line whose first
-  character is a quote, while the four non-quote openers add 0 and lose 0 — and `'` and `'''`
-  would make cxg read a Python string literal as a comment.
+  character is a quote, while the four non-quote openers add 0 and lose 0 — and `'`, carried by
+  the repeat rule to the docstring opener `'''`, would make cxg read a Python string literal as a
+  comment.
   `pentest/docs/ARCHITECTURE.md` carries the measurement; extend `_TEXT_EXTS` and the opener set
   together or neither. **A third start, chaining a body wherever a description had CLOSED, was
   tried and REMOVED — do not rebuild it.** Any quoted word followed by a verb
@@ -243,11 +246,12 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   Head is not worse than base (base fabricated an `@audit` and lost the note; head is merely
   silent), so nothing regresses against `origin/main`, but a different symptom will surface next
   time. Filed on GAP-32 and declined for this branch: the remedy reaches into its parked
-  measurement. GAP-32 is one specific way a
-  broader root cause fires: cxg reads a verb ANYWHERE in a comment where guardlink requires it
-  to open one (**GAP-48**). Cite GAP-32 for the continuation line and GAP-48 for the general
-  case; do not merge them, and note that GAP-48's proposed anchor has a `.gal` trap — sidecar
-  lines carry no comment marker, so a naive anchor drops every sidecar annotation.
+  measurement. GAP-32 used to be described as one way a broader root cause fired — cxg reading a
+  verb ANYWHERE in a comment. That root cause is **GAP-48, and it is closed**, as the entry above
+  states; the anchor it called for is `_comment_body_starts`, and the `.gal` trap it warned of was
+  solved rather than hit, the sidecar walk passing its own body start
+  (`test_a_gal_body_opens_at_the_line_and_still_refuses_prose` pins it). Cite GAP-32 for the
+  continuation line and do not describe the general case as open.
 - **`@source` and `@sink` are still in the Giggs form, deliberately.** guardlink has no
   `@sink` verb, and its `@source` is an unrelated `file:line` anchor directive — a bare
   `@source (#id) -- "…"` is a hard `guardlink validate` error, not a working annotation. Both

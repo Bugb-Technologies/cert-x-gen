@@ -398,10 +398,12 @@ START from rather than arrive at. The measurement that motivated the work stands
   `<!-- @exposes #x to #t -- "d" -->` in a `.html` file, and a server-rendered template is
   exactly where a customer annotates a form for #csrf or #xss — so omitting it would have
   narrowed cxg PAST the tool it is aligning to and dropped a real note in silence, which is
-  forbidden as firmly as accepting more — within the domain the two share, the qualifier board
-  card GAP-57 sharpened and `pentest/docs/ARCHITECTURE.md` carries: where guardlink reads a
-  language `_TEXT_EXTS` does not, being narrower is meaningless rather than wrong, which is why
-  the six further SPEC 2.9 comment styles are a stated bound and not a widening. **Its cost on
+  forbidden as firmly as accepting more — within the domain the two share, which is the
+  qualifier `pentest/docs/ARCHITECTURE.md` carries: where guardlink reads a language
+  `_TEXT_EXTS` does not, being narrower is meaningless rather than wrong. Board card GAP-57, the
+  six further comment styles cxg declines, is a stated bound but is NOT an instance of that
+  qualifier — the binary reads those inside the walked extensions too, and ARCHITECTURE.md
+  carries the corrected reason and its measurement. **Its cost on
   corpus (A) is now ZERO annotations re-admitted**, re-derived 2026-09-13 with the parser at
   a0bd9ba. It was 3 when the opener was added — all of them TypeScript test-fixture string
   literals in guardlink's own suite (`tests/review.test.ts:180` and `:193`,
