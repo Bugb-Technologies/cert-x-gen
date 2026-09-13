@@ -221,9 +221,10 @@ START from rather than arrive at. The measurement that motivated the work stands
 - **cert-x-gen still reads annotations that enter no guardlink model by AT LEAST these routes, and
   this branch closed none of them — the list is NOT claimed to be exhaustive:** GAP-69 (`@shield`
   regions), GAP-72 (the double-star body run), GAP-73 (the unterminated HTML comment), GAP-74 (the
-  `@comment` pragma tail), and the tail admissions on GAP-65 (any at-token after a complete
-  annotation, and a second closed description). Nothing in this entry should be read as cert-x-gen
-  having stopped reading what enters no guardlink model; by these routes it still does.
+  `@comment` pragma tail), GAP-75 (the terminator whose opener sits inside the description), and
+  the tail admissions on GAP-65 (any at-token after a complete annotation, and a second closed
+  description). Nothing in this entry should be read as cert-x-gen having stopped reading what
+  enters no guardlink model; by these routes it still does.
 
   **No total is published, and the absence is the correction.** Drafts of this entry said TWO and
   then FOUR; both were falsified by the next reading, the second by the round sent to fix the
@@ -234,7 +235,7 @@ START from rather than arrive at. The measurement that motivated the work stands
   **The routes those totals omitted were the WORSE half.** The test is whether the annotation
   ENTERS GUARDLINK'S MODEL, not whether guardlink complains, and by it the enumerated cases are
   the mild ones: GAP-69 is an exclusion the binary makes deliberately and records, while GAP-72,
-  GAP-73 and GAP-74 are mere SILENCE — 0 `guardlink validate` errors, the file reported
+  GAP-73, GAP-74 and GAP-75 are mere SILENCE — 0 `guardlink validate` errors, the file reported
   unannotated by `guardlink parse`. Silence does not license reading: if "does not error" were the
   test, cxg could read arbitrary text, because the binary does not error on that either. The tail
   admissions are HARD REFUSALS, and measured at 83ad8a6 against the installed guardlink 2.0.0,

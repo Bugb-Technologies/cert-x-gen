@@ -89,20 +89,21 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   it as the card being closed.
 - **cxg reads annotations that enter no guardlink model by AT LEAST these routes, and the list is
   NOT claimed to be exhaustive:** GAP-69 (`@shield` regions), GAP-72 (the double-star body run),
-  GAP-73 (the unterminated HTML comment), GAP-74 (the `@comment` pragma tail), and the tail
-  admissions on GAP-65 (any at-token after a complete annotation, and a second closed
-  description). The rule that cxg may extend where the authority is SILENT and may not read what
-  it REFUSES is the standard this estate holds itself to, NOT a description of where it already
-  stands, and the test is whether the annotation ENTERS GUARDLINK'S MODEL rather than whether
-  guardlink complains — silence does not license reading, or cxg could read arbitrary text on the
-  same argument. `pentest/docs/ARCHITECTURE.md` is the authority for every route.
+  GAP-73 (the unterminated HTML comment), GAP-74 (the `@comment` pragma tail), GAP-75 (the
+  terminator whose opener sits inside the description), and the tail admissions on GAP-65 (any
+  at-token after a complete annotation, and a second closed description). The rule that cxg may
+  extend where the authority is SILENT and may not read what it REFUSES is the standard this
+  estate holds itself to, NOT a description of where it already stands, and the test is whether
+  the annotation ENTERS GUARDLINK'S MODEL rather than whether guardlink complains — silence does
+  not license reading, or cxg could read arbitrary text on the same argument.
+  `pentest/docs/ARCHITECTURE.md` is the authority for every route.
 - **DO NOT PUBLISH A COUNT OF THEM.** Three rounds shipped three totals and each was falsified by
   the next reading, including the round whose job was fixing the total: a count is a completeness
   claim about a set nobody has enumerated, so the step to remove is writing one, not getting one
   right. And the routes the totals omitted were the WORSE half — GAP-69 is a deliberate recorded
-  exclusion and GAP-72, GAP-73 and GAP-74 are mere SILENCE, while every tail admission is a HARD
-  REFUSAL: measured at 83ad8a6 against guardlink 2.0.0, the binary reports 1 error and 0 model
-  records for each of `// @audit #api -- "y" @later`, `// @audit #api -- "a" -- "b"`,
+  exclusion and GAP-72, GAP-73, GAP-74 and GAP-75 are mere SILENCE, while every tail admission is
+  a HARD REFUSAL: measured at 83ad8a6 against guardlink 2.0.0, the binary reports 1 error and 0
+  model records for each of `// @audit #api -- "y" @later`, `// @audit #api -- "a" -- "b"`,
   `// @flows #api -> #db via redis -- "d" # noqa` and
   `# @comment -- "closed note" @audit #real-api -- "second"`, and cxg reads one live annotation
   from every one.
