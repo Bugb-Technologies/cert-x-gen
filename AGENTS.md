@@ -42,15 +42,18 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   the installed guardlink. `pentest/docs/ARCHITECTURE.md` § "A verb must OPEN the comment body"
   is the authority — the two places a body begins, the `.gal` half, and the measurement.
   A body opens ONLY at the start of a trimmed line: after an opener `//`, `#`, `/*` or `<!--`, or
-  after the block-comment `*` body marker, plus a run of the marker's final character, an optional
-  `!`, up to three decorations from `!<^|`, and whitespace. There is no mid-line opener, no
+  after the block-comment `*` body marker, plus a run of the marker's final character, whitespace,
+  and then AT MOST THREE decoration characters drawn from `!<^|` — three, counted once, so `//!<^`
+  reads and `//!<^|` is refused, matching the binary. There is no mid-line opener, no
   all-occurrences scan and no resume point — `_comment_body_starts` is one `startswith` returning
   at most one index, so a LINE yields at most one annotation. Narrowing to line-start DROPPED 223
   annotations over guardlink f3b36ce, siete 7df5848 and cert-x-gen 4b342e6, a cost PAID in a0bd9ba
   and not one a later round would pay, all 223 classified as string literals or generated markup
-  rather than notes. A leading UTF-8 BOM is stripped once where the file is read (a72799b), so a
-  BOM'd first line reads and a BOM'd `@source` header still anchors its block; no per-line rule
-  carries a BOM clause and none should be added. The openers include `<!--`, because
+  rather than notes. Both walks decode with `utf-8-sig`, named rather than left to the machine's
+  locale, so one repository cannot yield two annotation sets on two machines; `-sig` consumes a
+  leading BOM as part of the decode, so a BOM'd first line reads and a BOM'd `@source` header still
+  anchors its block. No per-line rule carries a BOM clause and none should be added. The openers
+  include `<!--`, because
   guardlink reads an HTML-comment annotation in a `.html` file and narrowing PAST the binary is
   forbidden as firmly as widening past it — WITHIN THE DOMAIN THE TWO SHARE, which is the files
   cxg actually opens. Where guardlink reads a language `_TEXT_EXTS` does not carry, being narrower
