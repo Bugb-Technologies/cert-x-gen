@@ -138,86 +138,24 @@ This file is the project's committed home for project-intrinsic agent knowledge:
 
 ## The finding -> exposure join (`guardlink hypothesis confirm --from-scan`)
 
-- `pentest/docs/ARCHITECTURE.md` § "The exposure identity a finding carries" is the authority:
-  what report.json puts on the wire, why the key is `{file, line}` and not `(asset, threat, file)`,
-  and the residue that is still open. `pentest/tests/fixtures/shared-threat-name/README.md` carries
-  the collision the key exists for.
+- `pentest/docs/ARCHITECTURE.md` § "The exposure identity a finding carries" is the authority for
+  the whole design, and this section adds only what that section does not own. It states what
+  report.json puts on the wire, why the key is `{file, line}` and not `(asset, threat, file)`, the
+  positive `from_sarif` gate on stamping, the drift withdrawal and the defensive re-stamp beside
+  it, the ambiguous-collapse rule and its `withheld_keys` granularity, the two `identity_withdrawn`
+  writers and the three `kind`s of `not_selected_threats`, and the three measured bounds. Its
+  § "Every site that attaches an exposure identity, and its proof" is the table a new site belongs
+  in or it does not belong in the code. `pentest/tests/fixtures/shared-threat-name/README.md`
+  carries the collision the key exists for.
 - **Re-measuring the join needs a COPY of the target repository.** `importScan` writes
   `.guardlink/hypotheses.json` into the root it is pointed at, and `--from-scan` refuses a report
   outside that root, so a measurement against a real corpus copies the repo (`git archive HEAD |
   tar -x`) and puts the report inside the copy. Delete the ledger between shapes or the second
   measurement starts from the first one's outcome.
-- **cxg cannot confirm what `guardlink sarif` does not emit.** The SARIF omits an exposure that
-  carries a declared `@mitigates`, so that exposure never becomes a hypothesis and stays
-  `untested` however well the join works. Measured on temporal: 1 of 142. `--mitigation-mode`
-  selects among the hypotheses cxg was given; it cannot recover one it never received.
 - `parse_sarif` also reads guardlink's `confirmed-exploitable` results as hypotheses. Their
   location is the `@confirmed` line, which is not an `@exposes` line, so findings derived from
   them cannot join by location and fall to the `(asset, threat)` tier. Measured on temporal: 7 of
   148 results, of which 4 joined on the fallback and 3 were refused as ambiguous.
-- **A stale exposure location does not MISS, it lands on the wrong claim.** The ingest joins on
-  location before it consults asset and threat, so a template whose stamped line has drifted
-  confirms whatever exposure sits at that line today. `_cache_key` cannot be taught about the
-  location — the digest is the on-disk template filename and siete recomputes it through cxg's
-  own `_cache_key`, so changing the formula orphans every operator's cache and silently loses
-  correlation — so the drift is answered by DROPPING the identity of any loaded template the run's
-  hypotheses do not corroborate. That withdrawal is the LIVE defence and it runs on BOTH the
-  generating and the replay branch; do not narrow it to the replay branch on the reasoning that a
-  generating run has already re-stamped its reuses. `_reuse_cached_template`'s re-stamp is
-  DEFENSIVE: `generate_all` makes a fresh `session-<timestamp>` directory unless its caller passes
-  a `session_dir`, which the orchestrator does not, so nothing on the production generating path is
-  cached to re-stamp. Keep it anyway — it is the write side of the same rule.
-  `pentest/docs/ARCHITECTURE.md` § "Drift in a reused template" is the authority.
-- **An ambiguous provenance gets NO identity, not a precise wrong one.** `_dedupe_by_probe_shape`
-  collapses every hypothesis sharing one probe shape onto a single template, so where the group
-  does not agree on one `(file, line, asset, threat)` the survivor's four LOCATION keys are
-  withheld and its findings are left unmatched on location. `@threat_id` is judged separately, and
-  on the IDS THE MEMBERS CARRY rather than on any re-derivation of guardlink's key — `parse_sarif`
-  says cxg is not an authority for that id, only a carrier, and a modelled derivation answered
-  "these agree" for a group whose ids differed. All members carrying one id keeps it (it is the
-  same id whichever member a finding demonstrates); any difference, including a member with none,
-  withholds it. Every record in `identity_withdrawn` carries `withheld_keys`, so "location
-  withheld, id attached" is not read as "everything withheld".
-  The criterion is the DISAGREEMENT, not the
-  `[merged classes: …]` note, which is only a symptom; the withholding is recorded in
-  `identity_withdrawn` under `cause: ambiguous_collapse`, and the members THAT group dropped land
-  in `not_selected_threats`, whose remedy is not a bigger `--max-templates`. An AGREEING group
-  records nothing in either bucket: its dropped member is the survivor's own exposure, which the
-  survivor was tested for, so calling it untested is false — membership in a bucket must not imply
-  a cause that is false for the member. **Three acts now write
-  `not_selected_threats`** — the ranker, that collapse, and a replay withholding an unstamped
-  template — so each record carries the `kind` its writer set and no reader may infer a cause
-  from membership: widening what a bucket holds turns every such reader into a false claim, and
-  both the `[2b]` banner and the `no_templates_executed` caveat speak only for the kinds they
-  name. A reason string written before ranking must likewise claim nothing that ranking or
-  generation decides. Every site that attaches
-  an identity, with the proof beside it, is tabulated in `pentest/docs/ARCHITECTURE.md`
-  § "Every site that attaches an exposure identity, and its proof" — a new site belongs in that
-  table or it does not belong in the code.
-- **Only a hypothesis `parse_sarif` built is stamped with an exposure identity.** The gate is the
-  POSITIVE `Hypothesis.from_sarif`, never a list of the synthesisers to exclude — cxg mints
-  hypotheses of its own (Electron IPC, `--discover-routes`) whose file and line name no annotation,
-  and a negative list is correct only until the next one is added. When the identity is withdrawn
-  from an uncorroborated template, `@threat_id` goes with the four headers: guardlink derives it
-  from asset, threat and file with no line, so it names a file's surviving sibling just as wrongly.
-  A template that stamps NO location — which a collapse withholding only the location keys now
-  produces — is checked on that id alone, against the ids the loaded hypotheses carry.
-  A reused template's re-stamp moves the same five. **A run holding no `from_sarif` hypothesis
-  withdraws nothing** — that is the absence of a check, not a disproof, and it is the SARIF SUBSET
-  that decides, never the length of `hyps`: a desktop run appends `electron_surface.extract` and
-  `--discover-routes` appends its own, so the list is non-empty while nothing in it can corroborate
-  an annotation location. The same subset is the only thing allowed to corroborate a stamp, because
-  only guardlink's own exposures are stamped. Every refusal is recorded in report.json under
-  `identity_withdrawn`, which has TWO writers told apart by `cause`: every template LOADED whose
-  stamp was refused (not the same as every template that ran), and every survivor whose identity
-  the collapse above withheld before a template was stamped at all. It is the only trace of the
-  one drift case cxg cannot detect.
-  THREE measured bounds are stated in `pentest/docs/ARCHITECTURE.md` § "The exposure identity a
-  finding carries". The second needs a **guardlink** change (`guardlink sarif` does not export
-  the anchor hash) and must not be approximated here. The third is cxg's own: a run that loaded
-  no model withdraws nothing, so its stamps reach report.json UNCHECKED and can still join
-  wrongly later — the abstain is right, and what is missing is a marker saying no check was made,
-  since an empty `identity_withdrawn` reads the same as "checked, nothing refused".
 - **`.gitignore` ignores `*.json` tree-wide.** A fixture that needs a JSON file needs `git add -f`
   or an allow-list line; `.sarif` is not affected.
 
