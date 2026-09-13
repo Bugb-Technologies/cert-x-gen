@@ -168,8 +168,15 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   collapses every hypothesis sharing one probe shape onto a single template, so where the group
   does not agree on one `(file, line, asset, threat)` the survivor's five identity keys are
   withheld and its findings are left unmatched. The criterion is the DISAGREEMENT, not the
-  `[merged classes: …]` note, which is only a symptom; the dropped members land in
-  `not_selected_threats`, whose remedy is not a bigger `--max-templates`. Every site that attaches
+  `[merged classes: …]` note, which is only a symptom; the withholding is recorded in
+  `identity_withdrawn` under `cause: ambiguous_collapse`, and the dropped members land in
+  `not_selected_threats`, whose remedy is not a bigger `--max-templates`. **Three acts now write
+  `not_selected_threats`** — the ranker, that collapse, and a replay withholding an unstamped
+  template — so each record carries the `kind` its writer set and no reader may infer a cause
+  from membership: widening what a bucket holds turns every such reader into a false claim, and
+  both the `[2b]` banner and the `no_templates_executed` caveat speak only for the kinds they
+  name. A reason string written before ranking must likewise claim nothing that ranking or
+  generation decides. Every site that attaches
   an identity, with the proof beside it, is tabulated in `pentest/docs/ARCHITECTURE.md`
   § "Every site that attaches an exposure identity, and its proof" — a new site belongs in that
   table or it does not belong in the code.
@@ -184,9 +191,11 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   that decides, never the length of `hyps`: a desktop run appends `electron_surface.extract` and
   `--discover-routes` appends its own, so the list is non-empty while nothing in it can corroborate
   an annotation location. The same subset is the only thing allowed to corroborate a stamp, because
-  only guardlink's own exposures are stamped. Every withdrawal is recorded in report.json under
-  `identity_withdrawn` — every template LOADED whose stamp was refused, which is not the same as
-  every template that ran — and it is the only trace of the one drift case cxg cannot detect.
+  only guardlink's own exposures are stamped. Every refusal is recorded in report.json under
+  `identity_withdrawn`, which has TWO writers told apart by `cause`: every template LOADED whose
+  stamp was refused (not the same as every template that ran), and every survivor whose identity
+  the collapse above withheld before a template was stamped at all. It is the only trace of the
+  one drift case cxg cannot detect.
   THREE measured bounds are stated in `pentest/docs/ARCHITECTURE.md` § "The exposure identity a
   finding carries". The second needs a **guardlink** change (`guardlink sarif` does not export
   the anchor hash) and must not be approximated here. The third is cxg's own: a run that loaded

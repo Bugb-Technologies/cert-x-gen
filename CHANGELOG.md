@@ -43,8 +43,13 @@ collapsed group does not agree on one `(file, line, asset, threat)` all five ide
 WITHHELD — the prompt is told about the merged-away members, so a finding may demonstrate any of
 them while carrying only the survivor's location, and the ingest joins on location first. Findings
 there are left unmatched, which is what that path was before an identity was carried at all. The
+withholding itself is recorded in `identity_withdrawn` under `cause: ambiguous_collapse`, so a
+survivor's unlabelled findings are not mistaken for ones that never held an identity. The
 members the collapse dropped now appear in `not_selected_threats` with a reason stating that a
-bigger `--max-templates` does not reach them; previously they appeared nowhere. On the legacy
+bigger `--max-templates` does not reach them; previously they appeared nowhere. That bucket now
+has three writers — the ranker, the collapse and a replay's withheld template — so each record
+carries the `kind` its writer set, and the `[2b]` banner and the `no_templates_executed` caveat
+state a cause only for the members whose kind they name. On the legacy
 browser path the same rule removes one pre-existing line: an AI-synthesised probe no longer
 attaches the `threat_id` of the vuln-class representative it was invoked with, for exactly the
 reason that path carries no annotation, asset or threat either. Every site that attaches an
@@ -55,9 +60,10 @@ is being reused for; a replayed one whose stamp no guardlink hypothesis in the r
 all five identity keys withdrawn in memory — the four headers and `@threat_id`, which guardlink
 derives from asset, threat and file with no line, so it names a file's surviving sibling just as
 wrongly. The probe still runs and is still reported; only its claim about WHICH exposure it tests
-is dropped, and every withdrawal is recorded in the new `identity_withdrawn` (one record per
-template the run LOADED whose stamp it refused, which is not the same as one per template that
-ran). A run that loaded no guardlink SARIF hypothesis checked nothing and therefore withdraws
+is dropped, and every refusal is recorded in the new `identity_withdrawn`, whose records name
+their own `cause`: `uncorroborated_stamp` for a template the run LOADED whose stamp it refused
+(which is not the same as one per template that ran), and `ambiguous_collapse` for the collapse
+above. A run that loaded no guardlink SARIF hypothesis checked nothing and therefore withdraws
 nothing.
 
 Three bounds are stated rather than approximated. An exposure that merely MOVED loses a true
