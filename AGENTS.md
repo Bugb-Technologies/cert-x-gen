@@ -77,18 +77,33 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   and its residue measures ZERO on guardlink f3b36ce, siete 7df5848 and cert-x-gen 4b342e6. Zero
   there is a fact about that corpus at those commits, not a property of the code, so do not read
   it as the card being closed.
-- **`@shield` regions are a LIVE gap, and nothing on this branch closed it.** cxg honours no
-  `@shield:begin`/`@shield:end` region, so it reads annotations the installed guardlink
-  DELIBERATELY EXCLUDES from its model — measured at **37** across guardlink f3b36ce, siete
-  7df5848 and cert-x-gen 4b342e6, all of them in guardlink's own repository (`src/agents/prompts.ts`
-  30, `templates.ts` 4, `migrate-mode.test.ts` 2, `cli/index.ts` 1). So the rule that cxg may
-  extend where the authority is SILENT and may not read what it REFUSES is the standard this
-  estate holds itself to, NOT a description of where it already stands: by this route cxg still
-  reads what guardlink refuses, 37 times. Suppression was ruled out for this branch rather than
-  overlooked — region state carried across lines is new machinery with its own failure modes (an
+- **TWO measured places where cxg reads what enters no guardlink model, both LIVE, both filed.**
+  The rule that cxg may extend where the authority is SILENT and may not read what it REFUSES is
+  the standard this estate holds itself to, NOT a description of where it already stands.
+- **`@shield` regions — board card GAP-69.** cxg honours no `@shield:begin`/`@shield:end` region,
+  so it reads annotations the installed guardlink DELIBERATELY EXCLUDES from its model —
+  **36** across guardlink f3b36ce, siete 7df5848 and cert-x-gen 4b342e6, all in guardlink's own
+  repository (`src/agents/prompts.ts` 30, `templates.ts` 4, `migrate-mode.test.ts` 2). That counts
+  annotations inside a MATCHED begin/end pair. A figure of 37 stood here and is withdrawn: it
+  came from treating an UNCLOSED `@shield:begin` as running to end of file, and the only such
+  begin in the tree is one NAMED inside a template string in `src/cli/index.ts` — the
+  string-literal reading class this branch exists to remove. guardlink opens no region there
+  either, reporting `shields 0` on a fixture carrying that line, so cxg reading below it is
+  correct rather than a suppression miss. Suppression was ruled out for this branch rather than
+  overlooked: region state carried across lines is new machinery with its own failure modes (an
   unclosed begin, nested pairs, a region opened in one comment and closed in another), where every
   other change here REMOVED an admission. The instruction files already tell authors not to
   annotate inside `@shield`, so the construct is known and only the implementation is absent.
+- **The DOUBLE-STAR body run — board card GAP-72.** `_body_start_after` consumes a run of the
+  marker's final character for every non-HTML marker, so a line whose trimmed start is `**` opens
+  a comment body in cxg while the binary reads nothing from it. Measured exhaustively rather than
+  sampled: over all 4,680 line-start prefixes of length 1-4 drawn from `/ # * ! < ^ | space`,
+  cxg and guardlink 2.0.0 diverge on exactly 46, and EVERY one is a repeated `*`, every one cxg 1
+  / guardlink 0. It is carried as a BOUND rather than fixed here because narrowing it means
+  special-casing the double star out of general marker-run handling — new discrimination rather
+  than an admission removed, which is the opposite of every other change on this branch. Guarding
+  the run with `marker != _BLOCK_BODY_MARKER` takes that differential to zero and costs 0
+  annotations on the three corpora, so the count is not what decided it; the shape of the fix is.
 - **Closing GAP-48 did NOT close GAP-32, though the card predicted it would.** A verb on a
   CONTINUATION line does open that line's comment body, so the rule admits it and must; the
   continuation line remains an open bound. What GAP-48 did close, besides prose generally, is

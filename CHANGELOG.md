@@ -136,18 +136,39 @@ START from rather than arrive at. The measurement that motivated the work stands
 
 ### Fixed
 
-- **`@shield` regions are a REMAINING gap, and this branch did not close them.** cxg honours no
-  `@shield:begin`/`@shield:end` region, so it reads annotations the installed guardlink
-  DELIBERATELY EXCLUDES from its model — measured at **37** across guardlink f3b36ce, siete
-  7df5848 and cert-x-gen 4b342e6, every one of them in guardlink's own repository
-  (`src/agents/prompts.ts` 30, `templates.ts` 4, `migrate-mode.test.ts` 2, `cli/index.ts` 1).
-  So nothing in this entry should be read as cert-x-gen having stopped reading what guardlink
-  refuses: by this route it still does, 37 times. Suppression was ruled out for this branch
+- **TWO measured places where cert-x-gen still reads what enters no guardlink model, and this
+  branch closed NEITHER.** Nothing in this entry should be read as cert-x-gen having stopped
+  reading what guardlink refuses; by these two routes it still does.
+
+  **`@shield` regions (board card GAP-69).** cxg honours no `@shield:begin`/`@shield:end` region,
+  so it reads annotations the installed guardlink DELIBERATELY EXCLUDES from its model — **36**
+  across guardlink f3b36ce, siete 7df5848 and cert-x-gen 4b342e6, every one in guardlink's own
+  repository (`src/agents/prompts.ts` 30, `templates.ts` 4, `migrate-mode.test.ts` 2), counting
+  annotations inside a MATCHED begin/end pair. A figure of 37 was published here and is
+  withdrawn: it treated an UNCLOSED `@shield:begin` as running to end of file, and the only such
+  begin in the tree is one NAMED inside a template string in `src/cli/index.ts`, which is the
+  string-literal reading class this branch exists to remove. guardlink opens no region there
+  either — `shields 0` on a fixture carrying that line — so cxg reading below it is correct
+  rather than a suppression miss, and `cli/index.ts` contributes 0 rather than 1.
+  Suppression was ruled out for this branch
   rather than overlooked — region state carried across lines is new machinery with its own
   failure modes (an unclosed begin, nested pairs, a region opened in one comment and closed in
   another), where every other change here REMOVED an admission. The estate's instruction files
   already tell authors not to annotate inside `@shield`, so the construct is known and only the
   implementation is absent.
+
+  **The DOUBLE-STAR body run (board card GAP-72).** `_body_start_after` consumes a run of the
+  marker's final character for every non-HTML marker, so a line whose trimmed start is `**` opens
+  a comment body in cxg while guardlink reads nothing from it — the `**` block-comment
+  continuation style is a real C-derived convention, so this is reachable in ordinary source.
+  Measured exhaustively rather than sampled: over all 4,680 line-start prefixes of length 1-4
+  drawn from `/ # * ! < ^ | space`, cxg and guardlink 2.0.0 diverge on exactly 46, and EVERY one
+  is a repeated `*`, every one cxg 1 / guardlink 0. It is carried as a BOUND rather than fixed
+  here because narrowing it means special-casing the double star out of general marker-run
+  handling — new discrimination rather than an admission removed, which is the opposite of every
+  other change in this entry. Guarding the run with `marker != _BLOCK_BODY_MARKER` takes that
+  differential to zero in both directions and costs 0 annotations across the three corpora, so
+  the count is not what decided it; the shape of the fix is.
 
 - **A verb must now OPEN a comment body to be read as an annotation (board card GAP-48).**
   cxg's patterns are search-based, so a verb sitting anywhere in ordinary prose parsed as a
@@ -359,8 +380,9 @@ START from rather than arrive at. The measurement that motivated the work stands
   parser at 0e23be9 against the locale path over guardlink f3b36ce, siete 7df5848 and cert-x-gen
   4b342e6: 603 / 5,128 / 3,392 both ways, 0 added, 0 removed, 0 field-changed. That zero is real
   and it is narrow. This machine's locale is UTF-8, so the two decode paths agree by construction
-  except on a BOM-prefixed file, and of the 841 files the walk opens across the three corpora
-  ZERO carry a BOM. So the figure bounds how many records OUR repositories gain or lose from BOM
+  except on a BOM-prefixed file, and of the 848 files the walk opens across the three corpora —
+  841 source files plus the 7 `.gal` sidecars, all 7 in guardlink — ZERO carry a BOM. So the
+  figure bounds how many records OUR repositories gain or lose from BOM
   handling — none, because they have none — and bounds NOTHING about cp1252, about Windows, or
   about a non-ASCII description on a machine whose locale is not UTF-8. The evidence that the
   change does anything at all is the byte-level test rows, which write `EF BB BF` and UTF-8 smart
