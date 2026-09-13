@@ -45,8 +45,10 @@ them while carrying only the survivor's location, and the ingest joins on locati
 there are left unmatched, which is what that path was before an identity was carried at all. The
 withholding itself is recorded in `identity_withdrawn` under `cause: ambiguous_collapse`, so a
 survivor's unlabelled findings are not mistaken for ones that never held an identity. The
-members the collapse dropped now appear in `not_selected_threats` with a reason stating that a
-bigger `--max-templates` does not reach them; previously they appeared nowhere. That bucket now
+members a disagreeing group's collapse dropped now appear in `not_selected_threats` with a reason
+stating that a bigger `--max-templates` does not reach them; previously they appeared nowhere. An
+agreeing group records nothing there — its dropped member is the survivor's own exposure, which
+the survivor was tested for. That bucket now
 has three writers — the ranker, the collapse and a replay's withheld template — so each record
 carries the `kind` its writer set, and the `[2b]` banner and the `no_templates_executed` caveat
 state a cause only for the members whose kind they name. On the legacy

@@ -169,8 +169,11 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   does not agree on one `(file, line, asset, threat)` the survivor's five identity keys are
   withheld and its findings are left unmatched. The criterion is the DISAGREEMENT, not the
   `[merged classes: …]` note, which is only a symptom; the withholding is recorded in
-  `identity_withdrawn` under `cause: ambiguous_collapse`, and the dropped members land in
-  `not_selected_threats`, whose remedy is not a bigger `--max-templates`. **Three acts now write
+  `identity_withdrawn` under `cause: ambiguous_collapse`, and the members THAT group dropped land
+  in `not_selected_threats`, whose remedy is not a bigger `--max-templates`. An AGREEING group
+  records nothing in either bucket: its dropped member is the survivor's own exposure, which the
+  survivor was tested for, so calling it untested is false — membership in a bucket must not imply
+  a cause that is false for the member. **Three acts now write
   `not_selected_threats`** — the ranker, that collapse, and a replay withholding an unstamped
   template — so each record carries the `kind` its writer set and no reader may infer a cause
   from membership: widening what a bucket holds turns every such reader into a false claim, and
