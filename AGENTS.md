@@ -85,7 +85,11 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   "neither closable from cxg" from bound 3 introduced "filed rather than built here" in the same
   paragraph, and no card had been filed. Prefer DELETING a false sentence to REPLACING it. When a
   replacement is necessary, make it a statement verifiable at the instant of writing — never one
-  whose truth depends on a future act by anyone, including the author.
+  whose truth depends on a future act by anyone, including the author. **Verifiable-when-written
+  is enough for a statement about this repository's own code and not for one about state another
+  party owns**: "no board card names it" was true when written and went false when someone filed
+  one (GAP-61), because it asserted the ABSENCE of an external record anybody could create. Cite
+  what exists rather than asserting what does not.
 - **An asymmetry justifies COMPLETING something, not BUILDING something.** "The same note
   reads on one line and vanishes when wrapped" is evidence of an oversight only where closing
   it adds no new discrimination — the `/**` opener was an incomplete marker set and was

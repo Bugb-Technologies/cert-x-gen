@@ -76,10 +76,10 @@ identity, which is accepted: a missed join is silence and recoverable, a wrong j
 confirmation a human has to catch later. And a stamped exposure deleted while a same-asset,
 same-threat sibling comes to sit on exactly the stamped line cannot be detected from this side at
 all — separating them needs the anchor hash `guardlink sarif` does not export, so it needs a
-guardlink change. The third is cxg's own and is closable here: a run that loaded no model
+guardlink change (board card GAP-58). The third is cxg's own and is closable here: a run that loaded no model
 withdraws nothing, which is correct, but its stamps then reach report.json unchecked and an empty
 `identity_withdrawn` cannot be told apart from "checked, nothing refused" — the marker that would
-distinguish them is deliberately not built here, and untracked. Separately, and not one of the
+distinguish them is deliberately not built here, and tracked as board card GAP-61. Separately, and not one of the
 three, `guardlink sarif` omits an exposure carrying a declared `@mitigates`, so cxg is never
 offered it at all (measured on temporal: 1 of 142).
 `pentest/docs/ARCHITECTURE.md` § "The exposure identity a finding carries" is the authority.
