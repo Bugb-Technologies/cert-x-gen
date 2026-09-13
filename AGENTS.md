@@ -41,11 +41,16 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   **GAP-48 is CLOSED** (2026-09-12): a verb is read only where a comment body begins, matching
   the installed guardlink. `pentest/docs/ARCHITECTURE.md` § "A verb must OPEN the comment body"
   is the authority — the two places a body begins, the `.gal` half, and the measurement.
-  A body opens after a comment opener ANYWHERE on the line — narrowing to line-start DROPPED
-  223 annotations over guardlink f3b36ce, siete 7df5848 and cert-x-gen 4b342e6, a cost PAID in
-  a0bd9ba and not one a later round would pay, all 223 classified as string literals or generated
-  markup rather than notes — and after the block-comment `*`
-  marker at the start of a trimmed line, and nowhere else. The openers include `<!--`, because
+  A body opens ONLY at the start of a trimmed line: after an opener `//`, `#`, `/*` or `<!--`, or
+  after the block-comment `*` body marker, plus a run of the marker's final character, an optional
+  `!`, up to three decorations from `!<^|`, and whitespace. There is no mid-line opener, no
+  all-occurrences scan and no resume point — `_comment_body_starts` is one `startswith` returning
+  at most one index, so a LINE yields at most one annotation. Narrowing to line-start DROPPED 223
+  annotations over guardlink f3b36ce, siete 7df5848 and cert-x-gen 4b342e6, a cost PAID in a0bd9ba
+  and not one a later round would pay, all 223 classified as string literals or generated markup
+  rather than notes. A leading UTF-8 BOM is stripped once where the file is read (a72799b), so a
+  BOM'd first line reads and a BOM'd `@source` header still anchors its block; no per-line rule
+  carries a BOM clause and none should be added. The openers include `<!--`, because
   guardlink reads an HTML-comment annotation in a `.html` file and narrowing PAST the binary is
   forbidden as firmly as widening past it — WITHIN THE DOMAIN THE TWO SHARE, which is the files
   cxg actually opens. Where guardlink reads a language `_TEXT_EXTS` does not carry, being narrower
@@ -58,19 +63,29 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   calls a chained comment a hard `Malformed` error: cxg may extend where the authority is SILENT
   and may not read what it REFUSES. Removing it DOES cost: the 22 siete notes recorded as its
   justification reproduce exactly on siete 7df5848, and guardlink reads ZERO from every one of
-  them, so they were notes only cxg could see. **What that removed is a body start at a closed
-  description QUOTE, so a second annotation no longer chains off a quote alone — but a second
-  comment OPENER inside the same comment still opens one, so a marker written before the second
-  verb still yields both, in all four spellings.** guardlink reads zero from every such line, so
-  cxg reads more than the binary there; that is the GAP-52 mechanism, not a separate defect. A
-  sentence here once claimed at most one annotation per comment and was measured false; the bound
-  the parser implements is per line and per verb KIND. **GAP-56 is CLOSED as obsolete**: the rule
-  that created the trailing-comment asymmetry was removed, so a trailing comment and a whole-line
-  comment now behave identically — that identity is why the card closed, not a residue of it. Do
-  not re-file or re-investigate it. Extending the refusal to the whole line is separate and is not
-  authorised. One residue is filed rather than closed: **GAP-52**, display markup where a real `#`
-  or `//` sits immediately before a verb and still reads, which the mid-line opener rule that keeps
-  trailing comments working is what admits.
+  them, so they were notes only cxg could see. **Chaining is gone in BOTH forms** — off a closed
+  quote, and behind a second comment OPENER written later in the same comment, which the
+  line-start rule removed with it. The bound the parser implements is ONE ANNOTATION PER LINE.
+  **GAP-56 is CLOSED as obsolete**: the rule that created the trailing-comment asymmetry was
+  removed, so a trailing comment and a whole-line comment now behave identically — that identity
+  is why the card closed, not a residue of it. Do not re-file or re-investigate it.
+  **GAP-52 stays OPEN and is its owner's to reframe.** Its mechanism — display markup where a real
+  `#` or `//` sits immediately before a verb — no longer fires, because that marker is mid-line,
+  and its residue measures ZERO on guardlink f3b36ce, siete 7df5848 and cert-x-gen 4b342e6. Zero
+  there is a fact about that corpus at those commits, not a property of the code, so do not read
+  it as the card being closed.
+- **`@shield` regions are a LIVE gap, and nothing on this branch closed it.** cxg honours no
+  `@shield:begin`/`@shield:end` region, so it reads annotations the installed guardlink
+  DELIBERATELY EXCLUDES from its model — measured at **37** across guardlink f3b36ce, siete
+  7df5848 and cert-x-gen 4b342e6, all of them in guardlink's own repository (`src/agents/prompts.ts`
+  30, `templates.ts` 4, `migrate-mode.test.ts` 2, `cli/index.ts` 1). So the rule that cxg may
+  extend where the authority is SILENT and may not read what it REFUSES is the standard this
+  estate holds itself to, NOT a description of where it already stands: by this route cxg still
+  reads what guardlink refuses, 37 times. Suppression was ruled out for this branch rather than
+  overlooked — region state carried across lines is new machinery with its own failure modes (an
+  unclosed begin, nested pairs, a region opened in one comment and closed in another), where every
+  other change here REMOVED an admission. The instruction files already tell authors not to
+  annotate inside `@shield`, so the construct is known and only the implementation is absent.
 - **Closing GAP-48 did NOT close GAP-32, though the card predicted it would.** A verb on a
   CONTINUATION line does open that line's comment body, so the rule admits it and must; the
   continuation line remains an open bound. What GAP-48 did close, besides prose generally, is
@@ -78,12 +93,11 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   a continuation line is still not the fix: `parse_inline` reaches that line again on its own
   turn and emits. Do not attempt the closure without re-reading the measurement in
   `pentest/docs/ARCHITECTURE.md` — the obvious one loses 191 descriptions in siete and overturns
-  a standing PR-74 decision. Prose in this estate has two rules, because this parser reads its
-  own source: do not BEGIN a comment line with a verb followed by its arguments, and do not write
-  a comment marker immediately before a verb you are only NAMING — `# the form is: # @audit #x --
-  "y"` reads as a live audit, which is the GAP-52 residue above. Spelling the verb apart from its
-  arguments (`` `@flows` `` then `` `#p -> #q` ``) is the habit that survives both; no position in
-  a sentence is safe on its own.
+  a standing PR-74 decision. Prose in this estate has ONE rule now, because this parser reads its
+  own source: do not BEGIN a comment line with a verb followed by its arguments. The second rule
+  is retired — a marker written mid-line immediately before a verb you are only NAMING reads
+  nothing, since that marker opens no body. Spelling the verb apart from its arguments
+  (`` `@flows` `` then `` `#p -> #q` ``) is still the safest habit.
 - **`@source` and `@sink` are still in the Giggs form, deliberately.** guardlink has no
   `@sink` verb, and its `@source` is an unrelated `file:line` anchor directive — a bare
   `@source (#id) -- "…"` is a hard `guardlink validate` error, not a working annotation. Both

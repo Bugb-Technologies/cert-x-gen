@@ -136,6 +136,19 @@ START from rather than arrive at. The measurement that motivated the work stands
 
 ### Fixed
 
+- **`@shield` regions are a REMAINING gap, and this branch did not close them.** cxg honours no
+  `@shield:begin`/`@shield:end` region, so it reads annotations the installed guardlink
+  DELIBERATELY EXCLUDES from its model — measured at **37** across guardlink f3b36ce, siete
+  7df5848 and cert-x-gen 4b342e6, every one of them in guardlink's own repository
+  (`src/agents/prompts.ts` 30, `templates.ts` 4, `migrate-mode.test.ts` 2, `cli/index.ts` 1).
+  So nothing in this entry should be read as cert-x-gen having stopped reading what guardlink
+  refuses: by this route it still does, 37 times. Suppression was ruled out for this branch
+  rather than overlooked — region state carried across lines is new machinery with its own
+  failure modes (an unclosed begin, nested pairs, a region opened in one comment and closed in
+  another), where every other change here REMOVED an admission. The estate's instruction files
+  already tell authors not to annotate inside `@shield`, so the construct is known and only the
+  implementation is absent.
+
 - **A verb must now OPEN a comment body to be read as an annotation (board card GAP-48).**
   cxg's patterns are search-based, so a verb sitting anywhere in ordinary prose parsed as a
   live annotation: `# We removed the @exposes #api to #idor -- "x"` read as a real exposure,
@@ -146,8 +159,9 @@ START from rather than arrive at. The measurement that motivated the work stands
   comment closed one instance; the comments most likely to trip it are the ones EXPLAINING the
   parser, so that was a treadmill rather than a fix.
 
-  A comment body begins after an opener (`//`, `#`, `/*`, `<!--`) anywhere on the line, and
-  after the block-comment body marker `*` at the start of a trimmed line only. In a `.gal`
+  A comment body begins ONLY at the start of a trimmed line, after an opener (`//`, `#`, `/*`,
+  `<!--`) or after the block-comment body marker `*`. There is no mid-line opener and no
+  all-occurrences scan, so a LINE yields at most one annotation. In a `.gal`
   sidecar it begins at the first non-space character — sidecar lines carry no comment marker,
   and that is the trap the card names: a naive anchor drops every sidecar annotation, and
   `.gal` reading is a shipped feature. Verified at 80 sidecar annotations before and after.
@@ -185,23 +199,20 @@ START from rather than arrive at. The measurement that motivated the work stands
   one-line form to a hard `Malformed` error — and not only on that fixture: `guardlink parse` over
   siete reads 44 annotations in the whole repository, none on any of the 22 lines.
 
-  **What that removes is a MECHANISM, not a count.** Gone is the body start at a closed
-  description quote, so a second annotation no longer chains off a quote alone: `x = 1 #
-  @comment -- "first" @audit #real-api -- "second"` yields the comment and drops the audit,
-  identically as a trailing or a whole-line comment. NOT gone is chaining behind a second
-  comment OPENER — openers are honoured wherever they occur on a line, the rule that keeps a
-  trailing comment readable — so `x = 1 # @comment -- "n" // @audit #a -- "s"` still reads two,
-  as do the whole-line, `/* … */` and `<!-- … -->` spellings, all measured. The installed
-  guardlink reads ZERO from every one of those lines, so cxg reads MORE than the binary there;
-  that is the GAP-52 family mechanism, a real marker immediately before a verb, and is carried
-  on that card. An earlier draft of this entry claimed cert-x-gen reads at most one annotation
-  per comment: that sentence was false in all four spellings and is withdrawn, not qualified.
-  The bound the parser does implement is per line and per verb KIND, not per comment. **Board card
-  GAP-56 is closed as obsolete**: the rule that created the trailing-comment asymmetry was removed,
-  so a trailing comment and a whole-line comment now behave identically, counterexample included —
-  that identity is the reason the card closed rather than something left over from it. Extending
-  the refusal to the whole line is separate, is new logic on the wrapped-note path, and is
-  deliberately not done.
+  **What that removes is a MECHANISM, not a count**, and
+  `pentest/docs/ARCHITECTURE.md` § "What the removal changes is a MECHANISM, not a count" is the
+  authority; this entry does not restate it. In short: chaining is gone in BOTH forms — off a
+  closed description quote, and behind a second comment OPENER written later in the line, which
+  the line-start rule removed with it. `x = 1 # @comment -- "n" // @audit #a -- "s"` reads
+  NOTHING, its comment being trailing; the same text as a whole-line comment reads ONE, the note
+  alone. The installed guardlink reads ZERO from both. An earlier draft of this entry claimed
+  cert-x-gen reads at most one annotation per COMMENT: that sentence was false and is withdrawn,
+  not qualified — the bound the parser implements is **one annotation per LINE**. **Board card
+  GAP-56 is closed as obsolete** (see the same section). **Board card GAP-52 stays OPEN**: the
+  display-markup residue it named measures zero on the corpus below, which is a fact about that
+  corpus at those commits rather than a property of the code, and the card is its owner's to
+  reframe. Extending the refusal to the whole line is separate, is new logic on the wrapped-note
+  path, and is deliberately not done.
 
   What was actually run against the installed guardlink 2.0.0, rather than a blanket claim: the
   marker table (`//`, `  //`, `//@`, `///`, `//!`, `#`, `##`, `/*`, `/**`, `<!--`, a
@@ -294,22 +305,19 @@ START from rather than arrive at. The measurement that motivated the work stands
   to do with each other"`. This is one defect in three places — on a continuation line, on a
   line that opens a description running off its end, and on a line where the note opens and
   closes — and this closes the last of those outright and the opening line WHERE THE
-  DESCRIPTION JOINS. An opener whose description never closes anywhere is not covered: the
-  narrowing sits inside `parse_inline`'s join branch, so an unterminated note whose prose names
-  a `@validates` still emits that verb. Those records are desc-less and reach the annotation
-  counter rather than the generation prompt, and the case is filed on GAP-32 beside the
-  continuation line. Widening the verb set from five to thirteen is what
+  DESCRIPTION JOINS. The opener whose description never closes is covered too, by the opening
+  rule rather than by this narrowing: the quoted verb sits mid-line, so an unterminated note
+  whose prose names a `@validates`, a `@handles` or a `@boundary` emits NOTHING now, where each
+  used to emit the nested verb. Widening the verb set from five to thirteen is what
   made it necessary rather than tidy. It was the only annotation the bound removed across all
-  three annotated repositories, and the span still excludes only the description BODY rather
-  than the whole annotation — narrow because the opening rule already refuses a second
-  annotation later in the same comment, so widening it would hide which rule does the work.
-  `@feature` carries its own arm in the span pattern, being the one
-  verb with a quoted argument before the `--`; without it a feature note registered no span
-  and the bound did not reach it, so `@feature "SSO Login" -- "we rejected @exposes App.API
-  to #idor here"` emitted the exposure the sentence says was rejected.
+  three annotated repositories. The quoted-description span that backed it up — `_RE_DESC_SPAN`,
+  `_quoted_spans` and its `@feature` arm — was DELETED in 41607a5 as unreachable, so nothing
+  "must begin outside a closed description span" any more; the opening rule refuses these shapes
+  first, and `pentest/docs/ARCHITECTURE.md` carries that measurement.
 - **The CONTINUATION-line case is NOT closed and is carried as an open bound** (board card
   GAP-32). The join refuses to run past such a line, but `parse_inline` visits it again on its
-  own turn with no span, so a verb in a wrapped note's prose is still emitted. The smallest
+  own turn, and a verb there genuinely does open that line's comment body, so it is emitted. The
+  smallest
   closure was prototyped and measured: it removes 9 fabrications in cert-x-gen but loses 191
   descriptions in siete and overturns a standing PR-74 decision, so it is filed rather than
   attempted. `pentest/docs/ARCHITECTURE.md` carries the measurement.
@@ -332,6 +340,18 @@ START from rather than arrive at. The measurement that motivated the work stands
   annotation and silently re-attributing every note below it to the quoted path, so a "this is
   by design" note could reach a hypothesis in a different file. Leading whitespace still opens
   a block, because the installed guardlink parses an indented header.
+- **A leading UTF-8 BOM no longer hides a file's first annotation, and no longer mis-attributes
+  a whole sidecar.** `str.lstrip()` does not remove U+FEFF and Python's `\s` does not match it,
+  so a BOM-prefixed first line opened no comment body, and a BOM-prefixed `.gal` `@source`
+  header did not match at all — leaving `target` on the sidecar, so EVERY annotation in that
+  file was attributed to the `.gal` instead of the source the header names. Those records are
+  read and then reach nothing, because `_AnnotationIndex` keys on the path and
+  `_annotations_near` on the line, which makes it a silent MIS-ATTRIBUTION rather than a drop.
+  The BOM is now stripped once where the file is read (a72799b), so no per-line rule carries a
+  BOM clause. Justified on binary agreement and not on a corpus count: guardlink 2.0.0 reads a
+  BOM-prefixed line-one annotation and anchors a BOM-prefixed header to the file it names, while
+  a BOM is rare in our own repositories and common in files written by Windows editors, which is
+  customer code rather than ours.
 
 **What went wrong repeatedly here, and why it was predictable**
 
