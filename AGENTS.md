@@ -166,8 +166,13 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   `pentest/docs/ARCHITECTURE.md` § "Drift in a reused template" is the authority.
 - **An ambiguous provenance gets NO identity, not a precise wrong one.** `_dedupe_by_probe_shape`
   collapses every hypothesis sharing one probe shape onto a single template, so where the group
-  does not agree on one `(file, line, asset, threat)` the survivor's five identity keys are
-  withheld and its findings are left unmatched. The criterion is the DISAGREEMENT, not the
+  does not agree on one `(file, line, asset, threat)` the survivor's four LOCATION keys are
+  withheld and its findings are left unmatched on location. `@threat_id` is judged on its own
+  three-part key — guardlink derives it from asset, threat and file with NO line, so a group
+  differing only in line shares one id and keeps it; it goes only where the group names more than
+  one `(file, asset, threat)`. Every record in `identity_withdrawn` carries `withheld_keys`, so
+  "location withheld, id attached" is not read as "everything withheld".
+  The criterion is the DISAGREEMENT, not the
   `[merged classes: …]` note, which is only a symptom; the withholding is recorded in
   `identity_withdrawn` under `cause: ambiguous_collapse`, and the members THAT group dropped land
   in `not_selected_threats`, whose remedy is not a bigger `--max-templates`. An AGREEING group
