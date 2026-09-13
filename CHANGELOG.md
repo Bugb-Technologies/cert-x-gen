@@ -340,18 +340,32 @@ START from rather than arrive at. The measurement that motivated the work stands
   annotation and silently re-attributing every note below it to the quoted path, so a "this is
   by design" note could reach a hypothesis in a different file. Leading whitespace still opens
   a block, because the installed guardlink parses an indented header.
-- **A leading UTF-8 BOM no longer hides a file's first annotation, and no longer mis-attributes
-  a whole sidecar.** `str.lstrip()` does not remove U+FEFF and Python's `\s` does not match it,
-  so a BOM-prefixed first line opened no comment body, and a BOM-prefixed `.gal` `@source`
+- **Scanned files are decoded as `utf-8-sig`, named rather than left to the machine's locale.**
+  `read_text` with no encoding decodes with the SCANNING MACHINE'S locale, so two people reading
+  the same repository could get different annotation sets and therefore different threat models,
+  out of an environment variable. That is the subject of the change (0e23be9); the BOM is only
+  where it became visible. `str.lstrip()` does not remove U+FEFF and Python's `\s` does not match
+  it, so a BOM-prefixed first line opened no comment body, and a BOM-prefixed `.gal` `@source`
   header did not match at all — leaving `target` on the sidecar, so EVERY annotation in that
   file was attributed to the `.gal` instead of the source the header names. Those records are
   read and then reach nothing, because `_AnnotationIndex` keys on the path and
   `_annotations_near` on the line, which makes it a silent MIS-ATTRIBUTION rather than a drop.
-  The BOM is now stripped once where the file is read (a72799b), so no per-line rule carries a
-  BOM clause. Justified on binary agreement and not on a corpus count: guardlink 2.0.0 reads a
-  BOM-prefixed line-one annotation and anchors a BOM-prefixed header to the file it names, while
-  a BOM is rare in our own repositories and common in files written by Windows editors, which is
-  customer code rather than ours.
+  The `-sig` half consumes the BOM as part of the decode, so no explicit strip and no per-line
+  BOM clause exists anywhere — the one added in a72799b was deleted again in 0e23be9 rather than
+  kept beside an encoding that already strips. Justified on binary agreement: guardlink 2.0.0
+  reads a BOM-prefixed line-one annotation and anchors a BOM-prefixed header to the file it names.
+
+  **What the corpus measurement does and does NOT cover, stated together.** Measured with the
+  parser at 0e23be9 against the locale path over guardlink f3b36ce, siete 7df5848 and cert-x-gen
+  4b342e6: 603 / 5,128 / 3,392 both ways, 0 added, 0 removed, 0 field-changed. That zero is real
+  and it is narrow. This machine's locale is UTF-8, so the two decode paths agree by construction
+  except on a BOM-prefixed file, and of the 841 files the walk opens across the three corpora
+  ZERO carry a BOM. So the figure bounds how many records OUR repositories gain or lose from BOM
+  handling — none, because they have none — and bounds NOTHING about cp1252, about Windows, or
+  about a non-ASCII description on a machine whose locale is not UTF-8. The evidence that the
+  change does anything at all is the byte-level test rows, which write `EF BB BF` and UTF-8 smart
+  quotes to disk and assert what the parser reads back; the cp1252 case is reasoned from the
+  encoding and is executed nowhere.
 
 **What went wrong repeatedly here, and why it was predictable**
 
