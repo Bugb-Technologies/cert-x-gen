@@ -167,11 +167,13 @@ This file is the project's committed home for project-intrinsic agent knowledge:
 - **An ambiguous provenance gets NO identity, not a precise wrong one.** `_dedupe_by_probe_shape`
   collapses every hypothesis sharing one probe shape onto a single template, so where the group
   does not agree on one `(file, line, asset, threat)` the survivor's four LOCATION keys are
-  withheld and its findings are left unmatched on location. `@threat_id` is judged on its own
-  three-part key — guardlink derives it from asset, threat and file with NO line, so a group
-  differing only in line shares one id and keeps it; it goes only where the group names more than
-  one `(file, asset, threat)`. Every record in `identity_withdrawn` carries `withheld_keys`, so
-  "location withheld, id attached" is not read as "everything withheld".
+  withheld and its findings are left unmatched on location. `@threat_id` is judged separately, and
+  on the IDS THE MEMBERS CARRY rather than on any re-derivation of guardlink's key — `parse_sarif`
+  says cxg is not an authority for that id, only a carrier, and a modelled derivation answered
+  "these agree" for a group whose ids differed. All members carrying one id keeps it (it is the
+  same id whichever member a finding demonstrates); any difference, including a member with none,
+  withholds it. Every record in `identity_withdrawn` carries `withheld_keys`, so "location
+  withheld, id attached" is not read as "everything withheld".
   The criterion is the DISAGREEMENT, not the
   `[merged classes: …]` note, which is only a symptom; the withholding is recorded in
   `identity_withdrawn` under `cause: ambiguous_collapse`, and the members THAT group dropped land

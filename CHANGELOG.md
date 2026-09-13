@@ -40,9 +40,9 @@ to reproduce the headers.
 Entitlement is not enough on its own: the provenance must also be unambiguous. `_dedupe_by_probe_shape`
 collapses every hypothesis sharing `(method, path, function_name)` onto one template, and where the
 collapsed group does not agree on one `(file, line, asset, threat)` the four location keys are
-WITHHELD — and `@threat_id`, which guardlink derives from asset, threat and file with no line in
-it, only where the group names more than one of THOSE three, so a group differing only in line
-keeps the id that names whichever member a finding demonstrates — the prompt is told about the merged-away members, so a finding may demonstrate any of
+WITHHELD — and `@threat_id` only where the group's members do not all carry one id, compared as
+the values `parse_sarif` read off the SARIF rather than as a re-derivation of guardlink's key, so
+a group sharing one id keeps the id that names whichever member a finding demonstrates — the prompt is told about the merged-away members, so a finding may demonstrate any of
 them while carrying only the survivor's location, and the ingest joins on location first. Findings
 there are left unmatched, which is what that path was before an identity was carried at all. The
 withholding itself is recorded in `identity_withdrawn` under `cause: ambiguous_collapse`, so a
