@@ -9,6 +9,80 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+**A finding carries the identity of the exposure it tested, so
+`guardlink hypothesis confirm --from-scan` can settle a hypothesis**
+
+`report.json` gains three keys and every finding gains five. The report carries `scan_id` — the
+session directory's name, so a ledger entry months later traces back to the `audit.jsonl` that
+produced it — and `findings`, the confirmed set under a second name, the one guardlink's scan
+ingest reads. Both names are carried because neither can be renamed from here:
+siete reads `confirmed_findings`, guardlink reads `findings`. Refutations
+(`mitigation_verifications`) and unresolved triage (`ambiguous`) are deliberately excluded, since
+the ingest can only ever write `confirmed`.
+
+Each finding carries `annotation: {file, line}`, `asset`, `threat`, `template_id` and a one-line
+`title` derived from its description, so the ingest joins it to the exposure the probe was
+actually testing rather than falling through to CWE — the loosest tier, and the only one that can
+attach a finding to an exposure it never tested. The identity rides in the template's own
+`@exposure_file` / `@exposure_line` / `@exposure_asset` / `@exposure_threat` headers, because a
+`--template-dir` replay loads no SARIF and a header is the only carrier it has. The line is part
+of the key because `(asset, threat, file)` is not unique in practice: temporal carries six groups
+where one file holds two exposures with the same asset and threat, and guardlink's own `threatId`
+cannot separate them either.
+
+Only a hypothesis guardlink's SARIF produced is entitled to an identity — a positive `from_sarif`
+test, not a list of the producers to exclude — so a probe cxg synthesised itself (Electron IPC,
+`--discover-routes`, a CONFIG claim), an AI-written or hand-written template and the engine's own
+crash observation carry none and are left unmatched rather than stapled to a neighbour. A mutated
+retry inherits its parent's identity and `@id` deterministically instead of depending on the model
+to reproduce the headers.
+
+Entitlement is not enough on its own: the provenance must also be unambiguous. `_dedupe_by_probe_shape`
+collapses every hypothesis sharing `(method, path, function_name)` onto one template, and where the
+collapsed group does not agree on one `(file, line, asset, threat)` the four location keys are
+WITHHELD — and `@threat_id` only where the group's members do not all carry one id, compared as
+the values `parse_sarif` read off the SARIF rather than as a re-derivation of guardlink's key, so
+a group sharing one id keeps the id that names whichever member a finding demonstrates — the prompt is told about the merged-away members, so a finding may demonstrate any of
+them while carrying only the survivor's location, and the ingest joins on location first. Findings
+there are left unmatched, which is what that path was before an identity was carried at all. The
+withholding itself is recorded in `identity_withdrawn` under `cause: ambiguous_collapse`, so a
+survivor's unlabelled findings are not mistaken for ones that never held an identity. The
+members a disagreeing group's collapse dropped now appear in `not_selected_threats` with a reason
+stating that a bigger `--max-templates` does not reach them; previously they appeared nowhere. An
+agreeing group records nothing there — its dropped member is the survivor's own exposure, which
+the survivor was tested for. That bucket now
+has three writers — the ranker, the collapse and a replay's withheld template — so each record
+carries the `kind` its writer set, and the `[2b]` banner and the `no_templates_executed` caveat
+state a cause only for the members whose kind they name. On the legacy
+browser path the same rule removes one pre-existing line: an AI-synthesised probe no longer
+attaches the `threat_id` of the vuln-class representative it was invoked with, for exactly the
+reason that path carries no annotation, asset or threat either. Every site that attaches an
+identity is now tabulated with its proof in `pentest/docs/ARCHITECTURE.md`.
+
+A stamped location can drift between runs. A reused template is re-stamped from the hypothesis it
+is being reused for; a replayed one whose stamp no guardlink hypothesis in the run corroborates has
+every identity key it holds withdrawn in memory — the four headers and `@threat_id`, which guardlink
+derives from asset, threat and file with no line, so it names a file's surviving sibling just as
+wrongly. The probe still runs and is still reported; only its claim about WHICH exposure it tests
+is dropped, and every refusal is recorded in the new `identity_withdrawn`, whose records name
+their own `cause`: `uncorroborated_stamp` for a template the run LOADED whose stamp it refused
+(which is not the same as one per template that ran), and `ambiguous_collapse` for the collapse
+above. A template that stamps no location and carries only a `@threat_id` is checked on that id,
+against the ids the loaded hypotheses carry. A run that loaded no guardlink SARIF hypothesis
+checked nothing and therefore withdraws nothing.
+
+Three bounds are stated rather than approximated. An exposure that merely MOVED loses a true
+identity, which is accepted: a missed join is silence and recoverable, a wrong join is a
+confirmation a human has to catch later. And a stamped exposure deleted while a same-asset,
+same-threat sibling comes to sit on exactly the stamped line cannot be detected from this side at
+all — separating them needs the anchor hash `guardlink sarif` does not export, so it needs a
+guardlink change (board card GAP-58). The third is cxg's own and is closable here: a run that loaded no model
+withdraws nothing, which is correct, but its stamps then reach report.json unchecked and an empty
+`identity_withdrawn` cannot be told apart from "checked, nothing refused" — the marker that would
+distinguish them is deliberately not built here, and tracked as board card GAP-61. Separately, and not one of the
+three, `guardlink sarif` omits an exposure carrying a declared `@mitigates`, so cxg is never
+offered it at all (measured on temporal: 1 of 142).
+`pentest/docs/ARCHITECTURE.md` § "The exposure identity a finding carries" is the authority.
 **cxg's acceptance set is DERIVED from guardlink's grammar table, in both directions (GAP-54)**
 
 cert-x-gen accepted a superset of guardlink's grammar along a different dimension for every

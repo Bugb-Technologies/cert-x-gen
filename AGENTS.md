@@ -279,6 +279,17 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   different species from a weakened fixture — nobody edited the test. The nested-annotation
   stop added an early exit that a 4,000-opener performance fixture hit before the continuation
   cap was ever approached, so it stopped testing its subject and stayed green.
+- **A correction is itself a generator of false claims.** The sentence written to fix a false
+  sentence is written at the moment the author feels most certain they finally understand the
+  thing, which is exactly when they stop checking. It happened here: the edit that removed
+  "neither closable from cxg" from bound 3 introduced "filed rather than built here" in the same
+  paragraph, and no card had been filed. Prefer DELETING a false sentence to REPLACING it. When a
+  replacement is necessary, make it a statement verifiable at the instant of writing — never one
+  whose truth depends on a future act by anyone, including the author. **Verifiable-when-written
+  is enough for a statement about this repository's own code and not for one about state another
+  party owns**: "no board card names it" was true when written and went false when someone filed
+  one (GAP-61), because it asserted the ABSENCE of an external record anybody could create. Cite
+  what exists rather than asserting what does not.
 - **An asymmetry justifies COMPLETING something, not BUILDING something.** "The same note
   reads on one line and vanishes when wrapped" is evidence of an oversight only where closing
   it adds no new discrimination — the `/**` opener was an incomplete marker set and was
@@ -324,6 +335,29 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   `run_pentest`, which is the config the scan enforces and keeps direct invocation correct.
   `pentest/docs/ARCHITECTURE.md` § `scope.py` is the authority;
   `pentest/tests/test_scope_file_refusal.py` pins every half.
+
+## The finding -> exposure join (`guardlink hypothesis confirm --from-scan`)
+
+- `pentest/docs/ARCHITECTURE.md` § "The exposure identity a finding carries" is the authority for
+  the whole design, and this section adds only what that section does not own. It states what
+  report.json puts on the wire, why the key is `{file, line}` and not `(asset, threat, file)`, the
+  positive `from_sarif` gate on stamping, the drift withdrawal and the defensive re-stamp beside
+  it, the ambiguous-collapse rule and its `withheld_keys` granularity, the two `identity_withdrawn`
+  writers and the three `kind`s of `not_selected_threats`, and the three measured bounds. Its
+  § "Every site that attaches an exposure identity, and its proof" is the table a new site belongs
+  in or it does not belong in the code. `pentest/tests/fixtures/shared-threat-name/README.md`
+  carries the collision the key exists for.
+- **Re-measuring the join needs a COPY of the target repository.** `importScan` writes
+  `.guardlink/hypotheses.json` into the root it is pointed at, and `--from-scan` refuses a report
+  outside that root, so a measurement against a real corpus copies the repo (`git archive HEAD |
+  tar -x`) and puts the report inside the copy. Delete the ledger between shapes or the second
+  measurement starts from the first one's outcome.
+- `parse_sarif` also reads guardlink's `confirmed-exploitable` results as hypotheses. Their
+  location is the `@confirmed` line, which is not an `@exposes` line, so findings derived from
+  them cannot join by location and fall to the `(asset, threat)` tier. Measured on temporal: 7 of
+  148 results, of which 4 joined on the fallback and 3 were refused as ambiguous.
+- **`.gitignore` ignores `*.json` tree-wide.** A fixture that needs a JSON file needs `git add -f`
+  or an allow-list line; `.sarif` is not affected.
 
 ## Instrumentation preflight
 
