@@ -21,7 +21,7 @@ network:
   # Request timeout, in seconds.
   timeout_secs: 10
   # User-Agent header sent with every request.
-  user_agent: cert-x-gen/1.2.0
+  user_agent: cert-x-gen/1.4.0
   # Maximum redirect hops (only relevant when redirect-following is enabled).
   # NOTE: whether redirects are followed is controlled by the --follow-redirects
   # CLI flag, not this file.

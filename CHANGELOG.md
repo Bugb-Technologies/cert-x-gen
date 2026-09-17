@@ -7,6 +7,86 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-09-17
+
+### Upgrading from 1.3.0 — read this first
+
+**`cxg pentest run --scope-file` now refuses a scope file it cannot read, and exits `4`. In
+1.3.0 it scanned anyway, on the built-in defaults.**
+
+A scope file is how you tell `cxg pentest` what a scan is allowed to touch. In 1.3.0, every way
+of failing to read one left the run going: a path that did not exist returned the built-in
+defaults **silently**, and unparseable YAML — or a machine without PyYAML installed — printed a
+single warning line that scrolled past while the scan carried on. The one flag whose job is to
+narrow a scan's blast radius quietly widened it back out again. An operator who believed a run
+was bounded had an unbounded one, and nothing in the output said so.
+
+From 1.4.0, cxg refuses. A missing path, an unopenable file, invalid YAML, a document that is
+not a mapping of settings, an empty file, an empty flag value, or PyYAML not being installed each
+stop the run at pre-flight — before it resolves the codebase, runs guardlink, or spends any AI
+budget. The message names the path, the reason, and the next action.
+
+**What you will see:** exit code `4`, not `2`. `4` means "mis-specified run, refused before any
+probing"; `2` means "vulnerabilities found", and conflating the two would be its own defect.
+
+**What to do if a pipeline that was green is now red at exit 4:**
+
+- **Fix the path.** The refusal names it. In almost every case the scope file resolves somewhere
+  in your CI environment that it does not resolve locally — a relative path against a different
+  working directory, or a file that was never copied into the container. The green runs you were
+  getting were scanning on the defaults, not on your scope.
+- **Or install PyYAML**, which reading a scope file requires: `pip3 install -r
+  pentest/requirements.txt`. `cxg pentest install` now checks for it and names it in the
+  `pip3 install` line it prints; in 1.3.0 it checked only playwright and anthropic, so a host
+  without PyYAML ignored every scope file it was given.
+- **Or, if you meant to run on the defaults, drop the flag.** Passing no `--scope-file` is
+  unchanged and is not an error. Absent is not unreadable: an operator who set no bound still
+  gets the documented defaults.
+
+Two related refusals, both also exit `4`: `--scope-file` with the legacy `--template-lang py`
+(that path enforces no scope at all, so a file accepted there was read and discarded), and
+`--scope-file ""`. An engagement script writing `cxg pentest run --scope-file "$SCOPE" …` with
+`SCOPE` unset gets a CLI usage error (exit `2`) before the orchestrator is reached.
+
+**The second thing that can move on you: what the annotation parser accepts.** cxg reads
+guardlink annotations out of your source, and in 1.4.0 that acceptance set is derived from
+guardlink's own grammar rather than hand-written — which both widened it and narrowed it. Of the
+fourteen forms guardlink's documentation teaches, cxg read one; it now reads twelve. Eight verbs
+it had no reader for at all (`@confirmed`, `@boundary`, `@handles`, …) are now read, and so are
+`.gal` sidecars. In the other direction: a verb is now recognised only where it **opens** a
+comment body, a hyphen is refused in a bare or dotted reference (`@exposes User-Store to #sqli`
+no longer parses), and a comment terminator is admitted only where its opener is on the same
+line. **A repository whose annotations relied on the looser
+acceptance will see its parsed count move in both directions.** Nothing fails; the count changes.
+The measured effect on a live corpus, with the commit named for every figure, is under "Fixed"
+below.
+
+Everything else in this release is new capability or a fix. In brief:
+
+- **New:** `cxg build --instrument` produces an instrumented build of a compiled target, so the
+  low-level classes reach real `confirmed`/`refuted` verdicts instead of an honest skip (nightly
+  Rust required; Cargo/Rust is the only back end). `cxg scan --instrumented-manifest` takes that
+  provenance instead of inspecting. `cxg scan --scope cli:///path/to/binary` scans a locally-built
+  executable. An execution ledger records every (template, target) pair. New probe-input flags
+  (`--arg`, `--stdin-file`, `--input`, `--target-env`) and template annotations (`# @oracles:`,
+  `# @target_kinds:`, `# @allow_nonzero_exit:`).
+- **New:** every finding in `report.json` carries the identity of the exposure it tested — the
+  annotation's `{file, line}`, its `asset` and `threat`, and the template id — so
+  `guardlink hypothesis confirm --from-scan report.json` settles the claim the probe was actually
+  testing rather than falling through to CWE. The report also gains `scan_id` and `findings` (the
+  confirmed set under a second name). All additions are additive; `confirmed_findings` is
+  unchanged and still written.
+- **Fixed:** `--require-instrumentation` skipped *every* template against a target carrying no
+  instrumentation, including templates whose oracles need nothing from the build — so it made cxg
+  refuse to test an interpreted CLI at all. The instrumentation marker scan also read any file, so
+  a script that merely *mentioned* `__asan_init` was classified as an instrumented build; it now
+  runs only on compiled objects.
+- **Fixed:** a template that outran its execution timeout kept running unsupervised.
+- **Fixed:** `cxg pentest` read almost none of the inline `@comment` intent notes an annotated
+  codebase carries, so design decisions reached the ranking and probe-writing model as
+  unexplained code. Measured across three annotated repositories before the fix: 8,098 notes on
+  disk read as 140.
+
 ### Added
 
 **A finding carries the identity of the exposure it tested, so
@@ -1059,7 +1139,8 @@ Stated plainly so it produces no more false leads:
 
 ---
 
-[Unreleased]: https://github.com/Bugb-Technologies/cert-x-gen/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/Bugb-Technologies/cert-x-gen/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/Bugb-Technologies/cert-x-gen/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/Bugb-Technologies/cert-x-gen/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/Bugb-Technologies/cert-x-gen/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/Bugb-Technologies/cert-x-gen/compare/v1.0.0...v1.1.1
