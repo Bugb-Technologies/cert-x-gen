@@ -1632,8 +1632,9 @@ fn apply_probe_input(args: &cli::ScanArgs, context: &mut cert_x_gen::types::Cont
     context.require_instrumentation = args.require_instrumentation;
     if context.require_instrumentation {
         tracing::info!(
-            "Instrumentation preflight enabled: cli:// targets with no detectable \
-             instrumentation will be skipped rather than reported as no-findings"
+            "Instrumentation preflight enabled: against a cli:// target with no detectable \
+             instrumentation, a template whose oracles needed it is skipped rather than \
+             reported as no-findings"
         );
     }
 

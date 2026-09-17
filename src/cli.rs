@@ -1882,15 +1882,18 @@ pub struct ScanArgs {
         long,
         help_heading = "Probe Input",
         display_order = 55,
-        help = "Skip cli:// targets whose build carries no instrumentation",
+        help = "Skip the templates an uninstrumented cli:// build could not have shown",
         long_help = "Instrumentation preflight. For each cli:// target, inspect the binary for \
                      sanitizer, coverage and debug-info markers before running anything against \
-                     it. If none are present, record every (template, target) execution as \
-                     SKIPPED with the reason no-instrumentation-detected, instead of running the \
-                     probe and reporting a 'no findings' result that looks like a refutation but \
-                     is not evidence. The build cxg wants is the language's instrumented one, \
-                     e.g. clang -fsanitize=address -g; cxg inspects and refuses, it does not \
-                     build the target."
+                     it. If none are present, record as SKIPPED with the reason \
+                     no-instrumentation-detected every (template, target) execution whose \
+                     oracles needed that instrumentation, instead of running the probe and \
+                     reporting a 'no findings' result that looks like a refutation but is not \
+                     evidence. A template declaring only oracles that work on any build (exit, \
+                     signal, timeout, exception) still runs and reaches a real verdict. The \
+                     build cxg wants is the language's instrumented one, e.g. \
+                     clang -fsanitize=address -g; cxg inspects and refuses, it does not build \
+                     the target -- see `cxg build --instrument` for the verb that does."
     )]
     pub require_instrumentation: bool,
 
