@@ -298,6 +298,24 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   it. The trailing-comment opener is that case (GAP-34); `pentest/guardlink.py`'s
   `_line_comment_marker` carries the reasoning.
 
+## Cutting a release
+
+- **The version lives in `Cargo.toml` alone.** Every user-visible version string derives from
+  `env!("CARGO_PKG_VERSION")` (`src/banner.rs`, `src/lib.rs`, `src/main.rs`, `src/config.rs`'s
+  default `user_agent`, `src/output.rs`, `src/sandbox/import_export.rs`). Bump it, then
+  `cargo update -p cert-x-gen --offline` to carry it into `Cargo.lock`. `install.sh` resolves the
+  latest release dynamically and needs no edit.
+- **Three hand-maintained copies do NOT derive and go stale silently**: the `--tag vX.Y.Z` example
+  under README's "From Git", `user_agent:` in `cert-x-gen.example.yaml`, and the `@comment`
+  release line above `version =` in `Cargo.toml`. They are illustrative, so nothing fails when
+  they disagree with the crate — which is exactly why they were two releases stale.
+- **`CHANGELOG.md` is the only hand-written release note.** `.github/workflows/release.yml` sets
+  `generate_release_notes: true`, so GitHub builds the release page from PR titles and the
+  changelog does not reach it unless someone pastes it there.
+- The release workflow triggers on `push: tags: ['v*']` and publishes everything with no human
+  gate after the tag — binaries, `SHA256SUMS`, a ghcr image, the Homebrew tap and `cargo publish`.
+  crates.io is irreversible: a consumed version number can be yanked but never reused.
+
 ## Templates
 
 - Detection templates live in a separate repository; `templates/` holds only the

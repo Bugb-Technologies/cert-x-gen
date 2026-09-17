@@ -76,6 +76,7 @@ The full command set:
 | Command | Purpose |
 |---------|---------|
 | `cxg scan` | Run a polyglot template security scan |
+| `cxg build` | Build a compiled target with sanitizer instrumentation, so a scan can earn its verdict |
 | `cxg pentest` | AI-driven whitebox pentest pipeline (web or Electron) |
 | `cxg template` | Manage templates (list, search, info, validate, update) |
 | `cxg search` | Search templates (full-text, regex, filters) |
@@ -184,7 +185,7 @@ Build straight from the repository — useful for unreleased changes or pinning 
 ```bash
 cargo install --git https://github.com/Bugb-Technologies/cert-x-gen.git
 # or pin to a release:
-cargo install --git https://github.com/Bugb-Technologies/cert-x-gen.git --tag v1.2.0
+cargo install --git https://github.com/Bugb-Technologies/cert-x-gen.git --tag v1.4.0
 ```
 
 ### Download Binary
@@ -318,9 +319,12 @@ A template can also drive a **local binary** rather than a network host
 (`cxg scan --scope cli:///path/to/binary`), take its probe input from cxg
 (`--arg`, `--stdin-file`, `--input`, `--target-env`), and declare its own
 verdict so a refutation is recorded rather than inferred. Passing
-`--require-instrumentation` makes cxg skip a build that could not have shown
-the defect instead of reporting a refutation it did not earn. The full
-contract is in
+`--require-instrumentation` makes cxg skip the templates a build could not
+have shown the defect for, instead of reporting a refutation it did not earn;
+templates whose oracles work on any build (`exit`, `signal`, `timeout`,
+`exception`) still run. Build an instrumented target with
+[`cxg build --instrument`](#two-surfaces), or declare one you built yourself
+with `cxg scan --instrumented-manifest <path>`. The full contract is in
 [`docs/ENGINE_ARCHITECTURE.md`](docs/ENGINE_ARCHITECTURE.md#the-probe-contract).
 Note that `CERT_X_GEN_TARGET_PORT` is meaningless when `CERT_X_GEN_TARGET_KIND`
 is `cli` — ignore it there.
