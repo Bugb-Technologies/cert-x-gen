@@ -6,6 +6,14 @@ on:
   pull_request:
     branches: [main]
 
+# Supersede an in-flight run only when a newer run is for the SAME pull request.
+# The group key is the PR number on a pull_request event; on a push it falls
+# through to github.run_id, which is unique per run, so every main build sits
+# alone in its own group and can never be cancelled by a later merge.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
@@ -47,7 +55,31 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --all-features
+
+  # macOS is a 10x-billed runner and was the largest line in the CI bill, so it
+  # is merge-only: it runs on main and on tags, and is SKIPPED on pull requests.
+  # That is a deliberate, accepted reduction in pull-request coverage, not an
+  # oversight — a macOS-specific regression is now caught after merge, not before.
+  #
+  # It is a job of its own rather than a matrix leg so that the skip is VISIBLE:
+  # a skipped job still appears in the run graph and still reports a check run,
+  # whereas a matrix leg removed by an expression would simply be absent.
+  #
+  # The name is `Test (macos-latest)` verbatim, matching the check name the
+  # three-OS matrix used to produce, because that exact context is a required
+  # status check in the `main-integrity` ruleset. Renaming it would leave that
+  # required check with nothing to report and deadlock every pull request.
+  # See the pull request for what the skip does to that requirement.
+  test-macos:
+    name: Test (macos-latest)
+    runs-on: macos-latest
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -92,8 +124,23 @@ jobs:
       - run: python -m pytest -v
         working-directory: pentest
 
+  # This job compiles the four release targets and uploads them as run
+  # artifacts; it is a cross-platform compile smoke test. The artefacts a
+  # RELEASE ships come from release.yml, which triggers on a `v*` tag and is
+  # untouched here — nothing in this file can stop a release being built.
+  #
+  # Two of its four legs are macOS at a 10x multiplier, which made it the single
+  # largest line in the bill. A pull request is served by `check` (cargo check)
+  # and the Linux and Windows `test` legs; compiling release binaries for four
+  # platforms on every push to a draft pull request is not what it needs.
+  #
+  # The condition is on github.ref rather than github.event_name so that it
+  # reads as "main and tags" regardless of how the workflow is triggered. On a
+  # pull_request event github.ref is `refs/pull/<n>/merge`, so neither arm
+  # matches and the whole job is visibly SKIPPED in the run graph.
   build:
     name: Build
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
