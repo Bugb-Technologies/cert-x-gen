@@ -298,6 +298,33 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   it. The trailing-comment opener is that case (GAP-34); `pentest/guardlink.py`'s
   `_line_comment_marker` carries the reasoning.
 
+## CI: what is required, and what is deliberately merge-only
+
+- **The required checks live in a repository RULESET, not in `ci.yml`.** Read them with
+  `gh api repos/Bugb-Technologies/cert-x-gen/rulesets` and then the individual ruleset id;
+  `main-integrity` requires exactly `Check`, `Format`, `Clippy`, `Test (ubuntu-latest)` and
+  `Test (macos-latest)`. `Build`, `Pentest (Python)` and `Test (windows-latest)` are NOT
+  required. A matrix job's check name is `<name> (<matrix values, in order>)` — confirmed
+  against real check runs, so `Build` reports as
+  `Build (ubuntu-latest, x86_64-unknown-linux-gnu, cxg)`.
+- **`Test (macos-latest)` is a standalone job whose NAME is load-bearing.** It is merge-only
+  (`if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')`) and is a job
+  of its own rather than a matrix leg so the skip is visible. Renaming it, or folding it back
+  into the `test` matrix under an expression, leaves that required context with nothing to
+  report and DEADLOCKS every pull request. `build` carries the same condition and is safe to
+  rename, because it is not required.
+- **A skipped job satisfies a required check.** GitHub reports a conditionally-skipped job as
+  successful to the ruleset, so a green pull request does NOT mean macOS tests ran. That is an
+  accepted trade, not a bug; the honest fix is dropping `Test (macos-latest)` from the ruleset,
+  which is a repo-admin change to state this repository's files do not hold — read the ruleset
+  rather than assuming either way.
+- **`ci.yml`'s `build` job ships nothing.** It `upload-artifact`s a run artifact as a
+  cross-platform compile smoke test. Release binaries come from `release.yml` on a `v*` tag,
+  which `ci.yml` cannot affect.
+- **`concurrency` groups on the PR number, falling through to `github.run_id` on a push**, so
+  pushes to a pull request supersede each other and merges to main never cancel one another.
+  Do not simplify the group to `github.ref`: that makes consecutive merges cancel each other.
+
 ## Cutting a release
 
 - **The version lives in `Cargo.toml` alone.** Every user-visible version string derives from
