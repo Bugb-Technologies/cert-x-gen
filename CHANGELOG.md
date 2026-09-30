@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`cxg pentest run` reads a code graph when one is available.** If `codegraph-mcp` or
+  `bravos graph` is installed and a graph has been built for the codebase
+  (`bravos graph build <codebase>`), cxg uses its route table as the preferred route source for
+  `--discover-routes`. That covers gorilla/mux, net/http, httprouter, OpenAPI-table and Django
+  routes the regex cannot see: on gophish discovery goes from 0 routes to 48, and on VAmPI from 0
+  to 14. The graph's reachable-sink ranking (data layer, exec, outbound network, …) also becomes a
+  ranking dimension for which hypotheses get the `--max-templates` budget. When the graph reports
+  insufficient call resolution, it is not used for ranking and the run output says so. Without
+  graph tooling, or with `--no-code-graph`, a run is unchanged. `report.json` gains a `code_graph`
+  block, and each discovered hypothesis records which source its route came from.
+
 ## [1.4.0] - 2026-09-17
 
 ### Upgrading from 1.3.0 — read this first

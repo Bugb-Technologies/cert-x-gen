@@ -609,6 +609,7 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
             grpc_descriptor_set,
             no_grpc_reflection,
             discover_routes,
+            no_code_graph,
             enable_chaining,
             batch_size,
             deterministic_templates,
@@ -718,6 +719,9 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
             }
             if discover_routes {
                 args.push("--discover-routes".into());
+            }
+            if no_code_graph {
+                args.push("--no-code-graph".into());
             }
             if enable_chaining {
                 args.push("--enable-chaining".into());

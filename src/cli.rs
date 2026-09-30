@@ -1133,6 +1133,21 @@ pub enum PentestAction {
         )]
         discover_routes: bool,
 
+        /// Do not read a code graph for this codebase.
+        ///
+        /// By default, when `codegraph-mcp` or `bravos graph` is installed and a graph
+        /// has been built for the codebase, its route table leads `--discover-routes`
+        /// and its reachable-sink ranking orders which hypotheses get templates. With
+        /// no graph available the run is unchanged either way.
+        // @comment -- "Forwarded only, never interpreted here: the orchestrator owns the default and the detection, and this layer restating either would give the two CLIs two definitions of when the graph is read."
+        #[arg(
+            long,
+            help_heading = "Hypothesis filtering",
+            display_order = 12,
+            help = "Do not use a code graph for route discovery or ranking"
+        )]
+        no_code_graph: bool,
+
         /// Permit `cxg.socket`: raw TCP/TLS bytes with no HTTP client in between.
         ///
         /// Required for request smuggling, desync and header-order attacks, which no

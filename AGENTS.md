@@ -404,6 +404,20 @@ This file is the project's committed home for project-intrinsic agent knowledge:
 - **`.gitignore` ignores `*.json` tree-wide.** A fixture that needs a JSON file needs `git add -f`
   or an allow-list line; `.sarif` is not affected.
 
+## The code graph (`pentest/code_graph.py`)
+
+- **Optional, detected, never required.** `cxg pentest run` reads routes and the reachable-sink
+  ranking from `codegraph-mcp` / `bravos graph` when a graph exists for the codebase; every
+  failure is a `GraphView.status`, never an exception. `pentest/docs/ARCHITECTURE.md`
+  § `code_graph.py` is the authority. The released bravos wheel may bundle a `codegraph-mcp` too
+  old to publish `codegraph_routes`/`codegraph_attack_surface` (status `unsupported`); point
+  `$CXG_CODEGRAPH_MCP` at a newer build to measure.
+- **The pentest suite runs as if no graph tooling were installed**: `tests/conftest.py` stubs
+  `code_graph._transport` for every test, so a developer's indexed graphs cannot change ranking
+  results. A test that needs the graph installs its own transport. The one live test uses
+  `$CXG_CODEGRAPH_MCP` + `$CXG_CODEGRAPH_BUILD` and writes its graph under `tmp_path` via
+  `BRAVOS_CODEGRAPH_DIR`.
+
 ## Instrumentation preflight
 
 - `detect_instrumentation` (`src/engine/common.rs`) reads the **symbol table**, never the
