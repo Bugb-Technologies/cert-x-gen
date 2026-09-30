@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`cxg pentest run` can be limited to a list of routes.** `--only-routes <FILE>` (and the
+  repeatable `--only-route <ENTRY>`) tests only the hypotheses whose route or enclosing function
+  is in the list; every other hypothesis is excluded before ranking and the `--max-templates`
+  budget, and reported with its reason in the run output and a new `route_allowlist` block in
+  `report.json`. Entries are `METHOD /path` (`ANY`/`*` for any method; path templates and concrete
+  paths match each other; a trailing `*` is a prefix), `/path`, `file::Function`, or
+  `file:Function` — one per line, or JSON, including a code graph's `codegraph_routes` /
+  `codegraph_attack_surface` answer passed through unchanged, so a caller can hand cxg the routes a
+  change reached without reformatting them. Path matching reuses the code graph's template-aware
+  matcher. An empty list means "nothing in scope" and exits `0` without contacting the target,
+  distinct from omitting the flag (a full run); an unreadable file, or a use with `--template-dir`
+  or `--template-lang py`, refuses the run with exit `4`. This is the cxg half of testing only a
+  pull request's delta in CI.
+
 - **`cxg pentest run` reads a code graph when one is available.** If `codegraph-mcp` or
   `bravos graph` is installed and a graph has been built for the codebase
   (`bravos graph build <codebase>`), cxg uses its route table as the preferred route source for

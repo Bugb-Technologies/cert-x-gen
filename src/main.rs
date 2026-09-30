@@ -610,6 +610,8 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
             no_grpc_reflection,
             discover_routes,
             no_code_graph,
+            only_routes,
+            only_route,
             enable_chaining,
             batch_size,
             deterministic_templates,
@@ -722,6 +724,12 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
             }
             if no_code_graph {
                 args.push("--no-code-graph".into());
+            }
+            if let Some(f) = only_routes {
+                args.extend(["--only-routes".into(), f.to_string_lossy().to_string()]);
+            }
+            for entry in only_route {
+                args.extend(["--only-route".into(), entry]);
             }
             if enable_chaining {
                 args.push("--enable-chaining".into());

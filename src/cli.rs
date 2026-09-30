@@ -1148,6 +1148,34 @@ pub enum PentestAction {
         )]
         no_code_graph: bool,
 
+        /// Test only the hypotheses whose route or enclosing function is listed in FILE.
+        ///
+        /// Entries are `METHOD /path` (`ANY` or `*` for every method; path templates
+        /// and concrete paths match each other; a trailing `*` is a prefix), `/path`,
+        /// `file::Function` or `file:Function`, one per line, or JSON — including a code
+        /// graph's route or attack-surface answer as written. Everything else is
+        /// excluded before ranking and reported with its reason. An EMPTY list means
+        /// nothing is in scope: the run exits 0 without contacting the target.
+        // @comment -- "Forwarded only, never parsed here: the orchestrator owns the entry grammar, the empty-means-skip rule and the refusals, so this layer restating any of them would give the two CLIs two definitions of what the list admits."
+        #[arg(
+            long,
+            value_name = "FILE",
+            help_heading = "Hypothesis filtering",
+            display_order = 13,
+            help = "Test only the routes/functions listed in FILE (empty list = skip the run)"
+        )]
+        only_routes: Option<PathBuf>,
+
+        /// One allowlist entry in the `--only-routes` line form. Repeatable.
+        #[arg(
+            long = "only-route",
+            value_name = "ENTRY",
+            help_heading = "Hypothesis filtering",
+            display_order = 14,
+            help = "One allowlist entry, e.g. 'GET /api/users/{id}' (repeatable)"
+        )]
+        only_route: Vec<String>,
+
         /// Permit `cxg.socket`: raw TCP/TLS bytes with no HTTP client in between.
         ///
         /// Required for request smuggling, desync and header-order attacks, which no
