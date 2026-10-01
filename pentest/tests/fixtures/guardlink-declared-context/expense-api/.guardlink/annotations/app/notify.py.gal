@@ -1,0 +1,11 @@
+@source file:app/notify.py line:5 symbol:send_webhook
+@exposes #notify to #ssrf [high] cwe:CWE-918 -- "url is body['webhook'] from POST /expenses, POSTed unvalidated — no scheme check, no host allowlist, so 169.254.169.254 and http://localhost/ are both reachable"
+@audit #notify -- "Needs an allowlist of registered webhook hosts, or a resolved-IP check rejecting loopback, link-local and RFC1918, before the request is made"
+@mitigates #notify against #malformed-input using #http-timeout -- "WEBHOOK_TIMEOUT is passed explicitly, so a hostile endpoint cannot hold the worker open indefinitely"
+@flows #api -> #notify via send_webhook -- "Caller-supplied URL plus the user id and amount of the new expense"
+@flows #notify -> ExternalHost via requests.post -- "Expense event leaves the trust boundary to a destination the requester chose"
+@handles financial on #notify -- "Payload carries the expense amount and the user id"
+@source file:app/notify.py line:10 symbol:fetch_exchange_rate
+@mitigates #notify against #malformed-input using #http-timeout -- "Explicit timeout on the outbound GET as well"
+@flows #notify -> ExternalHost via requests.get -- "Currency code interpolated into the exchangerate.host query string"
+@comment -- "No route calls this today. The currency value is f-stringed into the URL, so it becomes request-controlled the moment one does — worth quoting before that happens"

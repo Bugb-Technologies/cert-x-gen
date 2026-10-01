@@ -1,0 +1,2 @@
+@source file:app/__init__.py line:1 symbol:app
+@comment -- "Empty package marker. Scanned, genuinely nothing here — recorded so an empty answer is a fact rather than a gap"

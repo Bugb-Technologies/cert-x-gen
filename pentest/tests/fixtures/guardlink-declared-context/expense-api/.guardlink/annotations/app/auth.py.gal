@@ -1,0 +1,20 @@
+@source file:app/auth.py line:9 symbol:hash_password
+@mitigates #auth against #cred-stuffing using #pbkdf2 -- "PBKDF2-HMAC-SHA256 with a per-user salt and 200,000 iterations; a stolen hash is expensive to attack offline"
+@handles secrets on #auth -- "Receives the plaintext password and the per-user salt"
+@comment -- "200,000 iterations is at the low end of current guidance but is a real, deliberate cost factor — not a placeholder"
+@source file:app/auth.py line:14 symbol:issue_token
+@mitigates #auth against #weak-secret using #hmac-token -- "Token is HMAC-SHA256 over user id and expiry, so neither field can be edited without the key"
+@assumes #auth -- "Assumes SECRET_KEY is a real secret. The signature is only as strong as config.py's fallback allows — see the #weak-secret exposure there"
+@flows #config -> #auth via SECRET_KEY -- "Signing key read at import time"
+@flows #auth -> Client via token -- "Signed session token returned to the caller"
+@comment -- "Fixed 1-hour TTL, no refresh and no revocation list: a leaked token stays valid for its full hour"
+@source file:app/auth.py line:22 symbol:verify_token
+@mitigates #auth against #timing using #constant-time -- "hmac.compare_digest on the signature, so comparison time does not leak how many bytes matched"
+@mitigates #api against #weak-secret using #hmac-token -- "Signature is checked before expiry, and both must pass before a user id is returned"
+@flows Client -> #auth via token -- "Untrusted token string from the Authorization header"
+@comment -- "rsplit(':', 2) with a ValueError guard means a malformed token returns None rather than raising. int(expires) could still raise, but only for input that already passed the signature check, so it is not reachable by an attacker without the key"
+@source file:app/auth.py line:36 symbol:check_login
+@exposes #auth to #timing [low] cwe:CWE-208 -- "candidate == record['password_hash'] is a plain string compare that short-circuits on the first differing byte, unlike verify_token which uses compare_digest"
+@audit #auth -- "Use hmac.compare_digest here too. Low severity because both sides are PBKDF2 outputs an attacker cannot steer byte by byte, but the fix is one line and the file already imports hmac"
+@flows #db -> #auth via record -- "Stored salt and password hash for the named user"
+@comment -- "The username argument is accepted and never used; the comparison is entirely on the derived hash"

@@ -1,0 +1,458 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "GuardLink",
+          "version": "2.1.0",
+          "informationUri": "https://guardlink.bugb.io",
+          "rules": [
+            {
+              "id": "guardlink/unmitigated-exposure",
+              "name": "UnmitigatedExposure",
+              "shortDescription": {
+                "text": "Asset exposed to threat with no mitigation or acceptance"
+              },
+              "fullDescription": {
+                "text": "An @exposes annotation exists but no matching @mitigates or @accepts covers this (asset, threat) pair. This represents an acknowledged but unaddressed security risk."
+              },
+              "helpUri": "https://guardlink.bugb.io/docs/exposures",
+              "defaultConfiguration": {
+                "level": "warning"
+              }
+            },
+            {
+              "id": "guardlink/unmitigated-critical",
+              "name": "UnmitigatedCriticalExposure",
+              "shortDescription": {
+                "text": "Critical/high severity exposure with no mitigation"
+              },
+              "fullDescription": {
+                "text": "A critical or high severity exposure exists without mitigation. This should be addressed before deployment."
+              },
+              "helpUri": "https://guardlink.bugb.io/docs/exposures",
+              "defaultConfiguration": {
+                "level": "error"
+              }
+            },
+            {
+              "id": "guardlink/confirmed-exploitable",
+              "name": "ConfirmedExploitable",
+              "shortDescription": {
+                "text": "Threat verified exploitable through testing"
+              },
+              "fullDescription": {
+                "text": "A @confirmed annotation marks this threat as verified through pentest, scanning, or manual reproduction. This is not a false positive and requires immediate remediation."
+              },
+              "helpUri": "https://guardlink.bugb.io/docs/confirmed",
+              "defaultConfiguration": {
+                "level": "error"
+              }
+            },
+            {
+              "id": "guardlink/parse-error",
+              "name": "AnnotationParseError",
+              "shortDescription": {
+                "text": "Malformed GuardLink annotation"
+              },
+              "fullDescription": {
+                "text": "A GuardLink annotation could not be parsed. Check syntax against the specification."
+              },
+              "helpUri": "https://guardlink.bugb.io/docs/syntax",
+              "defaultConfiguration": {
+                "level": "error"
+              }
+            },
+            {
+              "id": "guardlink/dangling-ref",
+              "name": "DanglingReference",
+              "shortDescription": {
+                "text": "Reference to undefined threat, control, or asset ID"
+              },
+              "fullDescription": {
+                "text": "An annotation references a #id that is not defined anywhere in the project."
+              },
+              "helpUri": "https://guardlink.bugb.io/docs/definitions",
+              "defaultConfiguration": {
+                "level": "warning"
+              }
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "guardlink/unmitigated-exposure",
+          "level": "warning",
+          "message": {
+            "text": "#auth is exposed to timing: candidate == record['password_hash'] is a plain string compare that short-circuits on the first differing byte, unlike verify_token which uses compare_digest"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "app/auth.py"
+                },
+                "region": {
+                  "startLine": 36
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "guardlink/threatId": "gl-426767ebdbf0",
+            "guardlink/claimKey": "7118788f2053a51dde1b6f42d15669c90e00e30be9af21e7a951a538af0f2e5e:0"
+          },
+          "properties": {
+            "threatId": "gl-426767ebdbf0",
+            "claimKey": "7118788f2053a51dde1b6f42d15669c90e00e30be9af21e7a951a538af0f2e5e:0",
+            "severity": "low",
+            "asset": "#auth",
+            "threat": "#timing",
+            "externalRefs": [
+              "cwe:CWE-208"
+            ]
+          }
+        },
+        {
+          "ruleId": "guardlink/unmitigated-critical",
+          "level": "error",
+          "message": {
+            "text": "#config is exposed to weak-secret: EXPENSE_SECRET falls back to the literal 'dev-secret-change-me'; with it unset, every session token is forgeable by anyone who has read this file"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "app/config.py"
+                },
+                "region": {
+                  "startLine": 3
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "guardlink/threatId": "gl-01a6865ea1eb",
+            "guardlink/claimKey": "dee8304ad95360193dc7c88caf0c5be2a29573821604de8649080f7d9db40b87:0"
+          },
+          "properties": {
+            "threatId": "gl-01a6865ea1eb",
+            "claimKey": "dee8304ad95360193dc7c88caf0c5be2a29573821604de8649080f7d9db40b87:0",
+            "severity": "high",
+            "asset": "#config",
+            "threat": "#weak-secret",
+            "externalRefs": [
+              "cwe:CWE-1188"
+            ]
+          }
+        },
+        {
+          "ruleId": "guardlink/unmitigated-critical",
+          "level": "error",
+          "message": {
+            "text": "#db is exposed to sqli: user_id and category are interpolated into the SELECT with %-formatting; category comes straight from the ?category= query string"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "app/db.py"
+                },
+                "region": {
+                  "startLine": 9
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "guardlink/threatId": "gl-7e48fa8384ec",
+            "guardlink/claimKey": "f8fdef6933f7f513005749a1110118fe9f96fc14953bff5efada3a02e5957719:0"
+          },
+          "properties": {
+            "threatId": "gl-7e48fa8384ec",
+            "claimKey": "f8fdef6933f7f513005749a1110118fe9f96fc14953bff5efada3a02e5957719:0",
+            "severity": "critical",
+            "asset": "#db",
+            "threat": "#sqli",
+            "externalRefs": [
+              "cwe:CWE-89"
+            ]
+          }
+        },
+        {
+          "ruleId": "guardlink/unmitigated-exposure",
+          "level": "warning",
+          "message": {
+            "text": "#api is exposed to cred-stuffing: POST /login has no rate limit, no lockout and no delay; an attacker can try passwords as fast as the service answers"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "app/main.py"
+                },
+                "region": {
+                  "startLine": 13
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "guardlink/threatId": "gl-8e29ce671483",
+            "guardlink/claimKey": "2ac9478d02d769e299d37d3afc0cbbce21b662e55f1bef77007b8170d6075b80:0"
+          },
+          "properties": {
+            "threatId": "gl-8e29ce671483",
+            "claimKey": "2ac9478d02d769e299d37d3afc0cbbce21b662e55f1bef77007b8170d6075b80:0",
+            "severity": "medium",
+            "asset": "#api",
+            "threat": "#cred-stuffing",
+            "externalRefs": [
+              "cwe:CWE-307"
+            ]
+          }
+        },
+        {
+          "ruleId": "guardlink/unmitigated-exposure",
+          "level": "warning",
+          "message": {
+            "text": "#api is exposed to malformed-input: body['username'] and body['password'] are indexed directly after get_json(force=True), so a request missing either raises KeyError and returns a 500"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "app/main.py"
+                },
+                "region": {
+                  "startLine": 13
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "guardlink/threatId": "gl-6680fd8153c7",
+            "guardlink/claimKey": "fef9b5e5c7f7652908d2750e10446aa4c2b4140bfb84b985b8324a967f67304d:0"
+          },
+          "properties": {
+            "threatId": "gl-6680fd8153c7",
+            "claimKey": "fef9b5e5c7f7652908d2750e10446aa4c2b4140bfb84b985b8324a967f67304d:0",
+            "severity": "low",
+            "asset": "#api",
+            "threat": "#malformed-input",
+            "externalRefs": [
+              "cwe:CWE-248"
+            ]
+          }
+        },
+        {
+          "ruleId": "guardlink/unmitigated-critical",
+          "level": "error",
+          "message": {
+            "text": "#api is exposed to ssrf: body['webhook'] is handed to notify.send_webhook with no validation, so an authenticated user chooses what host the server calls"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "app/main.py"
+                },
+                "region": {
+                  "startLine": 31
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "guardlink/threatId": "gl-4319a5d29978",
+            "guardlink/claimKey": "c0584a02d3fb51b70be151edf1cd583d0637a8c0a5a2bf402cf004be7f81f848:0"
+          },
+          "properties": {
+            "threatId": "gl-4319a5d29978",
+            "claimKey": "c0584a02d3fb51b70be151edf1cd583d0637a8c0a5a2bf402cf004be7f81f848:0",
+            "severity": "high",
+            "asset": "#api",
+            "threat": "#ssrf",
+            "externalRefs": [
+              "cwe:CWE-918"
+            ]
+          }
+        },
+        {
+          "ruleId": "guardlink/unmitigated-exposure",
+          "level": "warning",
+          "message": {
+            "text": "#api is exposed to malformed-input: body['amount'] and body['note'] are indexed directly; a request missing either is a 500"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "app/main.py"
+                },
+                "region": {
+                  "startLine": 31
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "guardlink/threatId": "gl-6680fd8153c7",
+            "guardlink/claimKey": "722e3a8b08d5a4ba30dd87a74410dcbbc0165245424b74a787c82b124b0380c1:0"
+          },
+          "properties": {
+            "threatId": "gl-6680fd8153c7",
+            "claimKey": "722e3a8b08d5a4ba30dd87a74410dcbbc0165245424b74a787c82b124b0380c1:0",
+            "severity": "low",
+            "asset": "#api",
+            "threat": "#malformed-input",
+            "externalRefs": [
+              "cwe:CWE-248"
+            ]
+          }
+        },
+        {
+          "ruleId": "guardlink/unmitigated-critical",
+          "level": "error",
+          "message": {
+            "text": "#api is exposed to path-traversal: <name> from the URL goes to storage.read_receipt unmodified; the route does no containment check of its own"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "app/main.py"
+                },
+                "region": {
+                  "startLine": 43
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "guardlink/threatId": "gl-7853561aee28",
+            "guardlink/claimKey": "3e643396efdbb8ca7aff653b587d87193978511ac46af49193c15e4a6d3fbf69:0"
+          },
+          "properties": {
+            "threatId": "gl-7853561aee28",
+            "claimKey": "3e643396efdbb8ca7aff653b587d87193978511ac46af49193c15e4a6d3fbf69:0",
+            "severity": "high",
+            "asset": "#api",
+            "threat": "#path-traversal",
+            "externalRefs": [
+              "cwe:CWE-22"
+            ]
+          }
+        },
+        {
+          "ruleId": "guardlink/unmitigated-critical",
+          "level": "error",
+          "message": {
+            "text": "#notify is exposed to ssrf: url is body['webhook'] from POST /expenses, POSTed unvalidated — no scheme check, no host allowlist, so 169.254.169.254 and http://localhost/ are both reachable"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "app/notify.py"
+                },
+                "region": {
+                  "startLine": 5
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "guardlink/threatId": "gl-36c34d53b7da",
+            "guardlink/claimKey": "f4cd6070e743fdd8f285e1c96d883973f630865d7ca3592d030f9c8399f9278d:0"
+          },
+          "properties": {
+            "threatId": "gl-36c34d53b7da",
+            "claimKey": "f4cd6070e743fdd8f285e1c96d883973f630865d7ca3592d030f9c8399f9278d:0",
+            "severity": "high",
+            "asset": "#notify",
+            "threat": "#ssrf",
+            "externalRefs": [
+              "cwe:CWE-918"
+            ]
+          }
+        },
+        {
+          "ruleId": "guardlink/unmitigated-critical",
+          "level": "error",
+          "message": {
+            "text": "#receipts is exposed to path-traversal: filename is joined onto the upload root with no normalisation or containment check; os.path.join also discards the prefix entirely if filename is absolute"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "app/storage.py"
+                },
+                "region": {
+                  "startLine": 5
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "guardlink/threatId": "gl-9304bd8ad08c",
+            "guardlink/claimKey": "55f8c49c0f98bb657105f3c015a1741a41c47321a620c8340a943cf1850d0435:0"
+          },
+          "properties": {
+            "threatId": "gl-9304bd8ad08c",
+            "claimKey": "55f8c49c0f98bb657105f3c015a1741a41c47321a620c8340a943cf1850d0435:0",
+            "severity": "high",
+            "asset": "#receipts",
+            "threat": "#path-traversal",
+            "externalRefs": [
+              "cwe:CWE-22"
+            ]
+          }
+        },
+        {
+          "ruleId": "guardlink/unmitigated-critical",
+          "level": "error",
+          "message": {
+            "text": "#receipts is exposed to path-traversal: Same unchecked join as the read path, but writing: a traversing filename creates directories and a file outside the upload root"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "app/storage.py"
+                },
+                "region": {
+                  "startLine": 16
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "guardlink/threatId": "gl-9304bd8ad08c",
+            "guardlink/claimKey": "d02957a66a307defa7a74b632419cd0db787dcb875047f8d1fd9daeb2c705046:0"
+          },
+          "properties": {
+            "threatId": "gl-9304bd8ad08c",
+            "claimKey": "d02957a66a307defa7a74b632419cd0db787dcb875047f8d1fd9daeb2c705046:0",
+            "severity": "high",
+            "asset": "#receipts",
+            "threat": "#path-traversal",
+            "externalRefs": [
+              "cwe:CWE-22"
+            ]
+          }
+        }
+      ],
+      "properties": {
+        "annotation_hash": "sha256-v3:81168ffb1ea44c87c243a36fcb00eeb910cc9b425a8873de9b680913ec1d2f83",
+        "annotation_hash_version": 3,
+        "generator": "guardlink@2.1.0",
+        "acceptance_register": "code-annotations"
+      }
+    }
+  ]
+}

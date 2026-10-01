@@ -1,0 +1,14 @@
+@source file:app/db.py line:9 symbol:find_expenses
+@exposes #db to #sqli [critical] cwe:CWE-89 -- "user_id and category are interpolated into the SELECT with %-formatting; category comes straight from the ?category= query string"
+@audit #db -- "find_expenses is the only unparameterised query in the project — rewrite with ? placeholders, as insert_expense already does"
+@flows #api -> #db via find_expenses -- "Category filter and the token's user id reach the SELECT"
+@comment -- "insert_expense here and _lookup_user in main.py both bind parameters correctly; this one function is the outlier"
+@comment -- "WARNING for anyone reading the model rather than this file: the exposure above does NOT appear in `guardlink lookup unmitigated`, and `cwe:CWE-89` reports it as status mitigated, open 0. The @mitigates on insert_expense below names the same asset and the same threat, and the join is (asset, threat) only — the recorded symbol anchors are not consulted. The injection here is live and unfixed"
+@source file:app/db.py line:23 symbol:insert_expense
+@mitigates #db against #sqli using #prepared-stmts -- "INSERT uses ? placeholders with a parameter tuple; the note field is never concatenated even though it is free text from the request body"
+@flows #api -> #db via insert_expense -- "Amount and note from POST /expenses, with the user id from the token"
+@handles financial on #db -- "Stores expense amounts and free-text notes per user"
+@source file:app/db.py line:5 symbol:connect
+@flows #config -> #db via DB_PATH -- "Database file location from the environment"
+@boundary between #api and #db (#data-boundary) -- "Request-derived values become SQL here"
+@comment -- "A fresh connection per call with no pool and no busy timeout; correctness rather than security, but it is the reason every query opens and closes its own handle"
