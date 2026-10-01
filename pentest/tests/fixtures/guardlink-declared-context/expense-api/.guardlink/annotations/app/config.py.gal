@@ -1,0 +1,9 @@
+@source file:app/config.py line:3 symbol:SECRET_KEY
+@exposes #config to #weak-secret [high] cwe:CWE-1188 -- "EXPENSE_SECRET falls back to the literal 'dev-secret-change-me'; with it unset, every session token is forgeable by anyone who has read this file"
+@audit #config -- "is_production() exists but nothing calls it. Refuse to boot when ENV=production and EXPENSE_SECRET is unset, or drop the default entirely and fail closed"
+@flows EnvVars -> #config via os.environ.get -- "Signing secret, database path and upload root all come from the environment"
+@handles secrets on #config -- "Holds the token signing key for the process lifetime"
+@comment -- "DB_PATH and UPLOAD_ROOT are environment-controlled too; both are operator-supplied rather than request-supplied, so they are configuration trust, not input trust"
+@source file:app/config.py line:9 symbol:is_production
+@audit #config -- "Dead helper: is_production() has no callers. Either wire it to a boot-time refusal when the secret is defaulted, or delete it — an unused safety check reads as a control that is not there"
+@comment -- "Compares ENV to the exact string 'production', so 'Production' or 'prod' both read as non-production"

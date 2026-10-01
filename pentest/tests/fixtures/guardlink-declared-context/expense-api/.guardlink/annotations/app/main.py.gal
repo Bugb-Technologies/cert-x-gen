@@ -1,0 +1,34 @@
+@source file:app/main.py line:8 symbol:current_user
+@flows Client -> #api via Authorization -- "Bearer token arrives on every authenticated route"
+@flows #api -> #auth via verify_token -- "Token handed to signature and expiry checking"
+@boundary between Client and #api (#http-boundary) -- "Everything past this point has been authenticated; everything before it is untrusted"
+@feature "Expense Tracking" -- "Login, expense list and create, receipt download"
+@comment -- "removeprefix('Bearer ') leaves a malformed header as a garbage token rather than raising; verify_token returns None for it, so the route 401s"
+@source file:app/main.py line:13 symbol:login
+@exposes #api to #cred-stuffing [medium] cwe:CWE-307 -- "POST /login has no rate limit, no lockout and no delay; an attacker can try passwords as fast as the service answers"
+@exposes #api to #malformed-input [low] cwe:CWE-248 -- "body['username'] and body['password'] are indexed directly after get_json(force=True), so a request missing either raises KeyError and returns a 500"
+@audit #api -- "Add per-IP and per-username rate limiting on /login, and read the body with .get() so a malformed request is a 400 rather than a 500"
+@comment -- "A single generic 'invalid credentials' 401 covers both unknown-user and wrong-password, so the response does not reveal which. Written first as @mitigates #api against #malformed-input using #auth-required, which nothing rejected even though the control and the threat have nothing to do with each other"
+@flows Client -> #api via login -- "Username and password submitted as JSON"
+@handles pii on #api -- "Usernames and passwords cross this route"
+@source file:app/main.py line:22 symbol:list_expenses
+@comment -- "Route 401s before reaching the database, so the injectable category filter is not anonymously reachable. Deliberately NOT written as @mitigates: authentication narrows who can exploit find_expenses, it does not fix it, and recording it as a mitigation cleared a live critical exposure out of the unmitigated list"
+@flows Client -> #api via category -- "?category= query parameter, unvalidated, passed straight through"
+@comment -- "Results are scoped by the user id from the verified token rather than by a request parameter, so one user cannot list another's expenses"
+@source file:app/main.py line:31 symbol:add_expense
+@exposes #api to #ssrf [high] cwe:CWE-918 -- "body['webhook'] is handed to notify.send_webhook with no validation, so an authenticated user chooses what host the server calls"
+@audit #api -- "Validate the webhook URL at the route, not only in notify: require https, resolve the host and reject private ranges, or accept only a pre-registered webhook id"
+@exposes #api to #malformed-input [low] cwe:CWE-248 -- "body['amount'] and body['note'] are indexed directly; a request missing either is a 500"
+@comment -- "401 before any work, so the webhook and write paths need a valid token first. Same reasoning as list_expenses: a reachability narrowing, not a mitigation"
+@flows Client -> #api via webhook -- "Caller-chosen destination URL for the expense event"
+@handles financial on #api -- "Expense amounts and notes"
+@source file:app/main.py line:43 symbol:get_receipt
+@exposes #api to #path-traversal [high] cwe:CWE-22 -- "<name> from the URL goes to storage.read_receipt unmodified; the route does no containment check of its own"
+@mitigates #api against #xss-by-render using #octet-stream -- "Response is application/octet-stream, so a receipt whose bytes are HTML is downloaded rather than rendered in the origin"
+@flows Client -> #api via receipt_name -- "Path segment naming the receipt to return"
+@comment -- "Flask's default <name> converter does not match a slash, so the reachable traversal here is limited to '..' segments; it is a narrowing of the storage.py exposure, not a fix for it"
+@source file:app/main.py line:51 symbol:_lookup_user
+@mitigates #api against #sqli using #prepared-stmts -- "SELECT binds username with a ? placeholder; the login path is not injectable"
+@flows #db -> #api via user_record -- "Id, salt and password hash for the submitted username"
+@handles pii on #db -- "Usernames, salts and password hashes"
+@comment -- "Returns None for an unknown user, and login() answers identically for None and for a wrong password, so the route does not confirm which usernames exist"

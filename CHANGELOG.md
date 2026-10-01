@@ -41,7 +41,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   edges, chainable flows and route-declaring flows, and names by file and line every flow that
   cannot chain and every `@flows` line it could not read.
 
+- **`cxg pentest run` tests each declared trust boundary.** A guardlink SARIF that carries its
+  model graph (`sarif_profile_version` 1, guardlink's export since it added declared context)
+  lists every `@boundary` with its claim key, both sides and the flows that cross it. For each
+  boundary whose outside side guardlink can infer (one side is not a declared asset), cxg builds
+  one `auth_api` hypothesis per route on the inside: a route `@flows` crossing inward, or a code
+  graph route handled where an inward crossing is declared. The probe calls the route with no
+  credential and then as the lowest-privilege identity, told the boundary's own words, the code
+  graph's measured access level for the route (`public`, `authenticated`, `elevated` or
+  `unknown`) and the data classes the inside asset handles. These hypotheses rank below every
+  declared threat and never displace or merge with one; a boundary is a claim to test, never
+  evidence that a route is safe. A boundary between two declared assets has no known direction
+  and yields none. `report.json` gains `declared_boundaries` (one record per boundary, with what
+  was built or why nothing was), and a finding from such a probe carries `boundary_claim_key`.
+
 ### Changed
+
+- **`cxg pentest run` reads guardlink's declared context instead of re-deriving it.** With a SARIF
+  that carries it, a hypothesis's `@flows` chain comes from the result's `codeFlows`, its
+  `@boundary`/`@assumes`/`@handles`/`@transfers` intent notes from its `relatedLocations` (same
+  `@verb: description` text), and its function name from `logicalLocations`, rather than from
+  source comments within 30 lines of the annotation. A hypothesis no longer picks up flows and
+  notes declared on a neighbouring handler or asset, and does pick up notes on its own asset
+  declared in another file. `@comment` and `@validates`, which guardlink does not export, are
+  still read from source. An older SARIF is read exactly as before. The run prints a `[1h]`
+  line saying which path it took.
+- **Routes come from the code graph before the source is scraped.** A guardlink hypothesis with
+  no route takes the code graph's route for its own handler when a graph is loaded, and the
+  decorator scrape near the annotation no longer runs when a graph is loaded or when guardlink
+  marked the result's route ambiguous. Without either, the scrape remains the last resort.
 
 - **`cxg pentest run` tolerates a richer guardlink SARIF.** `guardlink/parse-error` results are
   skipped like `guardlink/dangling-ref` instead of becoming a hypothesis read as mitigated. A

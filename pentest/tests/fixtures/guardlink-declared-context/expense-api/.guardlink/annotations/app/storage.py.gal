@@ -1,0 +1,15 @@
+@source file:app/storage.py line:5 symbol:receipt_path
+@exposes #receipts to #path-traversal [high] cwe:CWE-22 -- "filename is joined onto the upload root with no normalisation or containment check; os.path.join also discards the prefix entirely if filename is absolute"
+@audit #receipts -- "Resolve the joined path and require it to stay under UPLOAD_ROOT (os.path.realpath + commonpath), or reject any filename that is not a bare basename"
+@assumes #receipts -- "Assumes callers pass a bare filename. GET /receipts/<name> is the only caller today and Flask's default converter does not match a slash, which narrows but does not close this — '..' still matches, and save_receipt has no such caller constraint at all"
+@comment -- "user_id is a path segment too, but it comes from a verified token rather than from the request, so it is not attacker-chosen"
+@source file:app/storage.py line:10 symbol:read_receipt
+@flows #api -> #receipts via read_receipt -- "Request-supplied receipt name and the token's user id"
+@flows Disk -> #receipts via open -- "Whole file read into memory and returned to the caller"
+@boundary between #receipts and Disk (#fs-boundary) -- "Request-derived data becomes a filesystem path here"
+@handles financial on #receipts -- "Receipt images and PDFs backing expense claims"
+@comment -- "Reads the whole file with no size cap; a large receipt is a memory spike per request"
+@source file:app/storage.py line:16 symbol:save_receipt
+@exposes #receipts to #path-traversal [high] cwe:CWE-22 -- "Same unchecked join as the read path, but writing: a traversing filename creates directories and a file outside the upload root"
+@audit #receipts -- "No caller today, so this is latent rather than live. Containment must land before an upload route is wired to it"
+@flows #receipts -> Disk via open -- "Caller-supplied bytes written to a caller-influenced path"

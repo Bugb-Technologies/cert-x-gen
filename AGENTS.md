@@ -412,6 +412,19 @@ This file is the project's committed home for project-intrinsic agent knowledge:
 - **`.gitignore` ignores `*.json` tree-wide.** A fixture that needs a JSON file needs `git add -f`
   or an allow-list line; `.sarif` is not affected.
 
+## guardlink's declared context and boundaries
+
+- **A SARIF run with `properties.sarif_profile_version` ≥ 1 is read from its own members**
+  (`codeFlows`, `relatedLocations`, `logicalLocations`, `run.graphs`); the source-comment scan is
+  the fallback for older SARIF only. A result in such a run with no `codeFlows` is guardlink
+  saying no chain ties to the claim — do not top it up from the scan. `pentest/docs/ARCHITECTURE.md`
+  § "Declared context" is the authority; `pentest/tests/test_sarif_declared_context.py` runs both
+  shapes over one vendored codebase (`tests/fixtures/guardlink-declared-context/`).
+- **A boundary hypothesis must never demote a declared threat**: tier 1 in `_guess_tier`, never
+  collapsed in `_dedupe_by_probe_shape`, no exposure identity, its claim key in its own
+  `@boundary_claim_key` header. `@boundary` has no direction; a boundary between two declared
+  assets gets none inferred and yields no hypotheses (`pentest/boundary_hypotheses.py`).
+
 ## The code graph (`pentest/code_graph.py`)
 
 - **Optional, detected, never required.** `cxg pentest run` reads routes and the reachable-sink
