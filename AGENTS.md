@@ -433,6 +433,12 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   § `code_graph.py` is the authority. The released bravos wheel may bundle a `codegraph-mcp` too
   old to publish `codegraph_routes`/`codegraph_attack_surface` (status `unsupported`); point
   `$CXG_CODEGRAPH_MCP` at a newer build to measure.
+- **The optional inputs (route access, untested reach, entry reach, dependency advisories)
+  degrade one call at a time**: transports answer per call (`query_each`), so an older build or
+  a refused symbol costs only that answer, recorded under `code_graph.inputs` in report.json.
+  Route access reaches triage only through the `// @route_access` template header, and
+  `unknown` is never read as public — not in the prompt, the header or `mutator.classify`. A
+  fake transport must answer by tool name; `tests/test_graph_inputs.py`'s `_Graph` is the pattern.
 - **The pentest suite runs as if no graph tooling were installed**: `tests/conftest.py` stubs
   `code_graph._transport` for every test, so a developer's indexed graphs cannot change ranking
   results. A test that needs the graph installs its own transport. The one live test uses
