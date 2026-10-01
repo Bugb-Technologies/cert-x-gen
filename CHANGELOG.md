@@ -34,6 +34,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   graph tooling, or with `--no-code-graph`, a run is unchanged. `report.json` gains a `code_graph`
   block, and each discovered hypothesis records which source its route came from.
 
+- **Route-declaring `@flows` reach route discovery, and the run reports flows it cannot use.** A
+  flow whose mechanism is a route (`via GET./orders/<id>`) now adds that route to the
+  `--discover-routes` surface when no scanned route already serves it, matching parameters across
+  router spellings (`<id>`, `:id`, `{id}`). The run prints a `[1h] @flows:` line counting flow
+  edges, chainable flows and route-declaring flows, and names by file and line every flow that
+  cannot chain and every `@flows` line it could not read.
+
+### Changed
+
+- **`cxg pentest` reads `@flows` to the verb's definition.** The reader now accepts exactly the
+  forms guardlink's grammar accepts and refuses the rest, so an annotation means the same thing to
+  both tools. Newly read: a flow with no `via` (recorded as not chainable, with the reason, instead
+  of dropped), a dotted or repository-qualified target (`#billing.charge`), bare and dotted
+  endpoints such as guardlink's own example `api.auth -> db.users via TLS 1.3`, quoted endpoints,
+  multi-word mechanisms, multi-hop chains (`A -> B -> C`, one flow per hop), and a `-- "..."`
+  continuation line extending a flow's description. A route mechanism keeps its method and full
+  path: `via GET./orders/<id>` is GET `/orders/<id>` where cxg used to keep the channel `GET.`.
+  No longer read, because guardlink rejects them: an unspaced arrow (`#a->#b`), a hyphen or
+  leading digit in a bare endpoint (`user-agent`, `3rdparty`), and a flow whose description is
+  followed by more text. A mechanism followed by a trailing comment now carries it, as guardlink
+  records it (`redis # noqa`), so the artifact name a chain is keyed on can change for such a line.
+
 ## [1.4.0] - 2026-09-17
 
 ### Upgrading from 1.3.0 — read this first
