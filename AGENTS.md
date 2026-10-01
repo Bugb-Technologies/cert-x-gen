@@ -422,8 +422,12 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   shapes over one vendored codebase (`tests/fixtures/guardlink-declared-context/`).
 - **A boundary hypothesis must never demote a declared threat**: tier 1 in `_guess_tier`, never
   collapsed in `_dedupe_by_probe_shape`, no exposure identity, its claim key in its own
-  `@boundary_claim_key` header. `@boundary` has no direction; a boundary between two declared
-  assets gets none inferred and yields no hypotheses (`pentest/boundary_hypotheses.py`).
+  `@boundary_claim_key` header. A side is DECLARED (`@boundary from <outer> to <inner>`,
+  `basis: "declared"`, wins over inference) or INFERRED for an undirected boundary; cxg infers
+  none itself, so an undirected one between two declared assets yields no hypotheses. A declared
+  outer ASSET is not a principal: its stand-in routes are those reaching it
+  (`pentest/boundary_hypotheses.py`). Its corpus is vendored beside `flows.json`, and only the
+  `sides` half runs: the inline reader follows the INSTALLED guardlink, which predates the form.
 
 ## The code graph (`pentest/code_graph.py`)
 

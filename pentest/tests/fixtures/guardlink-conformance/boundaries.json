@@ -1,0 +1,710 @@
+{
+  "corpus": "guardlink-boundaries-conformance",
+  "version": 1,
+  "spec": "docs/SPEC.md — §3.2 `@boundary`, §6.6 `run.graphs`, §6.8 `guardlink/boundary-claim`",
+  "format": "See conformance/README.md. Paths are repository-relative; every file in `files` is written before parsing; lines are 1-based.",
+  "parse": [
+    {
+      "id": "directed/undeclared-outer",
+      "rule": "Direction",
+      "about": "from names the outer side and to the inner side; the record keeps them in that order as asset_a and asset_b.",
+      "files": {
+        "app/web.py": "import os\n# @boundary from Client to #web (#edge) -- \"Nothing before this point is trusted\"\n"
+      },
+      "expect": {
+        "boundaries": [
+          {
+            "asset_a": "Client",
+            "asset_b": "#web",
+            "id": "edge",
+            "directed": true,
+            "description": "Nothing before this point is trusted",
+            "location": {
+              "file": "app/web.py",
+              "line": 2,
+              "origin_file": null,
+              "origin_line": null
+            }
+          }
+        ],
+        "malformed": []
+      }
+    },
+    {
+      "id": "directed/two-declared-sides",
+      "rule": "Direction",
+      "about": "The case direction exists for: both sides are declared assets, so no convention can say which is outside.",
+      "files": {
+        "app/web.py": "import os\n# @boundary from #orders to #store (#data) -- \"The store trusts every query it is sent\"\n"
+      },
+      "expect": {
+        "boundaries": [
+          {
+            "asset_a": "#orders",
+            "asset_b": "#store",
+            "id": "data",
+            "directed": true,
+            "description": "The store trusts every query it is sent",
+            "location": {
+              "file": "app/web.py",
+              "line": 2,
+              "origin_file": null,
+              "origin_line": null
+            }
+          }
+        ],
+        "malformed": []
+      }
+    },
+    {
+      "id": "directed/minimal",
+      "rule": "Direction",
+      "about": "The id and the description are optional, as in the undirected forms.",
+      "files": {
+        "app/web.py": "import os\n# @boundary from #orders to #store\n"
+      },
+      "expect": {
+        "boundaries": [
+          {
+            "asset_a": "#orders",
+            "asset_b": "#store",
+            "id": null,
+            "directed": true,
+            "description": null,
+            "location": {
+              "file": "app/web.py",
+              "line": 2,
+              "origin_file": null,
+              "origin_line": null
+            }
+          }
+        ],
+        "malformed": []
+      }
+    },
+    {
+      "id": "directed/dotted-paths",
+      "rule": "Direction",
+      "files": {
+        "app/web.py": "import os\n# @boundary from External.Internet to Shop.Web (#perimeter)\n"
+      },
+      "expect": {
+        "boundaries": [
+          {
+            "asset_a": "External.Internet",
+            "asset_b": "Shop.Web",
+            "id": "perimeter",
+            "directed": true,
+            "description": null,
+            "location": {
+              "file": "app/web.py",
+              "line": 2,
+              "origin_file": null,
+              "origin_line": null
+            }
+          }
+        ],
+        "malformed": []
+      }
+    },
+    {
+      "id": "directed/quoted-sides",
+      "rule": "Direction",
+      "about": "Quoted sides are recorded without their quotes.",
+      "files": {
+        "app/web.py": "import os\n# @boundary from \"User Browser\" to \"Backend API\"\n"
+      },
+      "expect": {
+        "boundaries": [
+          {
+            "asset_a": "User Browser",
+            "asset_b": "Backend API",
+            "id": null,
+            "directed": true,
+            "description": null,
+            "location": {
+              "file": "app/web.py",
+              "line": 2,
+              "origin_file": null,
+              "origin_line": null
+            }
+          }
+        ],
+        "malformed": []
+      }
+    },
+    {
+      "id": "directed/qualified-tag",
+      "rule": "Direction",
+      "about": "#billing.charge is the repository-qualified tag for `charge` in repository `billing`, recorded whole.",
+      "files": {
+        "app/web.py": "import os\n# @boundary from #web to #billing.charge (#vendor)\n"
+      },
+      "expect": {
+        "boundaries": [
+          {
+            "asset_a": "#web",
+            "asset_b": "#billing.charge",
+            "id": "vendor",
+            "directed": true,
+            "description": null,
+            "location": {
+              "file": "app/web.py",
+              "line": 2,
+              "origin_file": null,
+              "origin_line": null
+            }
+          }
+        ],
+        "malformed": []
+      }
+    },
+    {
+      "id": "undirected/between",
+      "rule": "Undirected forms",
+      "about": "The between form is unchanged and records no direction.",
+      "files": {
+        "app/web.py": "import os\n# @boundary between Client and #web (#edge) -- \"Edge\"\n"
+      },
+      "expect": {
+        "boundaries": [
+          {
+            "asset_a": "Client",
+            "asset_b": "#web",
+            "id": "edge",
+            "directed": false,
+            "description": "Edge",
+            "location": {
+              "file": "app/web.py",
+              "line": 2,
+              "origin_file": null,
+              "origin_line": null
+            }
+          }
+        ],
+        "malformed": []
+      }
+    },
+    {
+      "id": "undirected/bare-and",
+      "rule": "Undirected forms",
+      "about": "between is optional before the first side.",
+      "files": {
+        "app/web.py": "import os\n# @boundary Client and #web\n"
+      },
+      "expect": {
+        "boundaries": [
+          {
+            "asset_a": "Client",
+            "asset_b": "#web",
+            "id": null,
+            "directed": false,
+            "description": null,
+            "location": {
+              "file": "app/web.py",
+              "line": 2,
+              "origin_file": null,
+              "origin_line": null
+            }
+          }
+        ],
+        "malformed": []
+      }
+    },
+    {
+      "id": "undirected/pipe",
+      "rule": "Undirected forms",
+      "about": "The pipe is sugar for between ... and; spaces around it are optional.",
+      "files": {
+        "app/web.py": "import os\n# @boundary Client | #web (#edge)\n# @boundary #orders|#store\n"
+      },
+      "expect": {
+        "boundaries": [
+          {
+            "asset_a": "Client",
+            "asset_b": "#web",
+            "id": "edge",
+            "directed": false,
+            "description": null,
+            "location": {
+              "file": "app/web.py",
+              "line": 2,
+              "origin_file": null,
+              "origin_line": null
+            }
+          },
+          {
+            "asset_a": "#orders",
+            "asset_b": "#store",
+            "id": null,
+            "directed": false,
+            "description": null,
+            "location": {
+              "file": "app/web.py",
+              "line": 3,
+              "origin_file": null,
+              "origin_line": null
+            }
+          }
+        ],
+        "malformed": []
+      }
+    },
+    {
+      "id": "comment/jsdoc-block",
+      "rule": "Direction",
+      "about": "Read from a doc-block like any other annotation.",
+      "files": {
+        "src/web.ts": "/**\n * HTTP entry points.\n *\n * @boundary from Client to #web (#edge) -- \"Edge\"\n */\nexport const web = 1;\n"
+      },
+      "expect": {
+        "boundaries": [
+          {
+            "asset_a": "Client",
+            "asset_b": "#web",
+            "id": "edge",
+            "directed": true,
+            "description": "Edge",
+            "location": {
+              "file": "src/web.ts",
+              "line": 4,
+              "origin_file": null,
+              "origin_line": null
+            }
+          }
+        ],
+        "malformed": []
+      }
+    },
+    {
+      "id": "sidecar/attributed-to-source",
+      "rule": "Direction",
+      "about": "A directed boundary in a .gal sidecar is attributed to the @source line, with the sidecar as its origin.",
+      "files": {
+        "app/db.py": "def query():\n    pass\n",
+        ".guardlink/annotations/app/db.py.gal": "@source file:app/db.py line:1 symbol:query\n@boundary from #orders to #store (#data) -- \"Service to database\"\n"
+      },
+      "expect": {
+        "boundaries": [
+          {
+            "asset_a": "#orders",
+            "asset_b": "#store",
+            "id": "data",
+            "directed": true,
+            "description": "Service to database",
+            "location": {
+              "file": "app/db.py",
+              "line": 1,
+              "origin_file": ".guardlink/annotations/app/db.py.gal",
+              "origin_line": 2
+            }
+          }
+        ],
+        "malformed": []
+      }
+    },
+    {
+      "id": "malformed/from-without-to",
+      "rule": "Malformed lines",
+      "about": "from opens the directed form; a line with no to is a broken annotation.",
+      "files": {
+        "app/web.py": "import os\n# @boundary from #orders\n"
+      },
+      "expect": {
+        "boundaries": [],
+        "malformed": [
+          {
+            "file": "app/web.py",
+            "line": 2
+          }
+        ]
+      }
+    },
+    {
+      "id": "malformed/to-without-inner",
+      "rule": "Malformed lines",
+      "files": {
+        "app/web.py": "import os\n# @boundary from #orders to\n"
+      },
+      "expect": {
+        "boundaries": [],
+        "malformed": [
+          {
+            "file": "app/web.py",
+            "line": 2
+          }
+        ]
+      }
+    },
+    {
+      "id": "malformed/from-and",
+      "rule": "Malformed lines",
+      "about": "from pairs with to, and between with and; the two forms do not mix.",
+      "files": {
+        "app/web.py": "import os\n# @boundary from #orders and #store\n"
+      },
+      "expect": {
+        "boundaries": [],
+        "malformed": [
+          {
+            "file": "app/web.py",
+            "line": 2
+          }
+        ]
+      }
+    },
+    {
+      "id": "malformed/between-to",
+      "rule": "Malformed lines",
+      "files": {
+        "app/web.py": "import os\n# @boundary between #orders to #store\n"
+      },
+      "expect": {
+        "boundaries": [],
+        "malformed": [
+          {
+            "file": "app/web.py",
+            "line": 2
+          }
+        ]
+      }
+    },
+    {
+      "id": "malformed/arrow",
+      "rule": "Malformed lines",
+      "about": "An arrow is @flows syntax, not a boundary direction.",
+      "files": {
+        "app/web.py": "import os\n# @boundary from #orders -> #store\n"
+      },
+      "expect": {
+        "boundaries": [],
+        "malformed": [
+          {
+            "file": "app/web.py",
+            "line": 2
+          }
+        ]
+      }
+    },
+    {
+      "id": "malformed/to-before-from",
+      "rule": "Malformed lines",
+      "files": {
+        "app/web.py": "import os\n# @boundary to #store from #orders\n"
+      },
+      "expect": {
+        "boundaries": [],
+        "malformed": [
+          {
+            "file": "app/web.py",
+            "line": 2
+          }
+        ]
+      }
+    },
+    {
+      "id": "malformed/three-sides",
+      "rule": "Malformed lines",
+      "about": "A boundary has exactly two sides.",
+      "files": {
+        "app/web.py": "import os\n# @boundary from #web to #orders to #store\n"
+      },
+      "expect": {
+        "boundaries": [],
+        "malformed": [
+          {
+            "file": "app/web.py",
+            "line": 2
+          }
+        ]
+      }
+    },
+    {
+      "id": "malformed/to-without-from",
+      "rule": "Malformed lines",
+      "about": "The directed form starts with from.",
+      "files": {
+        "app/web.py": "import os\n# @boundary #orders to #store\n"
+      },
+      "expect": {
+        "boundaries": [],
+        "malformed": [
+          {
+            "file": "app/web.py",
+            "line": 2
+          }
+        ]
+      }
+    },
+    {
+      "id": "malformed/from-bare-names",
+      "rule": "Malformed lines",
+      "about": "A leading from is enough evidence even without a #ref or a description.",
+      "files": {
+        "app/web.py": "import os\n# @boundary from Client\n"
+      },
+      "expect": {
+        "boundaries": [],
+        "malformed": [
+          {
+            "file": "app/web.py",
+            "line": 2
+          }
+        ]
+      }
+    },
+    {
+      "id": "prose/from-inside-a-sentence",
+      "rule": "Malformed lines",
+      "about": "from and to are evidence only as the first word of the arguments; prose that merely contains them is not a malformed annotation.",
+      "files": {
+        "app/web.py": "import os\n# @boundary annotations come from the spec, written to mark a trust change\n"
+      },
+      "expect": {
+        "boundaries": [],
+        "malformed": []
+      }
+    }
+  ],
+  "sides": [
+    {
+      "id": "declared/undeclared-outer",
+      "rule": "Direction; SARIF sides",
+      "files": {
+        ".guardlink/definitions.ts": "// @asset Shop.Web (#web) -- \"Public HTTP API\"\n// @asset Shop.Orders (#orders) -- \"Order service\"\n// @asset Shop.Store (#store) -- \"Order database\"\nexport {};\n",
+        "app/web.py": "import os\n# @flows Client -> #web via HTTPS\n# @boundary from Client to #web (#edge)\n"
+      },
+      "expect": [
+        {
+          "boundary": {
+            "file": "app/web.py",
+            "line": 3
+          },
+          "side": {
+            "basis": "declared",
+            "outer": "Client",
+            "inner": "#web"
+          }
+        }
+      ]
+    },
+    {
+      "id": "declared/two-declared-sides",
+      "rule": "Direction; SARIF sides",
+      "about": "Written undirected, this pair is unknown (see unknown/two-declared-sides).",
+      "files": {
+        ".guardlink/definitions.ts": "// @asset Shop.Web (#web) -- \"Public HTTP API\"\n// @asset Shop.Orders (#orders) -- \"Order service\"\n// @asset Shop.Store (#store) -- \"Order database\"\nexport {};\n",
+        "app/web.py": "import os\n# @boundary from #orders to #store (#data)\n"
+      },
+      "expect": [
+        {
+          "boundary": {
+            "file": "app/web.py",
+            "line": 2
+          },
+          "side": {
+            "basis": "declared",
+            "outer": "#orders",
+            "inner": "#store"
+          }
+        }
+      ]
+    },
+    {
+      "id": "declared/over-inference",
+      "rule": "Direction; SARIF sides",
+      "about": "A declared direction is the answer even where the undeclared-endpoint convention would say the opposite.",
+      "files": {
+        ".guardlink/definitions.ts": "// @asset Shop.Web (#web) -- \"Public HTTP API\"\n// @asset Shop.Orders (#orders) -- \"Order service\"\n// @asset Shop.Store (#store) -- \"Order database\"\nexport {};\n",
+        "app/web.py": "import os\n# @boundary from #web to Client (#egress)\n"
+      },
+      "expect": [
+        {
+          "boundary": {
+            "file": "app/web.py",
+            "line": 2
+          },
+          "side": {
+            "basis": "declared",
+            "outer": "#web",
+            "inner": "Client"
+          }
+        }
+      ]
+    },
+    {
+      "id": "inferred/undeclared-endpoint",
+      "rule": "SARIF sides",
+      "about": "Undirected, with exactly one side no @asset declares: that side is outer, inferred.",
+      "files": {
+        ".guardlink/definitions.ts": "// @asset Shop.Web (#web) -- \"Public HTTP API\"\n// @asset Shop.Orders (#orders) -- \"Order service\"\n// @asset Shop.Store (#store) -- \"Order database\"\nexport {};\n",
+        "app/web.py": "import os\n# @boundary between #web and Client (#edge)\n"
+      },
+      "expect": [
+        {
+          "boundary": {
+            "file": "app/web.py",
+            "line": 2
+          },
+          "side": {
+            "basis": "undeclared-endpoint",
+            "outer": "Client",
+            "inner": "#web"
+          }
+        }
+      ]
+    },
+    {
+      "id": "unknown/two-declared-sides",
+      "rule": "SARIF sides",
+      "about": "Undirected between two declared assets: no side is stated, and a reader must not infer one.",
+      "files": {
+        ".guardlink/definitions.ts": "// @asset Shop.Web (#web) -- \"Public HTTP API\"\n// @asset Shop.Orders (#orders) -- \"Order service\"\n// @asset Shop.Store (#store) -- \"Order database\"\nexport {};\n",
+        "app/web.py": "import os\n# @boundary between #orders and #store (#data)\n"
+      },
+      "expect": [
+        {
+          "boundary": {
+            "file": "app/web.py",
+            "line": 2
+          },
+          "side": {
+            "basis": "unknown"
+          }
+        }
+      ]
+    },
+    {
+      "id": "unknown/two-undeclared-sides",
+      "rule": "SARIF sides",
+      "files": {
+        ".guardlink/definitions.ts": "// @asset Shop.Web (#web) -- \"Public HTTP API\"\n// @asset Shop.Orders (#orders) -- \"Order service\"\n// @asset Shop.Store (#store) -- \"Order database\"\nexport {};\n",
+        "app/web.py": "import os\n# @boundary between Client and Backup\n"
+      },
+      "expect": [
+        {
+          "boundary": {
+            "file": "app/web.py",
+            "line": 2
+          },
+          "side": {
+            "basis": "unknown"
+          }
+        }
+      ]
+    }
+  ],
+  "validation": [
+    {
+      "id": "resolved/declared-ids",
+      "rule": "Validation",
+      "about": "A #tag side resolves to an @asset with that id.",
+      "files": {
+        ".guardlink/definitions.ts": "// @asset Shop.Web (#web) -- \"Public HTTP API\"\n// @asset Shop.Orders (#orders) -- \"Order service\"\n// @asset Shop.Store (#store) -- \"Order database\"\nexport {};\n",
+        "app/web.py": "import os\n# @boundary from #orders to #store\n"
+      },
+      "expect": {
+        "unresolved": []
+      }
+    },
+    {
+      "id": "resolved/declared-paths",
+      "rule": "Validation",
+      "about": "A dotted side resolves to an @asset with that path.",
+      "files": {
+        ".guardlink/definitions.ts": "// @asset Shop.Web (#web) -- \"Public HTTP API\"\n// @asset Shop.Orders (#orders) -- \"Order service\"\n// @asset Shop.Store (#store) -- \"Order database\"\nexport {};\n",
+        "app/web.py": "import os\n# @boundary from Shop.Orders to Shop.Store\n"
+      },
+      "expect": {
+        "unresolved": []
+      }
+    },
+    {
+      "id": "resolved/flows-endpoint",
+      "rule": "Validation",
+      "about": "An undeclared name resolves when a @flows names it: that is how the model writes the outside.",
+      "files": {
+        ".guardlink/definitions.ts": "// @asset Shop.Web (#web) -- \"Public HTTP API\"\n// @asset Shop.Orders (#orders) -- \"Order service\"\n// @asset Shop.Store (#store) -- \"Order database\"\nexport {};\n",
+        "app/web.py": "import os\n# @flows Client -> #web via HTTPS\n# @boundary from Client to #web\n"
+      },
+      "expect": {
+        "unresolved": []
+      }
+    },
+    {
+      "id": "resolved/qualified-tag",
+      "rule": "Validation",
+      "about": "A repository-qualified tag belongs to another repository and is not checked here.",
+      "files": {
+        ".guardlink/definitions.ts": "// @asset Shop.Web (#web) -- \"Public HTTP API\"\n// @asset Shop.Orders (#orders) -- \"Order service\"\n// @asset Shop.Store (#store) -- \"Order database\"\nexport {};\n",
+        "app/web.py": "import os\n# @boundary from #web to #billing.charge\n"
+      },
+      "expect": {
+        "unresolved": []
+      }
+    },
+    {
+      "id": "unresolved/outer-typo",
+      "rule": "Validation",
+      "about": "A misspelt outer side is an error: consumers would trust a direction pointing at nothing.",
+      "files": {
+        ".guardlink/definitions.ts": "// @asset Shop.Web (#web) -- \"Public HTTP API\"\n// @asset Shop.Orders (#orders) -- \"Order service\"\n// @asset Shop.Store (#store) -- \"Order database\"\nexport {};\n",
+        "app/web.py": "import os\n# @flows Client -> #web via HTTPS\n# @boundary from Clinet to #web\n"
+      },
+      "expect": {
+        "unresolved": [
+          {
+            "file": "app/web.py",
+            "line": 3
+          }
+        ]
+      }
+    },
+    {
+      "id": "unresolved/inner-undefined-id",
+      "rule": "Validation",
+      "about": "A #tag no @asset defines does not resolve, even though it is well-formed.",
+      "files": {
+        ".guardlink/definitions.ts": "// @asset Shop.Web (#web) -- \"Public HTTP API\"\n// @asset Shop.Orders (#orders) -- \"Order service\"\n// @asset Shop.Store (#store) -- \"Order database\"\nexport {};\n",
+        "app/web.py": "import os\n# @boundary from #web to #cache\n"
+      },
+      "expect": {
+        "unresolved": [
+          {
+            "file": "app/web.py",
+            "line": 2
+          }
+        ]
+      }
+    },
+    {
+      "id": "unresolved/both-sides",
+      "rule": "Validation",
+      "about": "One diagnostic per boundary, naming both sides.",
+      "files": {
+        ".guardlink/definitions.ts": "// @asset Shop.Web (#web) -- \"Public HTTP API\"\n// @asset Shop.Orders (#orders) -- \"Order service\"\n// @asset Shop.Store (#store) -- \"Order database\"\nexport {};\n",
+        "app/web.py": "import os\n# @boundary from Nowhere to Nothing\n"
+      },
+      "expect": {
+        "unresolved": [
+          {
+            "file": "app/web.py",
+            "line": 2
+          }
+        ]
+      }
+    },
+    {
+      "id": "undirected/not-checked",
+      "rule": "Validation",
+      "about": "An undirected boundary claims no side, so its sides are never checked here.",
+      "files": {
+        ".guardlink/definitions.ts": "// @asset Shop.Web (#web) -- \"Public HTTP API\"\n// @asset Shop.Orders (#orders) -- \"Order service\"\n// @asset Shop.Store (#store) -- \"Order database\"\nexport {};\n",
+        "app/web.py": "import os\n# @boundary between Nowhere and Nothing\n"
+      },
+      "expect": {
+        "unresolved": []
+      }
+    }
+  ]
+}
