@@ -1,0 +1,1048 @@
+{
+  "corpus": "guardlink-flows-conformance",
+  "version": 1,
+  "spec": "docs/SPEC.md — §3.2 `@flows`, §3.6 Handler Scope",
+  "format": "See conformance/README.md. Paths are repository-relative; every file in `files` is written before parsing; lines are 1-based.",
+  "parse": [
+    {
+      "id": "endpoint/id-with-via",
+      "rule": "Endpoints; Mechanism",
+      "files": {
+        "app/flows.py": "import os\n# @flows #orders -> #billing via refund_token\n"
+      },
+      "expect": {
+        "flows": [
+          {
+            "source": "#orders",
+            "target": "#billing",
+            "mechanism": "refund_token",
+            "route": null,
+            "description": null,
+            "location": {
+              "file": "app/flows.py",
+              "line": 2,
+              "origin_file": null,
+              "origin_line": null
+            }
+          }
+        ],
+        "malformed": []
+      }
+    },
+    {
+      "id": "mechanism/absent",
+      "rule": "Mechanism",
+      "about": "A flow without via is a complete flow with a null mechanism; it must not be dropped.",
+      "files": {
+        "app/flows.py": "import os\n# @flows #orders -> #billing\n"
+      },
+      "expect": {
+        "flows": [
+          {
+            "source": "#orders",
+            "target": "#billing",
+            "mechanism": null,
+            "route": null,
+            "description": null,
+            "location": {
+              "file": "app/flows.py",
+              "line": 2,
+              "origin_file": null,
+              "origin_line": null
+            }
+          }
+        ],
+        "malformed": []
+      }
+    },
+    {
+      "id": "endpoint/qualified-tag",
+      "rule": "Endpoints",
+      "about": "#billing.charge is the repository-qualified tag for `charge` in repository `billing`, recorded whole; it is not a sub-component of #billing.",
+      "files": {
+        "app/flows.py": "import os\n# @flows #orders -> #billing.charge\n"
+      },
+      "expect": {
+        "flows": [
+          {
+            "source": "#orders",
+            "target": "#billing.charge",
+            "mechanism": null,
+            "route": null,
+            "description": null,
+            "location": {
+              "file": "app/flows.py",
+              "line": 2,
+              "origin_file": null,
+              "origin_line": null
+            }
+          }
+        ],
+        "malformed": []
+      }
+    },
+    {
+      "id": "chain/two-hops",
+      "rule": "Chains",
+      "about": "N endpoints are N-1 hop records, in order, each carrying the whole mechanism, description and location.",
+      "files": {
+        "app/flows.py": "import os\n# @flows #orders -> #billing -> #legacy via ledger_id -- \"Ledger sync\"\n"
+      },
+      "expect": {
+        "flows": [
+          {
+            "source": "#orders",
+            "target": "#billing",
+            "mechanism": "ledger_id",
+            "route": null,
+            "description": "Ledger sync",
+            "location": {
+              "file": "app/flows.py",
+              "line": 2,
+              "origin_file": null,
+              "origin_line": null
+            }
+          },
+          {
+            "source": "#billing",
+            "target": "#legacy",
+            "mechanism": "ledger_id",
+            "route": null,
+            "description": "Ledger sync",
+            "location": {
+              "file": "app/flows.py",
+              "line": 2,
+              "origin_file": null,
+              "origin_line": null
+            }
+          }
+        ],
+        "malformed": []
+      }
+    },
+    {
+      "id": "chain/quoted-endpoints",
+      "rule": "Chains; Endpoints",
+      "files": {
+        "app/flows.py": "import os\n# @flows User -> \"/rest/user/login\" -> \"SQLite db\"\n"
+      },
+      "expect": {
+        "flows": [
+          {
+            "source": "User",
+            "target": "/rest/user/login",
+            "mechanism": null,
+            "route": null,
+            "description": null,
+            "location": {
+              "file": "app/flows.py",
+              "line": 2,
+              "origin_file": null,
+              "origin_line": null
+            }
+          },
+          {
+            "source": "/rest/user/login",
+            "target": "SQLite db",
+            "mechanism": null,
+            "route": null,
+            "description": null,
+            "location": {
+              "file": "app/flows.py",
+              "line": 2,
+              "origin_file": null,
+              "origin_line": null
+            }
+          }
+        ],
+        "malformed": []
+      }
+    },
+    {
+      "id": "endpoint/dotted-paths-multiword-via",
+      "rule": "Endpoints; Mechanism",
+      "about": "Lower-case dotted paths are component paths; the mechanism runs to the end of the line and may contain spaces.",
+      "files": {
+        "app/flows.py": "import os\n# @flows api.auth -> db.users via TLS 1.3\n"
+      },
+      "expect": {
+        "flows": [
+          {
+            "source": "api.auth",
+            "target": "db.users",
+            "mechanism": "TLS 1.3",
+            "route": null,
+            "description": null,
+            "location": {
+              "file": "app/flows.py",
+              "line": 2,
+              "origin_file": null,
+              "origin_line": null
+            }
+          }
+        ],
+        "malformed": []
+      }
+    },
+    {
+      "id": "endpoint/dotted-paths-description",
+      "rule": "Endpoints; Mechanism",
+      "files": {
+        "app/flows.py": "import os\n# @flows App.Frontend -> App.API via HTTPS/443 -- \"All API calls over TLS 1.3\"\n"
+      },
+      "expect": {
+        "flows": [
+          {
+            "source": "App.Frontend",
+            "target": "App.API",
+            "mechanism": "HTTPS/443",
+            "route": null,
+            "description": "All API calls over TLS 1.3",
+            "location": {
+              "file": "app/flows.py",
+              "line": 2,
+              "origin_file": null,
+              "origin_line": null
+            }
+          }
+        ],
+        "malformed": []
+      }
+    },
+    {
+      "id": "mechanism/punctuation",
+      "rule": "Mechanism",
+      "files": {
+        "app/flows.py": "import os\n# @flows #auth-api -> #user-db via TypeORM.findOne -- \"Authenticated user lookup\"\n"
+      },
+      "expect": {
+        "flows": [
+          {
+            "source": "#auth-api",
+            "target": "#user-db",
+            "mechanism": "TypeORM.findOne",
+            "route": null,
+            "description": "Authenticated user lookup",
+            "location": {
+              "file": "app/flows.py",
+              "line": 2,
+              "origin_file": null,
+              "origin_line": null
+            }
+          }
+        ],
+        "malformed": []
+      }
+    },
+    {
+      "id": "description/continuation",
+      "rule": "Mechanism",
+      "about": "A continuation line appends to the description of the annotation above it (SPEC §2.7).",
+      "files": {
+        "app/flows.py": "import os\n# @flows #orders -> #billing via refund_token -- \"Refunds\"\n#     -- \"settle nightly\"\n"
+      },
+      "expect": {
+        "flows": [
+          {
+            "source": "#orders",
+            "target": "#billing",
+            "mechanism": "refund_token",
+            "route": null,
+            "description": "Refunds settle nightly",
+            "location": {
+              "file": "app/flows.py",
+              "line": 2,
+              "origin_file": null,
+              "origin_line": null
+            }
+          }
+        ],
+        "malformed": []
+      }
+    },
+    {
+      "id": "route/get-path-parameter",
+      "rule": "Route channels",
+      "files": {
+        "app/flows.py": "import os\n# @flows #client -> #orders via GET./orders/<id> -- \"Order lookup\"\n"
+      },
+      "expect": {
+        "flows": [
+          {
+            "source": "#client",
+            "target": "#orders",
+            "mechanism": "GET./orders/<id>",
+            "route": {
+              "method": "GET",
+              "path": "/orders/<id>"
+            },
+            "description": "Order lookup",
+            "location": {
+              "file": "app/flows.py",
+              "line": 2,
+              "origin_file": null,
+              "origin_line": null
+            }
+          }
+        ],
+        "malformed": []
+      }
+    },
+    {
+      "id": "route/lower-case-query-and-note",
+      "rule": "Route channels",
+      "about": "Method is recorded upper-cased; the path stops at `?` and drops `(…)` notes; the mechanism keeps the full text.",
+      "files": {
+        "app/flows.py": "import os\n# @flows #client -> #orders via post./pay?amount (json body)\n"
+      },
+      "expect": {
+        "flows": [
+          {
+            "source": "#client",
+            "target": "#orders",
+            "mechanism": "post./pay?amount (json body)",
+            "route": {
+              "method": "POST",
+              "path": "/pay"
+            },
+            "description": null,
+            "location": {
+              "file": "app/flows.py",
+              "line": 2,
+              "origin_file": null,
+              "origin_line": null
+            }
+          }
+        ],
+        "malformed": []
+      }
+    },
+    {
+      "id": "route/query-hint",
+      "rule": "Route channels",
+      "files": {
+        "app/flows.py": "import os\n# @flows User -> #ws-proxy via GET./websocket/attach?endpointId&id\n"
+      },
+      "expect": {
+        "flows": [
+          {
+            "source": "User",
+            "target": "#ws-proxy",
+            "mechanism": "GET./websocket/attach?endpointId&id",
+            "route": {
+              "method": "GET",
+              "path": "/websocket/attach"
+            },
+            "description": null,
+            "location": {
+              "file": "app/flows.py",
+              "line": 2,
+              "origin_file": null,
+              "origin_line": null
+            }
+          }
+        ],
+        "malformed": []
+      }
+    },
+    {
+      "id": "route/brace-and-colon-parameters",
+      "rule": "Route channels",
+      "files": {
+        "app/flows.py": "import os\n# @flows #client -> #users via DELETE./users/{id}/sessions/:sid\n"
+      },
+      "expect": {
+        "flows": [
+          {
+            "source": "#client",
+            "target": "#users",
+            "mechanism": "DELETE./users/{id}/sessions/:sid",
+            "route": {
+              "method": "DELETE",
+              "path": "/users/{id}/sessions/:sid"
+            },
+            "description": null,
+            "location": {
+              "file": "app/flows.py",
+              "line": 2,
+              "origin_file": null,
+              "origin_line": null
+            }
+          }
+        ],
+        "malformed": []
+      }
+    },
+    {
+      "id": "route/not-a-route",
+      "rule": "Route channels",
+      "about": "Only `METHOD./path` at the start of the mechanism is a route channel.",
+      "files": {
+        "app/flows.py": "import os\n# @flows #api -> #archive via tar.NewReader\n# @flows #api -> #orders via GET /orders\n# @flows #api -> #orders via HTTPS\n"
+      },
+      "expect": {
+        "flows": [
+          {
+            "source": "#api",
+            "target": "#archive",
+            "mechanism": "tar.NewReader",
+            "route": null,
+            "description": null,
+            "location": {
+              "file": "app/flows.py",
+              "line": 2,
+              "origin_file": null,
+              "origin_line": null
+            }
+          },
+          {
+            "source": "#api",
+            "target": "#orders",
+            "mechanism": "GET /orders",
+            "route": null,
+            "description": null,
+            "location": {
+              "file": "app/flows.py",
+              "line": 3,
+              "origin_file": null,
+              "origin_line": null
+            }
+          },
+          {
+            "source": "#api",
+            "target": "#orders",
+            "mechanism": "HTTPS",
+            "route": null,
+            "description": null,
+            "location": {
+              "file": "app/flows.py",
+              "line": 4,
+              "origin_file": null,
+              "origin_line": null
+            }
+          }
+        ],
+        "malformed": []
+      }
+    },
+    {
+      "id": "route/chain",
+      "rule": "Chains; Route channels",
+      "about": "Every hop carries the line's mechanism, so every hop carries its route.",
+      "files": {
+        "app/flows.py": "import os\n# @flows #client -> #api -> #db via GET./items\n"
+      },
+      "expect": {
+        "flows": [
+          {
+            "source": "#client",
+            "target": "#api",
+            "mechanism": "GET./items",
+            "route": {
+              "method": "GET",
+              "path": "/items"
+            },
+            "description": null,
+            "location": {
+              "file": "app/flows.py",
+              "line": 2,
+              "origin_file": null,
+              "origin_line": null
+            }
+          },
+          {
+            "source": "#api",
+            "target": "#db",
+            "mechanism": "GET./items",
+            "route": {
+              "method": "GET",
+              "path": "/items"
+            },
+            "description": null,
+            "location": {
+              "file": "app/flows.py",
+              "line": 2,
+              "origin_file": null,
+              "origin_line": null
+            }
+          }
+        ],
+        "malformed": []
+      }
+    },
+    {
+      "id": "comment/jsdoc-block",
+      "rule": "Endpoints; Mechanism",
+      "files": {
+        "src/orders.ts": "import { db } from './db';\n\n/**\n * @flows #client -> #orders via GET./orders/:id -- \"Lookup\"\n * @flows #orders -> #db via db.query\n */\nexport function getOrder(id: string) { return db.get(id); }\n"
+      },
+      "expect": {
+        "flows": [
+          {
+            "source": "#client",
+            "target": "#orders",
+            "mechanism": "GET./orders/:id",
+            "route": {
+              "method": "GET",
+              "path": "/orders/:id"
+            },
+            "description": "Lookup",
+            "location": {
+              "file": "src/orders.ts",
+              "line": 4,
+              "origin_file": null,
+              "origin_line": null
+            }
+          },
+          {
+            "source": "#orders",
+            "target": "#db",
+            "mechanism": "db.query",
+            "route": null,
+            "description": null,
+            "location": {
+              "file": "src/orders.ts",
+              "line": 5,
+              "origin_file": null,
+              "origin_line": null
+            }
+          }
+        ],
+        "malformed": []
+      }
+    },
+    {
+      "id": "sidecar/attributed-to-source",
+      "rule": "Sidecar files",
+      "about": "A sidecar flow's location is its @source block; the .gal file and line are origin_file and origin_line.",
+      "files": {
+        "app/pay.py": "import db\n\n\ndef charge(card):\n    return db.charge(card)\n\n\ndef refund(order):\n    return db.refund(order)\n",
+        ".guardlink/annotations/app/pay.py.gal": "@source file:app/pay.py line:4 symbol:charge\n@flows #orders -> #billing via card_token -- \"Charge\"\n\n@source file:app/pay.py line:8 symbol:refund\n@flows #orders -> #billing.ledger\n"
+      },
+      "expect": {
+        "flows": [
+          {
+            "source": "#orders",
+            "target": "#billing",
+            "mechanism": "card_token",
+            "route": null,
+            "description": "Charge",
+            "location": {
+              "file": "app/pay.py",
+              "line": 4,
+              "origin_file": ".guardlink/annotations/app/pay.py.gal",
+              "origin_line": 2
+            }
+          },
+          {
+            "source": "#orders",
+            "target": "#billing.ledger",
+            "mechanism": null,
+            "route": null,
+            "description": null,
+            "location": {
+              "file": "app/pay.py",
+              "line": 8,
+              "origin_file": ".guardlink/annotations/app/pay.py.gal",
+              "origin_line": 5
+            }
+          }
+        ],
+        "malformed": []
+      }
+    },
+    {
+      "id": "malformed/comma-fan-out",
+      "rule": "Chains",
+      "files": {
+        "app/flows.py": "import os\n# @flows A -> B, C -> D -- \"d\"\n"
+      },
+      "expect": {
+        "flows": [],
+        "malformed": [
+          {
+            "file": "app/flows.py",
+            "line": 2
+          }
+        ]
+      }
+    },
+    {
+      "id": "malformed/no-spaces-around-arrow",
+      "rule": "Endpoints",
+      "files": {
+        "app/flows.py": "import os\n# @flows #a->#b\n"
+      },
+      "expect": {
+        "flows": [],
+        "malformed": [
+          {
+            "file": "app/flows.py",
+            "line": 2
+          }
+        ]
+      }
+    },
+    {
+      "id": "malformed/via-without-mechanism",
+      "rule": "Mechanism",
+      "about": "`via` must be followed by a mechanism.",
+      "files": {
+        "app/flows.py": "import os\n# @flows #a -> #b via\n# @flows #a -> #b via -- \"d\"\n"
+      },
+      "expect": {
+        "flows": [],
+        "malformed": [
+          {
+            "file": "app/flows.py",
+            "line": 2
+          },
+          {
+            "file": "app/flows.py",
+            "line": 3
+          }
+        ]
+      }
+    },
+    {
+      "id": "malformed/missing-target",
+      "rule": "Endpoints",
+      "files": {
+        "app/flows.py": "import os\n# @flows #a -> -- \"d\"\n"
+      },
+      "expect": {
+        "flows": [],
+        "malformed": [
+          {
+            "file": "app/flows.py",
+            "line": 2
+          }
+        ]
+      }
+    },
+    {
+      "id": "malformed/to-instead-of-arrow",
+      "rule": "Endpoints",
+      "files": {
+        "app/flows.py": "import os\n# @flows #a to #b\n"
+      },
+      "expect": {
+        "flows": [],
+        "malformed": [
+          {
+            "file": "app/flows.py",
+            "line": 2
+          }
+        ]
+      }
+    }
+  ],
+  "route_attribution": [
+    {
+      "id": "handler/two-handlers",
+      "rule": "SPEC §3.6.2",
+      "about": "Each exposure gets the route declared on its own handler, not the file's first route.",
+      "files": {
+        "app/orders.py": "import db\n\n\n# @flows #client -> #orders via GET./orders/<id>\n# @exposes #orders to #idor [high] -- \"no owner check\"\ndef get_order(order_id):\n    return db.get(order_id)\n\n\n# @flows #client -> #orders via POST./pay\n# @exposes #orders to #sqli [critical] cwe:CWE-89 -- \"amount concatenated\"\ndef pay(amount):\n    return db.execute(\"UPDATE o SET a=\" + amount)\n"
+      },
+      "expect": [
+        {
+          "exposure": {
+            "file": "app/orders.py",
+            "line": 5
+          },
+          "route": {
+            "status": "attributed",
+            "scope": "handler",
+            "route": {
+              "method": "GET",
+              "path": "/orders/<id>"
+            }
+          }
+        },
+        {
+          "exposure": {
+            "file": "app/orders.py",
+            "line": 11
+          },
+          "route": {
+            "status": "attributed",
+            "scope": "handler",
+            "route": {
+              "method": "POST",
+              "path": "/pay"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "handler/two-routes-one-handler",
+      "rule": "SPEC §3.6.2",
+      "about": "Two distinct routes on one handler are ambiguous; the first is not chosen.",
+      "files": {
+        "app/orders.py": "import db\n\n\n# @flows #client -> #orders via GET./orders/<id>\n# @flows #client -> #orders via HEAD./orders/<id>\n# @exposes #orders to #idor [high] -- \"no owner check\"\ndef get_order(order_id):\n    return db.get(order_id)\n"
+      },
+      "expect": [
+        {
+          "exposure": {
+            "file": "app/orders.py",
+            "line": 6
+          },
+          "route": {
+            "status": "ambiguous",
+            "candidates": [
+              {
+                "method": "GET",
+                "path": "/orders/<id>",
+                "file": "app/orders.py",
+                "line": 4
+              },
+              {
+                "method": "HEAD",
+                "path": "/orders/<id>",
+                "file": "app/orders.py",
+                "line": 5
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "handler/duplicate-route-counts-once",
+      "rule": "SPEC §3.6.2",
+      "about": "The same METHOD and path declared twice is one route.",
+      "files": {
+        "app/orders.py": "import db\n\n\n# @flows #client -> #orders via GET./orders/<id>\n# @flows #admin -> #orders via GET./orders/<id>\n# @exposes #orders to #idor [high] -- \"no owner check\"\ndef get_order(order_id):\n    return db.get(order_id)\n"
+      },
+      "expect": [
+        {
+          "exposure": {
+            "file": "app/orders.py",
+            "line": 6
+          },
+          "route": {
+            "status": "attributed",
+            "scope": "handler",
+            "route": {
+              "method": "GET",
+              "path": "/orders/<id>"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "file/module-header-route",
+      "rule": "SPEC §3.6.2",
+      "about": "A route declared in the module header is the file's route.",
+      "files": {
+        "app/orders.py": "# @flows #client -> #orders via GET./orders\nimport db\n\n\n# @exposes #orders to #dos [medium] -- \"unbounded page size\"\ndef list_orders(limit):\n    return db.list(limit)\n"
+      },
+      "expect": [
+        {
+          "exposure": {
+            "file": "app/orders.py",
+            "line": 5
+          },
+          "route": {
+            "status": "attributed",
+            "scope": "file",
+            "route": {
+              "method": "GET",
+              "path": "/orders"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "file/helper-on-another-handler",
+      "rule": "SPEC §3.6.2",
+      "about": "A claim on a handler with no route of its own, in a file whose routes are on other handlers, is ambiguous.",
+      "files": {
+        "app/orders.py": "import db\n\n\n# @flows #client -> #orders via GET./orders/<id>\ndef get_order(order_id):\n    return load(order_id)\n\n\n# @exposes #orders to #sqli [critical] -- \"id formatted into SQL\"\ndef load(order_id):\n    return db.execute(\"SELECT * FROM o WHERE id=%s\" % order_id)\n"
+      },
+      "expect": [
+        {
+          "exposure": {
+            "file": "app/orders.py",
+            "line": 9
+          },
+          "route": {
+            "status": "ambiguous",
+            "candidates": [
+              {
+                "method": "GET",
+                "path": "/orders/<id>",
+                "file": "app/orders.py",
+                "line": 4
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "file/file-level-claim-one-route",
+      "rule": "SPEC §3.6.2",
+      "about": "A file-level claim takes its file's single route.",
+      "files": {
+        "app/orders.py": "# @exposes #orders to #dos [medium] -- \"no rate limit anywhere in this module\"\nimport db\n\n\n# @flows #client -> #orders via GET./orders\ndef list_orders():\n    return db.list()\n"
+      },
+      "expect": [
+        {
+          "exposure": {
+            "file": "app/orders.py",
+            "line": 1
+          },
+          "route": {
+            "status": "attributed",
+            "scope": "file",
+            "route": {
+              "method": "GET",
+              "path": "/orders"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "file/file-level-claim-two-routes",
+      "rule": "SPEC §3.6.2",
+      "about": "A file-level claim in a file with two routes is ambiguous.",
+      "files": {
+        "app/orders.py": "# @exposes #orders to #dos [medium] -- \"no rate limit anywhere in this module\"\nimport db\n\n\n# @flows #client -> #orders via GET./orders\ndef list_orders():\n    return db.list()\n\n\n# @flows #client -> #orders via POST./orders\ndef create_order(o):\n    return db.add(o)\n"
+      },
+      "expect": [
+        {
+          "exposure": {
+            "file": "app/orders.py",
+            "line": 1
+          },
+          "route": {
+            "status": "ambiguous",
+            "candidates": [
+              {
+                "method": "GET",
+                "path": "/orders",
+                "file": "app/orders.py",
+                "line": 5
+              },
+              {
+                "method": "POST",
+                "path": "/orders",
+                "file": "app/orders.py",
+                "line": 10
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "asset/fallback",
+      "rule": "SPEC §3.6.2",
+      "about": "A file that declares no route takes its asset's inbound route.",
+      "files": {
+        "app/orders.py": "import db\n\n\n# @flows #client -> #orders via GET./orders/<id>\ndef get_order(order_id):\n    return db.get(order_id)\n",
+        "app/dao.py": "import sqlite3\n\n\n# @exposes #orders to #sqli [critical] -- \"raw SQL\"\ndef fetch(q):\n    return sqlite3.connect('x').execute(q)\n"
+      },
+      "expect": [
+        {
+          "exposure": {
+            "file": "app/dao.py",
+            "line": 4
+          },
+          "route": {
+            "status": "attributed",
+            "scope": "asset",
+            "route": {
+              "method": "GET",
+              "path": "/orders/<id>"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "asset/fallback-ambiguous",
+      "rule": "SPEC §3.6.2",
+      "about": "Two inbound routes to the asset are ambiguous.",
+      "files": {
+        "app/orders.py": "import db\n\n\n# @flows #client -> #orders via GET./orders/<id>\ndef get_order(order_id):\n    return db.get(order_id)\n\n\n# @flows #client -> #orders via POST./pay\ndef pay(amount):\n    return db.pay(amount)\n",
+        "app/dao.py": "import sqlite3\n\n\n# @exposes #orders to #sqli [critical] -- \"raw SQL\"\ndef fetch(q):\n    return sqlite3.connect('x').execute(q)\n"
+      },
+      "expect": [
+        {
+          "exposure": {
+            "file": "app/dao.py",
+            "line": 4
+          },
+          "route": {
+            "status": "ambiguous",
+            "candidates": [
+              {
+                "method": "GET",
+                "path": "/orders/<id>",
+                "file": "app/orders.py",
+                "line": 4
+              },
+              {
+                "method": "POST",
+                "path": "/pay",
+                "file": "app/orders.py",
+                "line": 9
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "none/no-route",
+      "rule": "SPEC §3.6.2",
+      "about": "No route anywhere for the asset: no attribution.",
+      "files": {
+        "app/dao.py": "import sqlite3\n\n\n# @flows #dao -> #db via sqlite3.execute\n# @exposes #orders to #sqli [critical] -- \"raw SQL\"\ndef fetch(q):\n    return sqlite3.connect('x').execute(q)\n"
+      },
+      "expect": [
+        {
+          "exposure": {
+            "file": "app/dao.py",
+            "line": 5
+          },
+          "route": null
+        }
+      ]
+    }
+  ],
+  "mitigation_scope": [
+    {
+      "id": "sibling-handlers",
+      "rule": "SPEC §3.6.1",
+      "about": "A mitigation on one handler leaves the same asset and threat open on sibling handlers.",
+      "files": {
+        "app/orders.py": "import db\n\n\n# @exposes #orders to #idor [high] -- \"no ownership check on read\"\ndef get_order(order_id):\n    return db.get(order_id)\n\n\n# @exposes #orders to #idor [high] -- \"no ownership check on delete\"\ndef delete_order(order_id):\n    return db.delete(order_id)\n\n\n# @mitigates #orders against #idor using #owner-check -- \"owner checked before update\"\ndef update_order(order_id, user):\n    check_owner(order_id, user)\n    return db.update(order_id)\n"
+      },
+      "expect": {
+        "open": [
+          {
+            "file": "app/orders.py",
+            "line": 4
+          },
+          {
+            "file": "app/orders.py",
+            "line": 9
+          }
+        ],
+        "covered": []
+      }
+    },
+    {
+      "id": "same-handler",
+      "rule": "SPEC §3.6.1",
+      "about": "A mitigation on the exposure's own handler covers it.",
+      "files": {
+        "app/orders.py": "import db\n\n\n# @exposes #orders to #idor [high] -- \"id from the path\"\n# @mitigates #orders against #idor using #owner-check -- \"owner checked\"\ndef get_order(order_id, user):\n    check_owner(order_id, user)\n    return db.get(order_id)\n"
+      },
+      "expect": {
+        "open": [],
+        "covered": [
+          {
+            "file": "app/orders.py",
+            "line": 4
+          }
+        ]
+      }
+    },
+    {
+      "id": "class-encloses-method",
+      "rule": "SPEC §3.6.1",
+      "about": "A mitigation on a class covers an exposure on one of its methods.",
+      "files": {
+        "app/orders.py": "import db\n\n\n# @mitigates #orders against #idor using #owner-check -- \"every method checks the owner\"\nclass OrderView:\n    # @exposes #orders to #idor [high] -- \"id from the path\"\n    def get(self, order_id):\n        return db.get(order_id)\n"
+      },
+      "expect": {
+        "open": [],
+        "covered": [
+          {
+            "file": "app/orders.py",
+            "line": 6
+          }
+        ]
+      }
+    },
+    {
+      "id": "method-does-not-cover-class",
+      "rule": "SPEC §3.6.1",
+      "about": "A mitigation on one method does not cover an exposure on its class.",
+      "files": {
+        "app/orders.py": "import db\n\n\n# @exposes #orders to #idor [high] -- \"every method takes an id from the path\"\nclass OrderView:\n    # @mitigates #orders against #idor using #owner-check -- \"get checks the owner\"\n    def get(self, order_id):\n        return db.get(order_id)\n\n    def delete(self, order_id):\n        return db.delete(order_id)\n"
+      },
+      "expect": {
+        "open": [
+          {
+            "file": "app/orders.py",
+            "line": 4
+          }
+        ],
+        "covered": []
+      }
+    },
+    {
+      "id": "module-header-covers-file",
+      "rule": "SPEC §3.6.1",
+      "about": "A mitigation in the module header covers exposures on every handler in the file.",
+      "files": {
+        "app/orders.py": "# @mitigates #orders against #idor using #owner-check -- \"router-level owner middleware\"\nimport db\n\n\n# @exposes #orders to #idor [high] -- \"id from the path\"\ndef get_order(order_id):\n    return db.get(order_id)\n"
+      },
+      "expect": {
+        "open": [],
+        "covered": [
+          {
+            "file": "app/orders.py",
+            "line": 5
+          }
+        ]
+      }
+    },
+    {
+      "id": "other-file-covers",
+      "rule": "SPEC §3.6.1",
+      "about": "A mitigation in another file covers: GuardLink has no call graph to say it does not.",
+      "files": {
+        "app/orders.py": "import db\n\n\n# @exposes #orders to #idor [high] -- \"id from the path\"\ndef get_order(order_id):\n    return db.get(order_id)\n",
+        "app/middleware.py": "import db\n\n\n# @mitigates #orders against #idor using #owner-check -- \"owner middleware on every order route\"\ndef owner_middleware(request):\n    return check_owner(request)\n"
+      },
+      "expect": {
+        "open": [],
+        "covered": [
+          {
+            "file": "app/orders.py",
+            "line": 4
+          }
+        ]
+      }
+    },
+    {
+      "id": "sidecar-symbols-differ",
+      "rule": "SPEC §3.6.1",
+      "about": "Sidecar claims on different `symbol:` names in one file do not cover each other.",
+      "files": {
+        "app/pay.py": "import db\n\n\ndef charge(card):\n    return db.charge(card)\n\n\ndef refund(order):\n    return db.refund(order)\n",
+        ".guardlink/annotations/app/pay.py.gal": "@source file:app/pay.py line:4 symbol:charge\n@exposes #orders to #sqli [critical] -- \"card formatted into SQL\"\n\n@source file:app/pay.py line:8 symbol:refund\n@mitigates #orders against #sqli using #prepared -- \"refund binds parameters\"\n"
+      },
+      "expect": {
+        "open": [
+          {
+            "file": "app/pay.py",
+            "line": 4
+          }
+        ],
+        "covered": []
+      }
+    }
+  ]
+}

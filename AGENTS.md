@@ -105,8 +105,9 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   a HARD REFUSAL: measured at 83ad8a6 against guardlink 2.0.0, the binary reports 1 error and 0
   model records for each of `// @audit #api -- "y" @later`, `// @audit #api -- "a" -- "b"`,
   `// @flows #api -> #db via redis -- "d" # noqa` and
-  `# @comment -- "closed note" @audit #real-api -- "second"`, and cxg reads one live annotation
-  from every one.
+  `# @comment -- "closed note" @audit #real-api -- "second"`, and cxg read one live annotation
+  from every one. The `@flows` one is no longer read (see the `@flows` entry below); the other
+  three still are.
 - **`@shield` regions — board card GAP-69.** cxg honours no `@shield:begin`/`@shield:end` region,
   so it reads annotations the installed guardlink DELIBERATELY EXCLUDES from its model —
   **36** across guardlink f3b36ce, siete 7df5848 and cert-x-gen 4b342e6, all in guardlink's own
@@ -193,9 +194,16 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   binary's: with ` # noqa` appended, `@comment` is the only verb it leaves SILENT and the other
   twelve are hard `Malformed` errors, so extending there is allowed and extending elsewhere is
   reading a form guardlink refuses. Keep it — a lint pragma must not cost an author their
-  intent note. `@flows` is EXEMPT from the bound entirely, because its `via` clause is unbounded
-  in guardlink; that exemption is WIDER than its justification (a flow WITH a description and a
-  trailing pragma is `Malformed` there and read here) and is a stated divergence, not a gap.
+  intent note.
+- **`@flows` conforms to its definition in both directions, and has no exemption or tolerance.**
+  `_RE_FLOWS` is spelled from guardlink's `flows` PATTERNS row and anchored to the end of the
+  comment body, because the `via` mechanism runs to the end of the body; chains are one record
+  per hop; a via-less flow is read and marked `not_chainable`; a route mechanism keeps method and
+  whole path (`flow_route`); malformed `@flows` lines are reported, never dropped.
+  `pentest/docs/ARCHITECTURE.md` § "`@flows` reads to its definition" is the authority. Its
+  tests run guardlink's own conformance corpus, VENDORED under
+  `pentest/tests/fixtures/guardlink-conformance/` with the guardlink commit it came from — refresh
+  it from a released guardlink, never from `main`.
 - **The bound is only ever as right as the clause in front of it.** Every tail it refuses is a
   clause cxg declined to read, so a clause NARROWER than the shared grammar turns valid work
   into a silent zero. That is not hypothetical: landing the bound over a `#`-only threat
