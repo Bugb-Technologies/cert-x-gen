@@ -121,6 +121,123 @@
       }
     },
     {
+      "id": "chain/four-endpoints-via-description",
+      "rule": "Chains",
+      "about": "Four endpoints are three hops, in order, each carrying the whole mechanism and description.",
+      "files": {
+        "app/flows.py": "import os\n# @flows #client -> #gateway -> #orders -> #db via order_id -- \"Order write path\"\n"
+      },
+      "expect": {
+        "flows": [
+          {
+            "source": "#client",
+            "target": "#gateway",
+            "mechanism": "order_id",
+            "route": null,
+            "description": "Order write path",
+            "location": {
+              "file": "app/flows.py",
+              "line": 2,
+              "origin_file": null,
+              "origin_line": null
+            }
+          },
+          {
+            "source": "#gateway",
+            "target": "#orders",
+            "mechanism": "order_id",
+            "route": null,
+            "description": "Order write path",
+            "location": {
+              "file": "app/flows.py",
+              "line": 2,
+              "origin_file": null,
+              "origin_line": null
+            }
+          },
+          {
+            "source": "#orders",
+            "target": "#db",
+            "mechanism": "order_id",
+            "route": null,
+            "description": "Order write path",
+            "location": {
+              "file": "app/flows.py",
+              "line": 2,
+              "origin_file": null,
+              "origin_line": null
+            }
+          }
+        ],
+        "malformed": []
+      }
+    },
+    {
+      "id": "chain/five-endpoints-no-via",
+      "rule": "Chains; Mechanism",
+      "about": "Five endpoints are four hops; with no via every hop has a null mechanism. All four endpoint forms appear in one chain.",
+      "files": {
+        "app/flows.py": "import os\n# @flows User -> #edge -> Svc.Api -> #billing.charge -> \"Ledger DB\"\n"
+      },
+      "expect": {
+        "flows": [
+          {
+            "source": "User",
+            "target": "#edge",
+            "mechanism": null,
+            "route": null,
+            "description": null,
+            "location": {
+              "file": "app/flows.py",
+              "line": 2,
+              "origin_file": null,
+              "origin_line": null
+            }
+          },
+          {
+            "source": "#edge",
+            "target": "Svc.Api",
+            "mechanism": null,
+            "route": null,
+            "description": null,
+            "location": {
+              "file": "app/flows.py",
+              "line": 2,
+              "origin_file": null,
+              "origin_line": null
+            }
+          },
+          {
+            "source": "Svc.Api",
+            "target": "#billing.charge",
+            "mechanism": null,
+            "route": null,
+            "description": null,
+            "location": {
+              "file": "app/flows.py",
+              "line": 2,
+              "origin_file": null,
+              "origin_line": null
+            }
+          },
+          {
+            "source": "#billing.charge",
+            "target": "Ledger DB",
+            "mechanism": null,
+            "route": null,
+            "description": null,
+            "location": {
+              "file": "app/flows.py",
+              "line": 2,
+              "origin_file": null,
+              "origin_line": null
+            }
+          }
+        ],
+        "malformed": []
+      }
+    },
+    {
       "id": "chain/quoted-endpoints",
       "rule": "Chains; Endpoints",
       "files": {
@@ -471,6 +588,67 @@
       }
     },
     {
+      "id": "route/four-endpoint-chain",
+      "rule": "Chains; Route channels",
+      "about": "A route channel on a longer chain is carried, with its full mechanism and parsed route, by every hop.",
+      "files": {
+        "app/flows.py": "import os\n# @flows #client -> #gateway -> #orders -> #db via PATCH./orders/{id}?fields (json) -- \"Partial update\"\n"
+      },
+      "expect": {
+        "flows": [
+          {
+            "source": "#client",
+            "target": "#gateway",
+            "mechanism": "PATCH./orders/{id}?fields (json)",
+            "route": {
+              "method": "PATCH",
+              "path": "/orders/{id}"
+            },
+            "description": "Partial update",
+            "location": {
+              "file": "app/flows.py",
+              "line": 2,
+              "origin_file": null,
+              "origin_line": null
+            }
+          },
+          {
+            "source": "#gateway",
+            "target": "#orders",
+            "mechanism": "PATCH./orders/{id}?fields (json)",
+            "route": {
+              "method": "PATCH",
+              "path": "/orders/{id}"
+            },
+            "description": "Partial update",
+            "location": {
+              "file": "app/flows.py",
+              "line": 2,
+              "origin_file": null,
+              "origin_line": null
+            }
+          },
+          {
+            "source": "#orders",
+            "target": "#db",
+            "mechanism": "PATCH./orders/{id}?fields (json)",
+            "route": {
+              "method": "PATCH",
+              "path": "/orders/{id}"
+            },
+            "description": "Partial update",
+            "location": {
+              "file": "app/flows.py",
+              "line": 2,
+              "origin_file": null,
+              "origin_line": null
+            }
+          }
+        ],
+        "malformed": []
+      }
+    },
+    {
       "id": "comment/jsdoc-block",
       "rule": "Endpoints; Mechanism",
       "files": {
@@ -545,6 +723,85 @@
               "line": 8,
               "origin_file": ".guardlink/annotations/app/pay.py.gal",
               "origin_line": 5
+            }
+          }
+        ],
+        "malformed": []
+      }
+    },
+    {
+      "id": "chain/continuation-every-hop",
+      "rule": "Chains",
+      "about": "A continuation line extends the description of every hop the line above declared, not only the last.",
+      "files": {
+        "app/flows.py": "import os\n# @flows #orders -> #billing -> #legacy via ledger_id -- \"Ledger sync\"\n#     -- \"runs nightly\"\n"
+      },
+      "expect": {
+        "flows": [
+          {
+            "source": "#orders",
+            "target": "#billing",
+            "mechanism": "ledger_id",
+            "route": null,
+            "description": "Ledger sync runs nightly",
+            "location": {
+              "file": "app/flows.py",
+              "line": 2,
+              "origin_file": null,
+              "origin_line": null
+            }
+          },
+          {
+            "source": "#billing",
+            "target": "#legacy",
+            "mechanism": "ledger_id",
+            "route": null,
+            "description": "Ledger sync runs nightly",
+            "location": {
+              "file": "app/flows.py",
+              "line": 2,
+              "origin_file": null,
+              "origin_line": null
+            }
+          }
+        ],
+        "malformed": []
+      }
+    },
+    {
+      "id": "sidecar/chain-every-hop-sited",
+      "rule": "Sidecar files; Chains",
+      "about": "Every hop of a sidecar chain is sited at its @source block, and a continuation reaches every hop.",
+      "files": {
+        "app/pay.py": "import db\n\n\ndef charge(card):\n    return db.charge(card)\n",
+        ".guardlink/annotations/app/pay.py.gal": "@source file:app/pay.py line:4 symbol:charge\n@flows #client -> #orders -> #billing via card_token -- \"Charge\"\n-- \"then settle\"\n"
+      },
+      "expect": {
+        "flows": [
+          {
+            "source": "#client",
+            "target": "#orders",
+            "mechanism": "card_token",
+            "route": null,
+            "description": "Charge then settle",
+            "location": {
+              "file": "app/pay.py",
+              "line": 4,
+              "origin_file": ".guardlink/annotations/app/pay.py.gal",
+              "origin_line": 2
+            }
+          },
+          {
+            "source": "#orders",
+            "target": "#billing",
+            "mechanism": "card_token",
+            "route": null,
+            "description": "Charge then settle",
+            "location": {
+              "file": "app/pay.py",
+              "line": 4,
+              "origin_file": ".guardlink/annotations/app/pay.py.gal",
+              "origin_line": 2
             }
           }
         ],
