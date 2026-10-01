@@ -43,6 +43,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`cxg pentest run` tolerates a richer guardlink SARIF.** `guardlink/parse-error` results are
+  skipped like `guardlink/dangling-ref` instead of becoming a hypothesis read as mitigated. A
+  `guardlink/boundary-claim` result is read as a trust boundary to verify, never as an exposure,
+  and the run prints a `[1h]` line counting them. A hypothesis whose result carries a guardlink
+  claim key is named by it, so its id is stable when guardlink reorders results; without one the
+  positional id is unchanged in the first run and scoped by run (`gl-r1-0-…`) in later runs.
+- **`--only-routes` accepts every graph answer verbatim.** Multi-method routes
+  (`GET,POST /<int:id>/update`) and anonymous handler ids (`file.rb::<module>/<anon:get#0>`) used
+  to refuse the whole file; they now parse, and a multi-method route matches each of its methods.
+- **A vulnerability class guessed from a URL's shape no longer earns ranking weight.** With a
+  goal, a discovered route whose class was inferred from its path alone ranks below every
+  annotated threat and every hypothesis with code graph reach, takes no class-match bonus, and
+  does not double its reach for the sink class its guessed class would land in.
+
 - **`cxg pentest` reads `@flows` to the verb's definition.** The reader now accepts exactly the
   forms guardlink's grammar accepts and refuses the rest, so an annotation means the same thing to
   both tools. Newly read: a flow with no `via` (recorded as not chainable, with the reason, instead
