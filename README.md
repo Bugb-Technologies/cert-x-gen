@@ -468,7 +468,7 @@ CERT-X-GEN is licensed under [Apache License 2.0](LICENSE).
 
 ## Security
 
-Report vulnerabilities to **security@bugb.io**. See [SECURITY.md](SECURITY.md).
+Report vulnerabilities to **security@bugb.report**. See [SECURITY.md](SECURITY.md).
 
 ---
 
