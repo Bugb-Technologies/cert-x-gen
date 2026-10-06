@@ -594,6 +594,30 @@ impl Executor {
             target.address
         );
 
+        // Build first, under its own budget: a cold build (compiling, fetching
+        // dependencies) is not the probe being slow, and must not spend the
+        // probe's timeout or be reported as the target timing out.
+        let build_secs = self
+            .config
+            .templates
+            .timeout_secs
+            .max(crate::template::TEMPLATE_BUILD_TIMEOUT_FLOOR_SECS);
+        match tokio::time::timeout(
+            std::time::Duration::from_secs(build_secs),
+            template.prepare(),
+        )
+        .await
+        {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => return Err(e),
+            Err(_) => {
+                return Err(Error::Execution(format!(
+                    "Template build did not finish within {}s",
+                    build_secs
+                )))
+            }
+        }
+
         // Set timeout for template execution
         let timeout = std::time::Duration::from_secs(self.config.templates.timeout_secs);
 
@@ -629,6 +653,72 @@ mod tests {
 
     fn cli_target() -> Target {
         Target::new("/opt/build/toy", Protocol::Cli)
+    }
+
+    /// A template whose build takes `build` and whose probe takes `probe`.
+    struct TimedTemplate {
+        metadata: crate::types::TemplateMetadata,
+        build: Duration,
+        probe: Duration,
+        built: std::sync::atomic::AtomicBool,
+    }
+
+    #[async_trait::async_trait]
+    impl crate::template::Template for TimedTemplate {
+        fn metadata(&self) -> &crate::types::TemplateMetadata {
+            &self.metadata
+        }
+        async fn prepare(&self) -> Result<()> {
+            tokio::time::sleep(self.build).await;
+            self.built.store(true, std::sync::atomic::Ordering::SeqCst);
+            Ok(())
+        }
+        async fn execute(&self, _: &Target, _: &crate::types::Context) -> Result<Vec<Finding>> {
+            assert!(
+                self.built.load(std::sync::atomic::Ordering::SeqCst),
+                "the executor must run prepare() before execute()"
+            );
+            tokio::time::sleep(self.probe).await;
+            Ok(Vec::new())
+        }
+    }
+
+    async fn run_timed(build: Duration, probe: Duration) -> Result<()> {
+        let mut config = Config::default();
+        config.templates.timeout_secs = 1;
+        let executor = Executor::new(Arc::new(config)).await.unwrap();
+        let template = TimedTemplate {
+            metadata: crate::engine::common::create_metadata(
+                std::path::Path::new("timed.go"),
+                crate::types::TemplateLanguage::Go,
+            ),
+            build,
+            probe,
+            built: std::sync::atomic::AtomicBool::new(false),
+        };
+        executor
+            .execute_single_template(
+                &template,
+                &Target::new("127.0.0.1", Protocol::Tcp),
+                &crate::types::Context::default(),
+            )
+            .await
+            .map(|_| ())
+    }
+
+    /// A build slower than `--timeout` is not the probe timing out: it runs in
+    /// `prepare`, under its own budget, and the probe still gets its full time.
+    #[tokio::test]
+    async fn a_slow_build_does_not_spend_the_probe_timeout() {
+        let result = run_timed(Duration::from_millis(1500), Duration::ZERO).await;
+        assert!(result.is_ok(), "{result:?}");
+    }
+
+    /// The probe itself is still held to `--timeout`.
+    #[tokio::test]
+    async fn a_slow_probe_still_times_out() {
+        let result = run_timed(Duration::ZERO, Duration::from_millis(1500)).await;
+        assert!(matches!(result, Err(Error::Timeout { .. })), "{result:?}");
     }
 
     #[test]

@@ -7,6 +7,13 @@ use crate::types::{Context, Finding, Protocol, Target, TemplateMetadata};
 use async_trait::async_trait;
 use std::path::Path;
 
+/// Minimum wall-clock budget for [`Template::prepare`], in seconds.
+///
+/// A first build can download and compile dependencies (a gRPC Go template
+/// takes ~30s on a cold Go cache), which says nothing about the target, so it
+/// is not held to the probe's own `--timeout`.
+pub const TEMPLATE_BUILD_TIMEOUT_FLOOR_SECS: u64 = 300;
+
 /// Template trait that all templates must implement
 #[async_trait]
 pub trait Template: Send + Sync {
@@ -30,6 +37,20 @@ pub trait Template: Send + Sync {
     ) -> Result<(Vec<Finding>, crate::engine::common::TemplateReport)> {
         let findings = self.execute(target, context).await?;
         Ok((findings, crate::engine::common::TemplateReport::default()))
+    }
+
+    /// Build whatever the template needs before it can run: compile it, fetch
+    /// its dependencies.
+    ///
+    /// The executor calls this OUTSIDE the per-template execution timeout,
+    /// under its own build budget ([`TEMPLATE_BUILD_TIMEOUT_FLOOR_SECS`] or the
+    /// execution timeout, whichever is larger), so a cold first build -- a Go
+    /// template downloading and compiling its modules -- is not reported as the
+    /// probe timing out. Additive: the default does nothing, and an engine that
+    /// does not override it still builds lazily inside `execute`.
+    // @comment -- "optional pre-execution build phase, run by the executor outside the probe timeout under a separate build budget"
+    async fn prepare(&self) -> Result<()> {
+        Ok(())
     }
 
     /// Validate the template

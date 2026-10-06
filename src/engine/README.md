@@ -125,6 +125,7 @@ engine/
 - **Protocols:** All (via Go packages)
 - **Features:** Goroutines, simple concurrency, fast compilation
 - **Use when:** You need concurrency or prefer Go's simplicity
+- **Dependencies:** A template that imports non-stdlib packages (e.g. `google.golang.org/grpc`) and is not inside a Go module is built in a private, content-hashed module under `~/.cert-x-gen/cache/go-modules/` with a generated `go.mod` and `go mod tidy` -- no hand-written `go.mod` needed. See `docs/ENGINE_ARCHITECTURE.md`.
 
 ## Engine Interface
 
