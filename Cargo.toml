@@ -7,6 +7,8 @@ authors = ["CERT-X-GEN Core Team"]
 description = "Advanced Multi-Language Security Scanning Engine"
 license = "Apache-2.0"
 repository = "https://github.com/Bugb-Technologies/cert-x-gen"
+# @comment -- "crates.io Homepage link: the cxg product site (moved off www.bugb.io/cert-x-gen)"
+homepage = "https://cxg.bugb.io"
 # The crate's front page on crates.io. Cargo would auto-detect README.md, but
 # declaring it keeps the front page from silently changing if the file is ever
 # renamed.
