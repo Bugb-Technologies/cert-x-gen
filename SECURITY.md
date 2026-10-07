@@ -16,7 +16,7 @@ We take security seriously at CERT-X-GEN. If you discover a security vulnerabili
 
 Instead, please report security vulnerabilities by emailing:
 
-**security@bugb.io** 
+**security@bugb.report**
 
 ### What to Include
 
@@ -29,10 +29,11 @@ Please include the following in your report:
 
 ### What to Expect
 
-- **Acknowledgment**: We will acknowledge receipt of your report within 48 hours
-- **Assessment**: We will investigate and validate the vulnerability within 7 days
+- **Acknowledgment**: We will acknowledge receipt of your report within 2 business days
+- **Assessment**: We will investigate and validate the vulnerability within 7 business days of acknowledging it
 - **Updates**: We will keep you informed of our progress
 - **Resolution**: We aim to release a fix within 30 days for critical issues
+- **Disclosure**: Once a fix is available, we agree with you when and how the issue is published. If we haven't agreed a date, please give us 90 days from your report before publishing
 - **Credit**: With your permission, we will credit you in our release notes
 
 ### Safe Harbor
@@ -79,6 +80,7 @@ For general security questions (non-vulnerabilities):
 - Tag your post with `security`
 
 For vulnerability reports:
-- Email: security@bugb.io
+- Email: security@bugb.report
+- Full policy: https://www.bugb.io/vulnerability-disclosure
 
 Thank you for helping keep CERT-X-GEN and its users safe!
