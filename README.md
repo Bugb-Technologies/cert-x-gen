@@ -185,7 +185,7 @@ Build straight from the repository — useful for unreleased changes or pinning 
 ```bash
 cargo install --git https://github.com/Bugb-Technologies/cert-x-gen.git
 # or pin to a release:
-cargo install --git https://github.com/Bugb-Technologies/cert-x-gen.git --tag v1.4.0
+cargo install --git https://github.com/Bugb-Technologies/cert-x-gen.git --tag v1.5.0
 ```
 
 ### Download Binary

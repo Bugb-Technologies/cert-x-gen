@@ -1,7 +1,7 @@
 [package]
 name = "cert-x-gen"
-# @comment -- "release 1.4.0: --scope-file fails closed with exit 4, and cxg build --instrument"
-version = "1.4.0"
+# @comment -- "release 1.5.0: pentest reads a code graph, tests declared boundaries, and never reads an unmodelled guardlink rule as mitigated"
+version = "1.5.0"
 edition = "2021"
 authors = ["CERT-X-GEN Core Team"]
 description = "Advanced Multi-Language Security Scanning Engine"

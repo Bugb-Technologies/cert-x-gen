@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-10-07
+
 ### Added
 
 - **`cxg pentest run` can be limited to a list of routes.** `--only-routes <FILE>` (and the
@@ -100,6 +102,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **An unmodelled guardlink SARIF rule is no longer read as a mitigated exposure.** A
+  `guardlink/*` result whose rule cxg does not model — a `guardlink/agent-reach` target from the
+  pentest profile, or a rule a newer guardlink adds — used to fall through to a "be conservative,
+  assume mitigated" branch and become a hypothesis asserted safe: a probe slot spent on a
+  non-finding and a clean bill cxg never earned. On guardlink's own support-desk pentest export
+  that was 14 fabricated mitigated hypotheses beside the one real exposure. Such a result is now
+  skipped and counted, and `cxg pentest run` prints what it declined to read
+  (`skipped N result(s) … none assumed mitigated`). `guardlink/mitigated-exposure` is handled
+  explicitly as a covered exposure that names its covering `@mitigates`/`@accepts` control from
+  the result's `suppressions`, instead of reaching the mitigated flag by accident. Results from
+  non-guardlink tools, and guardlink's hyphen-prefixed extended schema, are unchanged.
+
 - **Go templates that import third-party packages now compile.** cxg built a Go template with
   `go build <file>` and never resolved its imports, so a template importing anything outside the
   standard library failed with "no required module provides package …" — `cxg scan --templates
@@ -122,6 +136,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   Stdlib-only templates and templates inside a module build as before, except that the build now runs in the template's own directory, so an enclosing module is
   the one Go uses rather than whatever module cxg was launched from.
+
+### Security
+
+- **Dependency advisories addressed.** `cryptography` is bumped `49.0.0` → `50.0.0` in
+  `pentest/requirements.txt` (GHSA-g6cj-pr64-35w5), and `rustls` `0.23.41` → `0.23.45`
+  (GHSA-2mjx-qc3c-rqvc), which carries `aws-lc-rs`, `aws-lc-sys` and `rustls-webpki` forward with
+  it. cxg does not terminate TLS as a server, so the rustls advisory does not describe a code path
+  cxg exercises; the bump keeps the tree current regardless.
+
+- **Known open advisories, carried deliberately.** Two transitive advisories are left for a
+  later release because resolving them is not a version bump: `idna` (reachable through the DNS
+  stack, which needs the `trust-dns` → `hickory` migration to move off the affected line) and
+  `rmcp` (whose fix is the `2.x` major, an API break). Both are named here so a reader of this
+  release knows they are unaddressed rather than unnoticed.
+
+### Documentation and infrastructure
+
+- Security-contact and crate-homepage metadata, pull-request CI spend, and the vendored guardlink
+  `@flows` conformance corpus were updated since 1.4.0; none change runtime behaviour.
 
 ## [1.4.0] - 2026-09-17
 
