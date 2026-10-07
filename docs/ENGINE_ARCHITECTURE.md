@@ -159,11 +159,34 @@ Shared functionality across all engines:
 - **Cache Directory**: `/tmp/cert-x-gen-cache/java/`
 - **Execution**: `java -cp cache_dir ClassName`
 
-#### Go Engine (`src/engine/go.rs`)
+#### Go Engine (`src/engine/go/mod.rs`, `src/engine/go/modules.rs`)
 - **Compiler**: `go build`
 - **Extension**: `.go`
-- **Compilation**: `go build -o binary source.go`
-- **Cache Directory**: `/tmp/cert-x-gen-cache/go/`
+- **Compilation** depends on the template's imports and location:
+  - **Standard library only, or the template sits inside a Go module** (an
+    ancestor directory holds `go.mod`): `go build -o binary source.go`, run in
+    the template's own directory so an enclosing module is the one used.
+    Cached in `/tmp/cert-x-gen-cache/go/`, rebuilt when the source is newer.
+  - **Imports a non-stdlib package and is outside every module**: cxg builds it
+    in a private module at `<cxg home>/cache/go-modules/<stem>-<hash>/`
+    (`~/.cert-x-gen/…`, or `$CERT_X_GEN_HOME/.cert-x-gen/…`), where `<hash>` is
+    a SHA-256 of the template's bytes. It copies the template there, writes
+    `go.mod` (`module cxg.local/template`), runs `go mod tidy` and then
+    `go build`. The entry is assembled under a staging name and renamed into
+    place only after the binary exists, so a failed build leaves nothing behind
+    and an unchanged template reuses its binary with no network access. The
+    template's own directory is never written to.
+- **Go environment**: inherited from the operator (`GOPATH`, `GOMODCACHE`,
+  `GOCACHE`, `GOFLAGS`, `GOPROXY`, `GOTOOLCHAIN`, …). The private-module build
+  additionally sets `GO111MODULE=on` and `GOWORK=off`. With downloads disabled
+  (`GOPROXY=off`) or unreachable, `go mod tidy` fails fast and the scan records
+  the template as `errored` with the missing imports and a hint.
+- **Build budget**: the build runs in `Template::prepare`, which the executor
+  calls before the probe, outside `--timeout`, under its own budget
+  (`TEMPLATE_BUILD_TIMEOUT_FLOOR_SECS` = 300s, or `--timeout` if larger). A
+  cold first build of a gRPC template (~30s on an empty Go cache) therefore
+  does not read as the target timing out. A build over budget is `errored`,
+  and the `go` child processes are killed with it.
 - **Execution**: Compiled binary with environment variables
 
 #### Rust Engine (`src/engine/rust.rs`)

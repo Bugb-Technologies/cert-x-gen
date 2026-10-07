@@ -98,6 +98,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   followed by more text. A mechanism followed by a trailing comment now carries it, as guardlink
   records it (`redis # noqa`), so the artifact name a chain is keyed on can change for such a line.
 
+### Fixed
+
+- **Go templates that import third-party packages now compile.** cxg built a Go template with
+  `go build <file>` and never resolved its imports, so a template importing anything outside the
+  standard library failed with "no required module provides package …" — `cxg scan --templates
+  grpc-reflection-abuse` among them — unless the operator first wrote a `go.mod` and ran `go get`
+  by hand. A template that imports a non-stdlib package and is not inside a Go module is now built
+  in a private module at `~/.cert-x-gen/cache/go-modules/<stem>-<sha256>/` (honouring
+  `CERT_X_GEN_HOME`): cxg copies the template there, generates `go.mod`, runs `go mod tidy` and
+  builds. The entry is keyed by the template's content, so an unchanged template reuses its binary
+  offline, and it is renamed into place only after a successful build. The operator's Go
+  environment (`GOPATH`, `GOMODCACHE`, `GOCACHE`, `GOFLAGS`, `GOPROXY`, `GOTOOLCHAIN`) is
+  inherited; with downloads disabled or unreachable the run fails fast as `errored`, naming the
+  imports and how to make them available.
+
+  The build no longer spends the probe's `--timeout`: templates gain an optional
+  `Template::prepare` phase, which the executor runs first under its own budget (300s, or
+  `--timeout` if larger), and the Go engine compiles there. A cold first build of
+  `grpc-reflection-abuse` takes ~30s on an empty Go cache and previously read as `timed-out` at the
+  default 30s. Go build subprocesses are now killed when their budget expires instead of outliving
+  it.
+
+  Stdlib-only templates and templates inside a module build as before, except that the build now runs in the template's own directory, so an enclosing module is
+  the one Go uses rather than whatever module cxg was launched from.
+
 ## [1.4.0] - 2026-09-17
 
 ### Upgrading from 1.3.0 — read this first
