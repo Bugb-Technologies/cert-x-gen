@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`cxg pentest` can authenticate to header/apikey-gated APIs.** An auth profile's
+  per-identity `extra_headers` (set with `cxg pentest auth login|import --header NAME:VALUE`,
+  serialised under the `extra_headers` key in `~/.cert-x-gen/auth/<profile>.meta.json`) are now
+  sent on **every** request cxg issues for that identity — both the in-browser fetch path and the
+  out-of-browser raw (Playwright request) path, where they previously were not, so a target that
+  gates on a static `apikey`/`Authorization` header (for example a self-hosted Supabase gateway)
+  is now authenticated on `cxg.raw`/`cxg.rawAs` probes as well as in-browser ones. A template's
+  own per-request header of the same name still wins. Header values are treated as credentials and
+  never logged.
+- **Headers-only (cookieless) auth profiles.** An apikey/bearer-gated identity has no capturable
+  cookie session; `cxg pentest auth import --profile <name> --target <url> --header NAME:VALUE`
+  (with no `--storage-state`) now writes a headers-only profile — a `<name>.meta.json` with
+  `extra_headers` and no `<name>.json`. It loads under `--auth <name>` without the
+  "auth profile could not be loaded" error that previously halted every probe against such a
+  target, opening an unauthenticated browser context that still presents the headers.
+
 ## [1.5.0] - 2026-10-07
 
 ### Added
