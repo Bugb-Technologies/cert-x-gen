@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   out-of-browser raw (Playwright request) path, where they previously were not, so a target that
   gates on a static `apikey`/`Authorization` header (for example a self-hosted Supabase gateway)
   is now authenticated on `cxg.raw`/`cxg.rawAs` probes as well as in-browser ones. A template's
-  own per-request header of the same name still wins. Header values are treated as credentials and
+  own per-request header of the same name (matched case-insensitively) still wins. Header values are treated as credentials and
   never logged.
 - **Headers-only (cookieless) auth profiles.** An apikey/bearer-gated identity has no capturable
   cookie session; `cxg pentest auth import --profile <name> --target <url> --header NAME:VALUE`
