@@ -603,6 +603,8 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
             app_cmd,
             app_binary,
             host_scan_path,
+            tauri_prove,
+            tauri_prove_timeout,
             attacker_origin,
             allow_raw_socket,
             allow_grpc,
@@ -703,6 +705,14 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
             if let Some(v) = host_scan_path {
                 args.push("--host-scan-path".into());
                 args.push(v);
+            }
+            // @comment -- "Forwarded only when the operator opted in; a plain tauri run stays a source-surface map. The timeout rides along only when proving is on, so the orchestrator's own default governs every other run."
+            if tauri_prove {
+                args.push("--tauri-prove".into());
+                args.extend([
+                    "--tauri-prove-timeout".into(),
+                    tauri_prove_timeout.to_string(),
+                ]);
             }
             // @comment -- "Both are pushed only when set, matching every other boolean here: an absent flag leaves the orchestrator's own default in force rather than this layer restating it, so the two CLIs cannot drift apart on what 'off' means."
             if attacker_origin {

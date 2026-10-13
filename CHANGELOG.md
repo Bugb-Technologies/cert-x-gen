@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`cxg pentest run --target-type tauri --tauri-prove` proves Tauri IPC commands in process.**
+  After mapping the IPC surface, cxg copies the app, injects a `#[cfg(test)]` probe module into
+  the file that already holds the app's `tauri::generate_handler!` (so the same command paths and
+  imports — including private commands — are in scope), enables Tauri's `test` crate feature, and
+  drives each ranked command through `tauri::test::get_ipc_response` with hostile arguments on a
+  headless `MockRuntime` — no webview, no network. A deterministic prober generates the arguments
+  from each command's parameter shape (a `../`-chain against a planted sentinel for path
+  parameters; privileged-vs-benign values for authorization parameters) and a conservative oracle
+  classifies each into the existing finding model: **confirmed** only on definitive evidence (the
+  sentinel's content came back; a privileged value succeeded where every benign value was
+  rejected), **refuted** when the handler rejected the hostile argument, **unevaluated** otherwise.
+  A command the harness cannot drive (it does not compile, or exposes no probeable argument) is
+  listed under `tauri_skipped_commands` with a reason — never refuted. Needs a Rust toolchain;
+  `--tauri-prove-timeout` bounds the build+run. Without the flag, a tauri run stays the
+  source-surface map.
 - **`cxg pentest run --target-type tauri` maps a Tauri app's IPC surface from source.** A new
   target type reads the Rust side of a Tauri application — every `#[tauri::command]` handler, its
   registration in `tauri::generate_handler!` (resolving module-path-qualified names and a `const`
