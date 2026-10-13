@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`cxg pentest run --target-type tauri` maps a Tauri app's IPC surface from source.** A new
+  target type reads the Rust side of a Tauri application — every `#[tauri::command]` handler, its
+  registration in `tauri::generate_handler!` (resolving module-path-qualified names and a `const`
+  array of command identifiers, and honouring `#[tauri::command(rename = "…")]`
+  for the invokable command name), and the `capabilities/*.json` grants plus the security-relevant
+  `tauri.conf.json` fields — and emits one `ipc://<command>` hypothesis per command, correlating
+  them against the guardlink threat model exactly as the Electron channel surface does. It is a
+  **source-surface map, not a live probe**: a Tauri app exposes no CDP endpoint on macOS or Linux,
+  so cxg cannot drive its webview the way it drives an Electron renderer. The run writes a
+  `report.json` with `status: "tauri_surface_mapped"`, the command surface under
+  `tauri_ipc_surface`, the capability grants under `tauri_capabilities`, and an
+  `enumerated_not_live_probed` caveat stating plainly that no command was confirmed or refuted.
+  `--target` is not required for this target type (it never navigates anywhere). Proving a command
+  exploitable in-process is a separate, following step.
 - **`cxg pentest` can authenticate to header/apikey-gated APIs.** An auth profile's
   per-identity `extra_headers` (set with `cxg pentest auth login|import --header NAME:VALUE`,
   serialised under the `extra_headers` key in `~/.cert-x-gen/auth/<profile>.meta.json`) are now

@@ -623,7 +623,10 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
         } => {
             args.push("pentest".into());
             args.extend(["--codebase".into(), codebase.to_string_lossy().to_string()]);
-            args.extend(["--target".into(), target]);
+            // @comment -- "Forwarded only when the operator supplied it. --target is optional at clap level so a tauri source-surface map can omit it; a web/electron run with no --target is refused by the Python preflight, not here, so this never silently drops a target a live probe needed."
+            if let Some(t) = target {
+                args.extend(["--target".into(), t]);
+            }
             args.extend(["--auth".into(), auth]);
             args.extend(["--interactive-auth".into(), interactive_auth.to_string()]);
             args.extend(["--auth-profile".into(), auth_profile]);
