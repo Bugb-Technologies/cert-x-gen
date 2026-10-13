@@ -626,13 +626,21 @@ pub enum PentestAction {
         /// Running target app URL. Both `http://` and `https://` are supported.
         /// Multi-tenant note: pass the URL where the SESSION cookies live, not a marketing
         /// host. The landing test verifies you arrive at a non-login page from this URL.
+        ///
+        /// Required for `--target-type web` and `electron`; omit it for
+        /// `--target-type tauri`, which maps the IPC surface from source and navigates
+        /// nowhere. The required-ness is enforced in the Python preflight (exit 4), the
+        /// one place target-type-conditional requirements live — clap cannot express
+        /// "required unless --target-type tauri" without the required_if pitfalls the
+        /// desktop flags document.
+        // @comment -- "Optional at clap level ONLY so a tauri source-surface map can omit it. The Python preflight refuses a web/electron run with no --target, so the live-probe paths keep their 'you must say what to probe' guarantee; main.rs forwards --target only when it is present, so an absent one reaches the orchestrator as the empty default it treats as 'no live target'."
         #[arg(
             long,
             help_heading = "Target",
             display_order = 2,
-            help = "Running target app URL (http:// or https://)"
+            help = "Running target app URL (http:// or https://); omit for --target-type tauri"
         )]
-        target: String,
+        target: Option<String>,
 
         /// Comma-separated auth profile names previously captured via `cxg pentest auth`.
         /// Probes that need multiple identities (IDOR cross-user, session-replay-against-
@@ -997,26 +1005,38 @@ pub enum PentestAction {
         /// app, drive their renderers over CDP, and additionally probe IPC channels,
         /// renderer configuration, and local data at rest.
         ///
-        /// Tauri is not supported — it exposes no CDP endpoint on macOS or Linux.
+        /// `tauri`: map a Tauri app's IPC command and capability surface from source —
+        /// the `#[tauri::command]` handlers, their `generate_handler!` registration, and
+        /// the `capabilities/*.json` grants — and correlate it against the guardlink
+        /// threat model. This is a source-surface MAP, not a live probe: a Tauri app
+        /// exposes no CDP endpoint on macOS or Linux, so cxg cannot drive its webview the
+        /// way it drives an Electron renderer. `--target` is not required for it, and the
+        /// report carries an `enumerated_not_live_probed` caveat. No command is confirmed
+        /// or refuted.
         ///
         /// EXAMPLES:
         ///
         ///     cxg pentest run --target-type electron --app-cmd "npm run electron:dev" \
         ///       --codebase ./app-repo --target https://api.example.com --auth desk-1,desk-2
-        // @comment -- "selects which substrate the orchestrator uses; an unknown value is rejected by clap so a typo can never silently downgrade a desktop scan to a web scan"
+        ///
+        ///     cxg pentest run --target-type tauri --codebase ./app-repo
+        // @comment -- "selects which substrate the orchestrator uses; an unknown value is rejected by clap so a typo can never silently downgrade a desktop scan to a web scan, nor a web scan to a source-only tauri map"
         // requires_if (not required_if_eq on app_cmd) is deliberate: clap's required_if_eq/
         // required_unless validation path skips the conflicts_with escape hatch, so pairing it
         // with app_cmd's conflicts_with would wrongly demand --app-cmd even when --app-binary
         // alone was supplied. requires_if instead feeds the required-arg resolution path that
         // does consult conflicts_with. See desktop_flag_tests::electron_with_app_binary_alone_parses.
+        // tauri is accepted here but needs no launch mechanism (it never starts the app) and no
+        // --target (it never navigates); both facts are enforced in the Python preflight, which
+        // is the single place target-type-conditional requirements live.
         #[arg(
             long,
             default_value = "web",
-            value_parser = ["web", "electron"],
+            value_parser = ["web", "electron", "tauri"],
             requires_if("electron", "app_cmd"),
             help_heading = "Target",
             display_order = 3,
-            help = "Target type: web (default) or electron"
+            help = "Target type: web (default), electron, or tauri (source-surface map)"
         )]
         target_type: String,
 
@@ -3453,6 +3473,11 @@ mod desktop_flag_tests {
 
     #[test]
     fn rejects_unknown_target_type() {
+        // Sentinel is a value that is NOT a known substrate. "tauri" used to serve
+        // here and is now a valid source-surface target (see tauri_surface_map_parses),
+        // so this uses "gtk" to keep testing the same thing — clap rejects an unknown
+        // --target-type — rather than being quietly weakened into asserting a valid one
+        // is rejected.
         assert!(parse(&[
             "cxg",
             "pentest",
@@ -3462,9 +3487,41 @@ mod desktop_flag_tests {
             "--target",
             "http://x",
             "--target-type",
-            "tauri"
+            "gtk"
         ])
         .is_err());
+    }
+
+    #[test]
+    fn tauri_surface_map_parses_without_a_target() {
+        // A tauri source-surface map navigates nowhere, so --target is optional for it;
+        // --target becoming Option<String> is what makes this parse. The Python preflight
+        // still refuses a web/electron run with no --target.
+        let cli = parse(&[
+            "cxg",
+            "pentest",
+            "run",
+            "--codebase",
+            ".",
+            "--target-type",
+            "tauri",
+        ])
+        .expect("tauri run should parse without --target");
+        if let Some(Commands::Pentest(p)) = cli.command {
+            if let PentestAction::Run {
+                target_type,
+                target,
+                app_cmd,
+                ..
+            } = p.action
+            {
+                assert_eq!(target_type, "tauri");
+                assert!(target.is_none(), "no --target was given");
+                assert!(app_cmd.is_none(), "tauri needs no launch command");
+                return;
+            }
+        }
+        panic!("expected pentest run");
     }
 
     #[test]
