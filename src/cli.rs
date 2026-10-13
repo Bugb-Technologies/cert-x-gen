@@ -1081,6 +1081,30 @@ pub enum PentestAction {
         )]
         host_scan_path: Option<String>,
 
+        /// For `--target-type tauri`: after mapping the IPC surface, build an in-process
+        /// proof harness against the app's own crate (Tauri's `test` feature) and drive
+        /// ranked commands through `get_ipc_response` with hostile arguments, feeding
+        /// confirmed / refuted / unevaluated into the findings. Needs a Rust toolchain; a
+        /// command the harness cannot drive is skipped with a reason, never refuted.
+        // @comment -- "opt-in because it builds the target crate (cargo test) and only applies to tauri; a plain tauri run stays a source-surface map. Forwarded to the Python orchestrator, which owns the harness."
+        #[arg(
+            long,
+            help_heading = "Target",
+            display_order = 7,
+            help = "tauri: prove commands in-process via Tauri's test harness"
+        )]
+        tauri_prove: bool,
+
+        /// Seconds budgeted for the `--tauri-prove` harness build+run.
+        #[arg(
+            long,
+            default_value = "1200",
+            help_heading = "Target",
+            display_order = 8,
+            help = "Timeout (s) for the --tauri-prove harness build+run"
+        )]
+        tauri_prove_timeout: u64,
+
         /// Run cross-site probes (CSRF, CORS, clickjacking) from a loopback origin
         /// cxg controls, in the same browsing context as the identity under test.
         ///
@@ -3490,6 +3514,65 @@ mod desktop_flag_tests {
             "gtk"
         ])
         .is_err());
+    }
+
+    #[test]
+    fn tauri_prove_flag_parses() {
+        let cli = parse(&[
+            "cxg",
+            "pentest",
+            "run",
+            "--codebase",
+            ".",
+            "--target-type",
+            "tauri",
+            "--tauri-prove",
+            "--tauri-prove-timeout",
+            "600",
+        ])
+        .expect("tauri --tauri-prove should parse");
+        if let Some(Commands::Pentest(p)) = cli.command {
+            if let PentestAction::Run {
+                target_type,
+                tauri_prove,
+                tauri_prove_timeout,
+                ..
+            } = p.action
+            {
+                assert_eq!(target_type, "tauri");
+                assert!(tauri_prove);
+                assert_eq!(tauri_prove_timeout, 600);
+                return;
+            }
+        }
+        panic!("expected pentest run");
+    }
+
+    #[test]
+    fn tauri_prove_defaults_off() {
+        let cli = parse(&[
+            "cxg",
+            "pentest",
+            "run",
+            "--codebase",
+            ".",
+            "--target-type",
+            "tauri",
+        ])
+        .expect("parse");
+        if let Some(Commands::Pentest(p)) = cli.command {
+            if let PentestAction::Run {
+                tauri_prove,
+                tauri_prove_timeout,
+                ..
+            } = p.action
+            {
+                assert!(!tauri_prove);
+                assert_eq!(tauri_prove_timeout, 1200);
+                return;
+            }
+        }
+        panic!("expected pentest run");
     }
 
     #[test]
