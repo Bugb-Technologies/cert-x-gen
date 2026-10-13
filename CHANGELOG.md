@@ -12,7 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`cxg pentest run --target-type tauri` maps a Tauri app's IPC surface from source.** A new
   target type reads the Rust side of a Tauri application — every `#[tauri::command]` handler, its
   registration in `tauri::generate_handler!` (resolving module-path-qualified names and a `const`
-  array of command identifiers), and the `capabilities/*.json` grants plus the security-relevant
+  array of command identifiers, and honouring `#[tauri::command(rename = "…")]`
+  for the invokable command name), and the `capabilities/*.json` grants plus the security-relevant
   `tauri.conf.json` fields — and emits one `ipc://<command>` hypothesis per command, correlating
   them against the guardlink threat model exactly as the Electron channel surface does. It is a
   **source-surface map, not a live probe**: a Tauri app exposes no CDP endpoint on macOS or Linux,
