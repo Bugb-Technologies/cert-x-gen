@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **No-login / anonymous pentests are first-class.** Empty `--auth` now runs real
+  unauthenticated probing on a clean anonymous surface, without requesting interactive
+  capture. Templates declaring `requires_auth_count=0` are runnable without a login.
+  Reports add `auth_mode` (`anonymous`, `mixed`, or `authenticated`) and `auth_skipped`;
+  auth-only checks are recorded as not-run when their authenticated context is unavailable,
+  instead of halting the run or being silently refuted. All existing authentication and
+  safety gates remain in force, including strict named-profile loading, scope/host
+  containment, CI dead-session checks, the two-identity IDOR premise, and proof oracles.
 - **`cxg pentest run --target-type tauri --tauri-prove` proves Tauri IPC commands in process.**
   After mapping the IPC surface, cxg copies the app, injects a `#[cfg(test)]` probe module into
   the file that already holds the app's `tauri::generate_handler!` (so the same command paths and

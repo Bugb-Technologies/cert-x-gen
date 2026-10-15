@@ -647,13 +647,13 @@ pub enum PentestAction {
         /// victim) require ≥2 profiles. The lowest-privilege identity is auto-selected as
         /// the actor for privesc-class probes.
         ///
-        /// Leave empty if you're using --interactive-auth to capture fresh profiles inline.
+        /// Empty means a first-class anonymous (no-login) run, not interactive capture.
         #[arg(
             long,
             default_value = "",
             help_heading = "Authentication",
             display_order = 11,
-            help = "Comma-separated auth profiles (from 'cxg pentest auth')"
+            help = "Comma-separated captured auth profiles; empty = first-class anonymous (no-login) run on a clean unauthenticated surface with real anonymous probes and auth-only checks reported not-run. Empty does not imply interactive capture; use --interactive-auth"
         )]
         auth: String,
 
