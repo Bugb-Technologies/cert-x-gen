@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Exact GuardLink threat selection:** `cxg pentest run --threat-id gl-…` confines
+  JS generation on web/Electron to imported hypotheses carrying that exact id.
+  Selection precedes dedupe/ranking; unrelated discovery, boundary, desktop-surface
+  and host probes are disabled. Missing ids refuse with exit 4 before target contact.
+  Reports retain selected/excluded hypotheses in `threat_selection`; scope authorization
+  remains mandatory and unchanged. `cxg pentest capabilities` returns the installed
+  orchestrator's JSON capability list, including `exact-threat-id`.
 - **No-login / anonymous pentests are first-class.** Empty `--auth` now runs real
   unauthenticated probing on a clean anonymous surface, without requesting interactive
   capture. Templates declaring `requires_auth_count=0` are runnable without a login.
