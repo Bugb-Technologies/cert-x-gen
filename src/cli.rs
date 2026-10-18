@@ -752,7 +752,7 @@ pub enum PentestAction {
         /// AI generation step entirely. Useful for re-running the same templates against
         /// different targets, or after fixing engine bugs that affected template execution.
         ///
-        /// Template directories are at `~/.cert-x-gen/templates/session-<timestamp>/`.
+        /// Template directories are at `~/.cert-x-gen/templates/session-<timestamp>-<pid>/`.
         ///
         /// A template carrying no `// @attach_scheme: path` header is WITHHELD — never
         /// executed — and named in a `templates_withheld` caveat in report.json, because
