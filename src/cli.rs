@@ -349,6 +349,9 @@ pub enum PentestAction {
         force: bool,
     },
 
+    /// Print installed orchestrator capabilities as JSON (no target contact).
+    Capabilities,
+
     /// Capture — or, via a subcommand, import/verify — an authenticated session profile
     ///
     /// With no subcommand this captures interactively: it spawns a real headed Chromium
@@ -739,11 +742,17 @@ pub enum PentestAction {
         )]
         goal: Option<String>,
 
+        /// Exactly select imported hypotheses carrying this GuardLink id before ranking.
+        /// Unknown ids refuse before target contact. Requires JS generation on web/electron;
+        /// disables unrelated discovery, boundary and host probes. Not authorization.
+        #[arg(long, help_heading = "AI Generation")]
+        threat_id: Option<String>,
+
         /// Reuse JS templates from a previously-generated session directory. Skips the
         /// AI generation step entirely. Useful for re-running the same templates against
         /// different targets, or after fixing engine bugs that affected template execution.
         ///
-        /// Template directories are at `~/.cert-x-gen/templates/session-<timestamp>/`.
+        /// Template directories are at `~/.cert-x-gen/templates/session-<timestamp>-<pid>/`.
         ///
         /// A template carrying no `// @attach_scheme: path` header is WITHHELD — never
         /// executed — and named in a `templates_withheld` caveat in report.json, because

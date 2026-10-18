@@ -402,6 +402,9 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
     let mut args: Vec<String> = vec![orchestrator.to_string_lossy().to_string()];
     match cmd.action {
         cli::PentestAction::Install { .. } => unreachable!(),
+        cli::PentestAction::Capabilities => {
+            args.push("capabilities".into());
+        }
         cli::PentestAction::Auth {
             target,
             profile,
@@ -582,6 +585,7 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
             creds_file,
             template_lang,
             goal,
+            threat_id,
             template_dir,
             max_templates,
             mutation_retries,
@@ -641,6 +645,9 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
             args.extend(["--template-lang".into(), template_lang]);
             if let Some(g) = goal {
                 args.extend(["--goal".into(), g]);
+            }
+            if let Some(id) = threat_id {
+                args.extend(["--threat-id".into(), id]);
             }
             if let Some(d) = template_dir {
                 args.extend(["--template-dir".into(), d.to_string_lossy().to_string()]);
