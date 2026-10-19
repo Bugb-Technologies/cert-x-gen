@@ -11,7 +11,10 @@ use std::path::PathBuf;
     long_about = "CERT-X-GEN is a next-generation security scanning engine that supports \
                   12 programming languages for template creation. Write security scanning \
                   templates in Python, JavaScript, Rust, Shell, YAML, C, C++, Java, Go, Ruby, \
-                  Perl, or PHP - whatever works best for your use case!",
+                  Perl, or PHP - whatever works best for your use case!\n\n\
+                  Local CLI binaries: cxg scan --scope cli://<binary> with CLI Security Baseline templates.\n\
+                  Tauri apps: cxg pentest run --target-type tauri --codebase <repo> maps IPC commands \
+                  and capability grants; --tauri-prove opts into in-process command proof.",
     after_help = "Run 'cxg <command> --help' for full details on any command.\n\
                   \n\
                   Repository:    https://github.com/Bugb-Technologies/cert-x-gen\n\
@@ -26,6 +29,15 @@ use std::path::PathBuf;
   🔌 Extensible: Custom templates in any supported language
 
 EXAMPLES:
+  # Local CLI binary (CLI Security Baseline from the detection-template repository)
+  cxg template update
+  cxg scan --scope cli:///absolute/path/to/my-tool --template-dir ~/.cert-x-gen/templates/official/templates/cli-baseline --require-instrumentation
+
+  # Tauri source map, then optional in-process command proof (no live webview)
+  cxg pentest install
+  cxg pentest run --target-type tauri --codebase ./app-repo
+  cxg pentest run --target-type tauri --codebase ./app-repo --tauri-prove
+
   # Basic scanning
   cxg scan --scope example.com
   cxg scan --scope https://api.example.com:8443 --ports 80,443,8080
@@ -132,7 +144,7 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug)]
 pub enum Commands {
-    /// Run a security scan
+    /// Run templates against network targets or local CLI binaries (cli://<binary>)
     Scan(ScanArgs),
 
     /// Build a target with instrumentation so a scan can earn its verdict
@@ -160,6 +172,9 @@ pub enum Commands {
     Ai(AiCommand),
 
     /// Search templates
+    ///
+    /// After `cxg template update`, use `cxg template search baseline --tags cli`
+    /// to discover CLI Security Baseline templates from cert-x-gen-templates.
     Search(SearchArgs),
 
     /// Run as API server [NOT IMPLEMENTED — returns an error]
@@ -174,16 +189,19 @@ pub enum Commands {
     /// MCP (Model Context Protocol) server for AI agent integration
     Mcp(McpCommand),
 
-    /// AI-driven whitebox pentest pipeline (guardlink source code → authenticated browser execution)
+    /// Whitebox pentests for web/Electron; Tauri source maps and optional in-process proof
     ///
-    /// Reads `whitebox/findings.sarif` produced by guardlink, ranks threats against an
+    /// Web/Electron: reads `whitebox/findings.sarif` produced by guardlink, ranks threats against an
     /// operator goal, and asks your local AI CLI (claude / codex / gemini) to write
     /// JavaScript probe templates that read the target's source to craft code-aware
     /// payloads. Those templates execute in N parallel authenticated Chromium contexts,
     /// emitting confirmed/refuted/ambiguous findings to a JSON report plus a JSONL audit
     /// log of every HTTP request.
     ///
-    /// Capabilities:
+    /// Tauri instead maps IPC commands and capability grants against the threat model;
+    /// --tauri-prove opts into command proof in a headless harness, without a live webview.
+    ///
+    /// Web/Electron capabilities:
     ///   • Interactive auth capture for SSO/MFA flows (no need to script logins)
     ///   • Chained-auth probes (IDOR cross-user) via `--auth-numbers 2+`
     ///   • Pre-flight identity inspection — landing-test based, no /me-path required
@@ -322,6 +340,21 @@ pub struct UpdateCommand {
 }
 
 #[derive(Parser, Debug, Clone)]
+#[command(after_help = "TARGETS:
+  web: live browser probes; --codebase and --target required, --auth optional.
+  electron: live desktop probes; also requires --app-cmd or --app-binary.
+  tauri: source map of IPC commands and capability grants correlated with GuardLink.
+    Requires --codebase with whitebox/findings.sarif; no --target, --auth or launch command needed.
+    Default report: tauri_surface_mapped, caveat enumerated_not_live_probed.
+    An empty findings list does not establish safety: no commands were invoked.
+    --tauri-prove builds an app copy for headless in-process command proof, without a live webview.
+  Local CLI binaries use cxg scan --scope cli://<binary>, not pentest run.
+
+EXAMPLES:
+  cxg pentest install
+  guardlink sarif ./app-repo -p my-app -o ./app-repo/whitebox/findings.sarif
+  cxg pentest run --target-type tauri --codebase ./app-repo
+  cxg pentest run --target-type tauri --codebase ./app-repo --tauri-prove --tauri-prove-timeout 1200")]
 pub struct PentestCommand {
     #[command(subcommand)]
     pub action: PentestAction,
@@ -350,9 +383,18 @@ pub enum PentestAction {
     },
 
     /// Print installed orchestrator capabilities as JSON (no target contact).
+    ///
+    /// Reports protocol features such as exact-threat-id, not target-type support or
+    /// evidence that a target was tested. See `cxg pentest run --help` for web,
+    /// Electron and Tauri targets; local CLI binaries use `cxg scan --scope cli://<binary>`.
+    /// Requires `cxg pentest install` first. Example: cxg pentest capabilities
     Capabilities,
 
     /// Capture — or, via a subcommand, import/verify — an authenticated session profile
+    ///
+    /// Capture supports web and Electron only. Tauri source maps and in-process
+    /// proofs need no captured profile; use `cxg pentest run --target-type tauri
+    /// --codebase ./app-repo`. Local CLI scans need no browser auth profile either.
     ///
     /// With no subcommand this captures interactively: it spawns a real headed Chromium
     /// window. You log in by ANY means — username/password, SSO redirect, MFA prompt,
@@ -492,7 +534,8 @@ pub enum PentestAction {
         /// application. `electron`: launch the Electron desktop app and capture its
         /// session state instead of a browser's.
         ///
-        /// Tauri is not supported — it exposes no CDP endpoint on macOS or Linux.
+        /// Auth capture does not support Tauri. Its source map and optional in-process
+        /// proof need no captured profile; select tauri on `cxg pentest run` instead.
         // @comment -- "selects which substrate auth capture launches against; an unknown value is rejected by clap so a typo can never silently downgrade a desktop capture to a web capture"
         // requires_if (not required_if_eq on app_cmd) is deliberate: clap's required_if_eq/
         // required_unless validation path skips the conflicts_with escape hatch, so pairing it
@@ -550,7 +593,19 @@ pub enum PentestAction {
 
     /// Run the full end-to-end pentest pipeline against a target
     ///
-    /// Pipeline steps:
+    /// Targets: web and Electron use live probes. Tauri maps IPC commands and JSON
+    /// capability grants from source, correlated with the GuardLink threat model.
+    /// Install with `cxg pentest install` and generate `whitebox/findings.sarif`
+    /// with `guardlink sarif . -p my-app -o whitebox/findings.sarif` in the app repository.
+    /// Tauri requires --codebase; no --target, --auth or app launch command is needed.
+    /// Keep the default --template-lang js: the legacy py pipeline rejects Tauri.
+    ///
+    /// A default Tauri report is tauri_surface_mapped with enumerated_not_live_probed:
+    /// commands are not invoked, and empty findings do not establish safety.
+    /// Opt in with --tauri-prove for headless in-process command proof; this needs
+    /// a Rust toolchain and the app's build prerequisites, and does not drive a live webview.
+    ///
+    /// Web/Electron pipeline steps:
     ///   [1]  Load guardlink hypotheses from `<codebase>/whitebox/findings.sarif`
     ///   [1b] Inspect captured auth profiles via landing-test
     ///        (`profile_inspect.inspect_profiles_async`)
@@ -613,9 +668,16 @@ pub enum PentestAction {
     ///   5 → CI mode (`--ci` / CXG_CI=1): an auth session was dead/expired at
     ///       pre-flight, so the run stopped before spending any AI calls rather
     ///       than silently probing UNAUTHENTICATED
+    #[command(after_help = "TAURI EXAMPLES:
+  # Prepare the source threat model (after cxg pentest install)
+  guardlink sarif ./app-repo -p my-app -o ./app-repo/whitebox/findings.sarif
+  # Source map only; no commands invoked
+  cxg pentest run --target-type tauri --codebase ./app-repo
+  # Opt in to headless in-process command proof
+  cxg pentest run --target-type tauri --codebase ./app-repo --tauri-prove --tauri-prove-timeout 1200")]
     Run {
         /// Source codebase root. MUST contain `whitebox/findings.sarif` produced by
-        /// `guardlink sarif <codebase> -o whitebox/findings.sarif`. The codebase is also
+        /// `guardlink sarif <codebase> -p my-app -o whitebox/findings.sarif`. The codebase is also
         /// the working directory of the AI CLI during template generation, so the AI
         /// can read source via its own Read/Grep tools to craft code-aware payloads.
         #[arg(
@@ -632,10 +694,7 @@ pub enum PentestAction {
         ///
         /// Required for `--target-type web` and `electron`; omit it for
         /// `--target-type tauri`, which maps the IPC surface from source and navigates
-        /// nowhere. The required-ness is enforced in the Python preflight (exit 4), the
-        /// one place target-type-conditional requirements live — clap cannot express
-        /// "required unless --target-type tauri" without the required_if pitfalls the
-        /// desktop flags document.
+        /// nowhere. A web/Electron run without --target is refused at preflight (exit 4).
         // @comment -- "Optional at clap level ONLY so a tauri source-surface map can omit it. The Python preflight refuses a web/electron run with no --target, so the live-probe paths keep their 'you must say what to probe' guarantee; main.rs forwards --target only when it is present, so an absent one reaches the orchestrator as the empty default it treats as 'no live target'."
         #[arg(
             long,
@@ -650,7 +709,8 @@ pub enum PentestAction {
         /// victim) require ≥2 profiles. The lowest-privilege identity is auto-selected as
         /// the actor for privesc-class probes.
         ///
-        /// Empty means a first-class anonymous (no-login) run, not interactive capture.
+        /// Empty means a first-class anonymous (no-login) web/Electron run, not interactive capture.
+        /// Tauri source maps and in-process proofs need no --auth profile.
         #[arg(
             long,
             default_value = "",
@@ -722,7 +782,7 @@ pub enum PentestAction {
             default_value = "js",
             help_heading = "AI Generation",
             display_order = 27,
-            help = "Template language: js (default) or py"
+            help = "Template language: js (default; required for Tauri/Electron) or py (legacy web)"
         )]
         template_lang: String,
 
@@ -1020,8 +1080,9 @@ pub enum PentestAction {
         /// threat model. This is a source-surface MAP, not a live probe: a Tauri app
         /// exposes no CDP endpoint on macOS or Linux, so cxg cannot drive its webview the
         /// way it drives an Electron renderer. `--target` is not required for it, and the
-        /// report carries an `enumerated_not_live_probed` caveat. No command is confirmed
-        /// or refuted.
+        /// default report carries an `enumerated_not_live_probed` caveat. No command is
+        /// confirmed or refuted unless `--tauri-prove` opts into the in-process harness.
+        /// No --auth or app launch command is needed. Keep --template-lang js; py is rejected.
         ///
         /// EXAMPLES:
         ///
@@ -1045,7 +1106,7 @@ pub enum PentestAction {
             requires_if("electron", "app_cmd"),
             help_heading = "Target",
             display_order = 3,
-            help = "Target type: web (default), electron, or tauri (source-surface map)"
+            help = "Target type: web, electron, or tauri (source map; optional --tauri-prove)"
         )]
         target_type: String,
 
@@ -1095,6 +1156,14 @@ pub enum PentestAction {
         /// ranked commands through `get_ipc_response` with hostile arguments, feeding
         /// confirmed / refuted / unevaluated into the findings. Needs a Rust toolchain; a
         /// command the harness cannot drive is skipped with a reason, never refuted.
+        ///
+        /// Copies the app to the session's tauri-harness/ and runs cargo test using
+        /// a headless MockRuntime. Probes cover sentinel-based path traversal and
+        /// renderer-controlled authorization arguments. A confirmation proves observed
+        /// harness behavior; a refutation covers only attempted arguments. It does not
+        /// test live navigation, DOM behavior or clickjacking, nor reproduce the app's
+        /// full setup or capability configuration. Review caveats, ambiguous and
+        /// tauri_skipped_commands; build failures do not establish safety.
         // @comment -- "opt-in because it builds the target crate (cargo test) and only applies to tauri; a plain tauri run stays a source-surface map. Forwarded to the Python orchestrator, which owns the harness."
         #[arg(
             long,
@@ -1104,7 +1173,9 @@ pub enum PentestAction {
         )]
         tauri_prove: bool,
 
-        /// Seconds budgeted for the `--tauri-prove` harness build+run.
+        /// Combined seconds budgeted for the `--tauri-prove` harness build and run.
+        ///
+        /// Used only for Tauri proof; default 1200. Example: --tauri-prove-timeout 1200
         #[arg(
             long,
             default_value = "1200",
@@ -1504,13 +1575,37 @@ pub enum AuthSubcommand {
     about = "Run a security scan against targets using vulnerability detection templates",
     long_about = "Execute comprehensive security scans against one or more targets using the multi-language \
                   template engine. CERT-X-GEN supports scanning single targets, multiple targets, CIDR ranges, \
-                  and domains with advanced filtering, performance tuning, and output customization.\n\n\
+                  and domains, or local CLI binaries via cli://<binary>, with advanced filtering and output customization.\n\n\
                   The scan command orchestrates template execution across targets, manages concurrency, \
                   filtered by language, severity, tags, and custom criteria to focus on specific \
                   vulnerability classes or compliance requirements.",
     after_help = "Run 'cxg scan --help' for the full flag reference, worked examples, and common scenarios.\n\
                   Docs: https://docs.bugb.io/cxg/",
-    after_long_help = "DETAILED USAGE GUIDE:
+    after_long_help = "LOCAL CLI TESTING:
+  Use cli://<binary> with an absolute executable path (cli:///absolute/path/to/my-tool).
+  Fetch the CLI Security Baseline pack from the detection-template repository:
+  https://github.com/Bugb-Technologies/cert-x-gen-templates/tree/main/templates/cli-baseline
+  With the default repository configuration:
+    cxg template update
+    cxg scan --scope cli:///absolute/path/to/my-tool --template-dir ~/.cert-x-gen/templates/official/templates/cli-baseline --require-instrumentation
+  This repository's templates/ contains skeletons, not the detection pack.
+  A skipped check provides no refutation; no findings alone does not establish safety.
+
+  Optional probe inputs (the selected template must consume this contract):
+    cxg scan --scope cli:///absolute/path/to/my-tool --templates /path/to/probe.sh --arg --format --arg json --stdin-file ./case.bin --input ./corpus --target-env ASAN_OPTIONS=abort_on_error=1 --require-instrumentation
+  cxg passes argv, stdin file, seed corpus and target environment to templates; it does
+  not automatically adapt every template to the target's syntax or mutate the corpus.
+  Templates declare @oracles and report confirmed/refuted/skipped/errored/timed-out.
+  A nonzero exit alone does not prove an unhandled exception.
+  --require-instrumentation checks binary markers and oracle requirements; unsupported
+  executions skip (no-instrumentation-detected, oracle-unavailable(...), target-not-found).
+  Build-independent oracles (exit, signal, timeout, exception, property) can run with none.
+  Interpreted scripts detect none; target-kind declarations apply even without preflight.
+  Scanning does not build the target: see cxg build --help for instrumented build options,
+  then use --instrumented-manifest <PATH> for provenance of the binary it names.
+  Tauri IPC testing uses cxg pentest run --target-type tauri --codebase <repo>.
+
+DETAILED USAGE GUIDE:
 
 TARGET SPECIFICATION:
   Define scope once and let the engine figure out the rest.
@@ -1797,9 +1892,11 @@ pub struct ScanArgs {
         // first would cut such a path in half before the exemption is reached.
         help_heading = "Target Selection",
         display_order = 1,
-        help = "Targets: hosts, CIDRs, URLs, or @files (comma-separated)",
+        help = "Targets: hosts, CIDRs, URLs, @files, or local binaries cli://<binary>",
         long_help = "Smart target selector. Accepts single host, comma lists, files (@file.txt), \
-                     CIDR blocks (192.168.1.0/24), domains, URLs, or mixed entries. Legacy flags \
+                     CIDR blocks (192.168.1.0/24), domains, URLs, or local CLI binaries \
+                     (cli:///absolute/path/to/my-tool). CLI scopes select a local process, not a network host; \
+                     ports have no meaning for CLI targets. Binary paths preserve commas. Legacy flags \
                      (--target, --targets, --target-file, --domain, --domains, --domain-file, \
                      --cidr) remain as aliases."
     )]
@@ -1986,7 +2083,7 @@ pub struct ScanArgs {
                      oracles needed that instrumentation, instead of running the probe and \
                      reporting a 'no findings' result that looks like a refutation but is not \
                      evidence. A template declaring only oracles that work on any build (exit, \
-                     signal, timeout, exception) still runs and reaches a real verdict. The \
+                     signal, timeout, exception, property) still runs and reaches a real verdict. The \
                      build cxg wants is the language's instrumented one, e.g. \
                      clang -fsanitize=address -g; cxg inspects and refuses, it does not build \
                      the target -- see `cxg build --instrument` for the verb that does."
@@ -2324,6 +2421,11 @@ pub struct ScanArgs {
   Declarative: YAML
 
 EXAMPLES:
+  # CLI Security Baseline from the detection-template repository (not skeletons)
+  cxg template update
+  cxg template list --tags cli
+  cxg scan --scope cli:///absolute/path/to/my-tool --template-dir ~/.cert-x-gen/templates/official/templates/cli-baseline --require-instrumentation
+
   # List all templates
   cxg template list
 
@@ -2377,6 +2479,10 @@ pub struct TemplateCommand {
 #[derive(Subcommand, Debug)]
 pub enum TemplateAction {
     /// List available templates
+    ///
+    /// CLI Security Baseline: run `cxg template update`, then `cxg template list --tags cli`.
+    /// The pack comes from cert-x-gen-templates/templates/cli-baseline, not this
+    /// repository's skeletons. Inspect a result with `cxg template info <template-id>`.
     List {
         /// Filter by programming language
         #[arg(long, value_enum, value_name = "LANG")]
@@ -2386,7 +2492,7 @@ pub enum TemplateAction {
         #[arg(long, value_enum, value_name = "LEVEL")]
         severity: Option<SeverityArg>,
 
-        /// Filter by tags (comma-separated)
+        /// Filter by tags (comma-separated); use cli for local CLI templates
         #[arg(long, value_name = "TAG,TAG,...")]
         tags: Option<String>,
 
@@ -2410,6 +2516,11 @@ pub enum TemplateAction {
     },
 
     /// Update templates from remote repository
+    ///
+    /// The default repository is https://github.com/Bugb-Technologies/cert-x-gen-templates.
+    /// It supplies the CLI Security Baseline under templates/cli-baseline, installed at
+    /// ~/.cert-x-gen/templates/official/templates/cli-baseline with default configuration.
+    /// Example: cxg template update
     Update {
         /// Force update (overwrite local changes)
         #[arg(short, long)]
@@ -2456,6 +2567,9 @@ pub enum TemplateAction {
     },
 
     /// Search templates (shortcut for `cxg search`)
+    ///
+    /// Discover CLI Security Baseline templates after `cxg template update`:
+    ///     cxg template search baseline --tags cli
     Search {
         /// Search query
         query: String,
@@ -2468,7 +2582,7 @@ pub enum TemplateAction {
         #[arg(long, value_enum, value_name = "LEVEL")]
         severity: Option<SeverityArg>,
 
-        /// Filter by tags (comma-separated)
+        /// Filter by tags (comma-separated); use cli for local CLI templates
         #[arg(long, value_name = "TAG,TAG,...")]
         tags: Option<String>,
 
@@ -2524,6 +2638,10 @@ pub enum TemplateAction {
   • Sorting and pagination
 
 EXAMPLES:
+  # Discover installed CLI Security Baseline templates
+  cxg template update
+  cxg search --tags cli
+
   # Basic text search
   cxg search --query \"redis\"
   cxg search --query \"sql injection\"
@@ -2600,7 +2718,7 @@ pub struct SearchArgs {
     #[arg(long, value_enum, value_name = "LEVEL")]
     pub severity: Option<SeverityArg>,
 
-    /// Filter by tags (comma-separated)
+    /// Filter by tags (comma-separated); use cli for local CLI templates
     #[arg(long, value_name = "TAG,TAG,...")]
     pub tags: Option<String>,
 
