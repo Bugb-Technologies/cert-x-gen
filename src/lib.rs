@@ -33,6 +33,7 @@ mod pentest_bundle;
 pub mod pentest_install;
 pub mod plugin;
 pub mod progress;
+pub mod release_update;
 pub mod sandbox;
 pub mod scheduler;
 pub mod search;

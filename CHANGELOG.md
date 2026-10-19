@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`cxg update` failed on Homebrew installs** with `Update failed: IoError: No such file or
+  directory (os error 2)` at "Replacing binary file...". Homebrew links
+  `bin/cxg -> ../Cellar/cxg/<version>/bin/cxg`, and the replacement step resolved that
+  relative link target against the current working directory rather than the link's own
+  directory, so it failed from everywhere except `bin/` itself. macOS reports the symlink as the running
+  executable, so that is where it showed; a plain-file install was not affected. The replacement now follows the link to an absolute path.
+
+  **1.5.0 and 1.6.0 still run their own updater**, so `cxg update` on those releases cannot
+  pick up this fix. Upgrade once through your package manager (`brew upgrade cxg`,
+  `cargo install cert-x-gen --force`) or with a fresh download from the releases page.
+
+### Changed
+
+- `cxg update` no longer replaces a binary that a package manager owns. A cxg in a Homebrew
+  Cellar, in cargo's `bin` directory, or inside a container prints the command that
+  upgrades it through its manager (`brew upgrade cxg`, `cargo install cert-x-gen --force`,
+  `docker pull …`) and exits with status 3. `--force` replaces the file anyway.
+- `cxg update` verifies the downloaded binary against the release's `SHA256SUMS` before
+  replacing anything, and refuses a release without one.
+- `cxg update` no longer installs or refreshes detection templates on the way.
+
 ## [1.6.0] - 2026-10-19
 
 ### Upgrading from 1.5.0 — read this first
