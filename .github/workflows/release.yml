@@ -74,11 +74,29 @@ jobs:
           mkdir dist
           copy target\${{ matrix.target }}\release\${{ env.BINARY_NAME }}.exe dist\${{ matrix.artifact }}.exe
 
+      # The artifact service occasionally times out every CreateArtifact attempt
+      # the action makes within a minute. One failed leg would stop `release` and
+      # every job after it, so try once more after a pause before failing.
       - name: Upload artifact
+        id: upload
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
           path: dist/*
+
+      - name: Wait before retrying upload
+        if: steps.upload.outcome == 'failure'
+        shell: bash
+        run: sleep 60
+
+      - name: Retry artifact upload
+        if: steps.upload.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/*
+          overwrite: true
 
   release:
     name: Create Release

@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-10-19
+
+### Upgrading from 1.5.0 — read this first
+
+**The pentest pipeline refreshes itself after the binary upgrade.** `cxg pentest` runs a
+Python pipeline that an earlier binary materialised under `~/.cert-x-gen/pentest/`. Before
+this release, upgrading the binary left that copy untouched, so an upgraded `cxg` kept running
+the previous release's pipeline until someone ran `cxg pentest install --force`.
+
+From 1.6.0, the **first pentest action after upgrading** (a run, an auth command or
+`capabilities`) checks the installed files against the new binary's embedded bundle and
+refreshes them offline. A 1.5.0 installation has no content manifest and is refreshed on that
+first action. To refresh deliberately instead, run `cxg pentest update` (add `--json` for a
+machine-readable result); `cxg pentest status --json` reports freshness without changing
+anything. Every replacement saves the **entire previous tree**, including local edits and added
+files, under `~/.cert-x-gen/pentest-backups/`; auth profiles, sessions and template stores are
+not touched. Refresh does not run `pip` or install browsers, so new Python dependencies still
+need the usual setup. An installation that records a source checkout as its origin, or a shell
+with `CXG_SOURCE` set, is never replaced automatically: use `cxg pentest update --from-embedded`
+to opt in. A 1.5.0 client takes no execution lease, so upgrade between runs rather than while
+one is in progress. See the [pentest upgrade guide](pentest/README.md#pipeline-upgrades-and-status).
+
+**Fewer findings reach `confirmed`, on purpose.** A generated template can no longer confirm its
+own finding: `confirmed: true`, `evidence.outcome: "confirmed"` or reflection-only evidence is
+no longer enough. A finding is `confirmed` only on a class-appropriate signal the engine itself
+observed. Without one it is held as `unverified` (the probe ran but proved nothing) or
+`unsupported` (cxg has no oracle for the class). A run that confirmed a finding on 1.5.0 can
+report it as unverified on 1.6.0 against the same target; that is the intended change, not a
+regression. See "Proof contract" under Changed.
+
 ### Added
 
 - **Exact GuardLink threat selection:** `cxg pentest run --threat-id gl-…` confines
@@ -68,6 +98,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `extra_headers` and no `<name>.json`. It loads under `--auth <name>` without the
   "auth profile could not be loaded" error that previously halted every probe against such a
   target, opening an unauthenticated browser context that still presents the headers.
+- **Engine oracles for SQL injection.** `cxg.sqli` gives templates two engine-side oracles. The
+  time-blind oracle samples baseline, injected-delay and zero-delay control latencies and
+  confirms only when the injected delay is clearly separated from both. The extraction oracle
+  confirms only when a database-computed, non-sensitive marker absent from the control is read
+  back through a bounded UNION or error channel. Both SQL-injection classes now confirm only on
+  these observations, never on reflection or a template's own verdict.
+- **Clickjacking is proven by an observed action, not by frameability.** Under
+  `--attacker-origin`, `cxg.attacker.clickjack` frames the target cross-origin, overlays a decoy
+  on a real control, clicks through it and confirms only when the underlying action fires. A page
+  that merely renders in a frame is held as unverified.
+- **Sandbox-gated oracles for destructive classes.** File-upload-to-RCE, GraphQL amplification,
+  brute-force and credential stuffing run, and can confirm, only under an authorized-sandbox
+  gate: `--destructive-ok` and a loopback/localhost target. Outside the gate they are reported
+  `unsupported` with the missing half named, and the probe never runs. Upload-RCE confirms only
+  on an observed execution callback, not on the upload being accepted; GraphQL amplification
+  confirms on a measured response blow-up and states the factor; brute-force results are bounded
+  by the configured attempt count. Race/TOCTOU confirms on an observed state readback and is not
+  sandbox-gated.
+- **`cxg pentest update` and `cxg pentest status`.** `update [--json] [--from-embedded]` makes
+  the installed pipeline match this binary's embedded bundle offline, backing up the previous
+  tree; `status [--json]` reports freshness read-only and works without Python. `install` and
+  `install --force` share the same installer. Runs and updates coordinate through a lease on
+  `~/.cert-x-gen/pentest.lock`, so an update never replaces files under a running pipeline. The
+  bundle's manifest is derived from the packaged files at build time.
+
+### Changed
+
+- **Proof contract.** A finding is promoted to `confirmed` only through a per-class proof
+  predicate that reads engine-written evidence. A registered class whose signal is absent is held
+  as `unverified`; a class with no predicate is held as `unsupported`. The engine discards
+  template-supplied copies of its reserved evidence keys, so a template cannot forge them. The
+  `unreachable`, `dispatch_failed` and `blocked` checks run before any verdict. An XSS dialog
+  counts as execution only if its message carries the payload marker. See
+  `pentest/docs/TEMPLATES.md`.
+- **OAuth, OIDC and SAML findings are held at unverified.** The previous OAuth forgery
+  differential could not distinguish a vulnerable flow from a safe one and was removed, so no
+  finding in these classes reaches `confirmed`. Cross-host identity-provider traffic remains
+  blocked by the scope rule.
+
+### Fixed
+
+- **`cxg` no longer overflows the main-thread stack on Windows at startup.** Building the full
+  command tree could abort even `cxg --help` with `0xC00000FD` in debug builds. Argument parsing
+  and dispatch now run on a dedicated thread with an explicit 8 MiB stack on every platform, with
+  exit codes and panics carried back unchanged.
+
+### Documentation and infrastructure
+
+- The README, `docs/USAGE_GUIDE.md`, `pentest/README.md` and the built-in `--help` text describe
+  CLI baseline scanning and Tauri testing: what the source map establishes, what
+  `--tauri-prove` adds, and the limits of a mock-runtime proof.
+- The release and CI build jobs retry the artifact upload once after a pause, so a transient
+  artifact-service timeout on one runner no longer fails a whole release.
 
 ## [1.5.0] - 2026-10-07
 
@@ -1350,7 +1433,9 @@ Stated plainly so it produces no more false leads:
 
 ---
 
-[Unreleased]: https://github.com/Bugb-Technologies/cert-x-gen/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/Bugb-Technologies/cert-x-gen/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/Bugb-Technologies/cert-x-gen/compare/v1.5.0...v1.6.0
+[1.5.0]: https://github.com/Bugb-Technologies/cert-x-gen/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/Bugb-Technologies/cert-x-gen/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/Bugb-Technologies/cert-x-gen/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/Bugb-Technologies/cert-x-gen/compare/v1.1.1...v1.2.0
