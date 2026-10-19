@@ -68,8 +68,8 @@ CERT-X-GEN ships two distinct workflows:
 
 | Surface | Command | What it does |
 |---------|---------|--------------|
-| **Template scanning** | `cxg scan` | Runs polyglot detection templates against network/host targets (single host, file, CIDR, URL). This is the classic scanner. |
-| **AI-driven whitebox pentest** | `cxg pentest` | Ranks guardlink source-code hypotheses against an operator goal, has a local AI CLI write JavaScript probe templates that read the target's source, and executes them in parallel **authenticated** Chromium contexts against a running web app or Electron desktop app. |
+| **Template scanning** | `cxg scan` | Runs polyglot detection templates against network/host targets (single host, file, CIDR, URL) or local CLI binaries (`cli://`). |
+| **AI-driven whitebox pentest** | `cxg pentest` | Ranks guardlink source-code hypotheses against an operator goal, has a local AI CLI write JavaScript probe templates that read the target's source, and executes them in parallel **authenticated** Chromium contexts against a running web app or Electron desktop app. Also maps Tauri IPC and capabilities from source, with optional in-process command proof. |
 
 The full command set:
 
@@ -77,7 +77,7 @@ The full command set:
 |---------|---------|
 | `cxg scan` | Run a polyglot template security scan |
 | `cxg build` | Build a compiled target with sanitizer instrumentation, so a scan can earn its verdict |
-| `cxg pentest` | AI-driven whitebox pentest pipeline (web or Electron) |
+| `cxg pentest` | Whitebox pentest pipeline (web, Electron, or Tauri) |
 | `cxg template` | Manage templates (list, search, info, validate, update) |
 | `cxg search` | Search templates (full-text, regex, filters) |
 | `cxg ai` | AI-powered template generation |
@@ -307,6 +307,42 @@ From there the scanner discovers them automatically. (Templates are not auto-dow
 
 Templates cover multiple languages — Python, Go, C, Rust, Shell, YAML and more — with the exact
 inventory maintained in the template repository.
+
+### Testing CLI binaries and Tauri apps
+
+For a **local CLI binary**, fetch the detection library and select the CLI Security
+Baseline pack explicitly (default repository configuration):
+
+```bash
+cxg template update
+cxg scan --scope cli:///absolute/path/to/my-tool \
+  --template-dir ~/.cert-x-gen/templates/official/templates/cli-baseline \
+  --require-instrumentation
+```
+
+The [CLI Security Baseline templates](https://github.com/Bugb-Technologies/cert-x-gen-templates/tree/main/templates/cli-baseline)
+live in the separate detection-template repository; this repository's `templates/`
+contains skeletons. Probe templates can consume structured argv, stdin, seed inputs
+and target environment. The instrumentation preflight records unsupported checks as
+skipped; templates with build-independent oracles can still run on interpreted CLIs.
+See the [CLI usage guide](docs/USAGE_GUIDE.md#testing-a-local-cli-binary) for inputs,
+oracles and build options.
+
+For a **Tauri app**, map the Rust IPC surface and correlate it with the GuardLink
+threat model, without launching the app:
+
+```bash
+cxg pentest run --target-type tauri --codebase /path/to/app-repo
+# Opt in to building and exercising commands in process:
+cxg pentest run --target-type tauri --codebase /path/to/app-repo --tauri-prove
+```
+
+The default report carries `enumerated_not_live_probed`: commands and capability
+grants are source facts, and empty findings do not mean the app is safe. The optional
+proof uses Tauri's test runtime to exercise command dispatch and handler logic; it
+does not drive a live webview. See the [Tauri usage guide](docs/USAGE_GUIDE.md#testing-a-tauri-app)
+for prerequisites and the [pentest guide](pentest/README.md#tauri-source-map-and-in-process-proof)
+for evidence and coverage limits.
 
 ### Writing Templates
 
