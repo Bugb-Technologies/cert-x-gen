@@ -360,6 +360,25 @@ pub struct PentestCommand {
     pub action: PentestAction,
 }
 
+// Keep these argument builders out of the large PentestAction builder's frame.
+// Nested auth help must also fit the native Windows main-thread stack.
+#[derive(clap::Args, Debug, Clone)]
+pub struct PentestUpdateArgs {
+    /// Print only a machine-readable result on stdout.
+    #[arg(long)]
+    pub json: bool,
+    /// Explicitly replace a source-derived installation with the embedded bundle.
+    #[arg(long)]
+    pub from_embedded: bool,
+}
+
+#[derive(clap::Args, Debug, Clone)]
+pub struct PentestStatusArgs {
+    /// Print binary version, digests, origin, freshness and interrupted state.
+    #[arg(long)]
+    pub json: bool,
+}
+
 #[derive(Subcommand, Debug, Clone)]
 // @comment -- "clippy::large_enum_variant, allowed deliberately. Run already carries ~35 operator flags and sat just under the lint's 200-byte spread; adding --oast-interactsh pushed it over. The lint's remedy is to box the variant's payload, which here would mean a Box around a clap-derived struct that main.rs destructures field-by-field — a churn of every pentest call site, and an allocation on a path that parses one command line and exits, to save bytes on a value that exists once per process. The size is a true statement about a subcommand with this many flags, not a defect."
 #[allow(clippy::large_enum_variant)]
@@ -373,21 +392,10 @@ pub enum PentestAction {
     },
 
     /// Refresh from this binary's embedded bundle, offline; preserve previous files.
-    Update {
-        /// Print only a machine-readable result on stdout.
-        #[arg(long)]
-        json: bool,
-        /// Explicitly replace a source-derived installation with the embedded bundle.
-        #[arg(long)]
-        from_embedded: bool,
-    },
+    Update(PentestUpdateArgs),
 
     /// Inspect pipeline content without Python, filesystem writes, or recovery.
-    Status {
-        /// Print binary version, digests, origin, freshness and interrupted state.
-        #[arg(long)]
-        json: bool,
-    },
+    Status(PentestStatusArgs),
 
     /// Print installed orchestrator capabilities as JSON (no target contact).
     ///

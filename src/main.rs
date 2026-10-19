@@ -381,7 +381,7 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
         Error::Config(format!("pentest pipeline: {e:#}. No stale pipeline was launched; check writable home/disk space and retry `cxg pentest update`."))
     };
     match &cmd.action {
-        cli::PentestAction::Status { json } => {
+        cli::PentestAction::Status(cli::PentestStatusArgs { json }) => {
             let status = installer.status();
             if *json {
                 println!("{}", serde_json::to_string(&status).unwrap());
@@ -394,10 +394,10 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
             }
             return Ok(());
         }
-        cli::PentestAction::Update {
+        cli::PentestAction::Update(cli::PentestUpdateArgs {
             json,
             from_embedded,
-        } => {
+        }) => {
             let result = installer
                 .update(false, *from_embedded, source_override)
                 .map_err(install_error)?;
@@ -433,8 +433,8 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
     let mut args: Vec<String> = vec![orchestrator.to_string_lossy().to_string()];
     match cmd.action {
         cli::PentestAction::Install { .. }
-        | cli::PentestAction::Update { .. }
-        | cli::PentestAction::Status { .. } => unreachable!(),
+        | cli::PentestAction::Update(_)
+        | cli::PentestAction::Status(_) => unreachable!(),
         cli::PentestAction::Capabilities => {
             args.push("capabilities".into());
         }
