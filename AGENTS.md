@@ -377,7 +377,7 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   so a measurement needs a real profile in `~/.cert-x-gen/auth/<name>.json` or it will exit
   on that instead of on the thing being measured.
 - **PyYAML is needed for `--scope-file` and is only CHECKED, never installed.**
-  `cxg pentest install` verifies it alongside playwright and anthropic and prints a pip
+  `cxg pentest install` verifies it alongside playwright and prints a pip
   line; it is pinned in `pentest/requirements.txt`. Without it every `--scope-file` is
   refused — see `pentest/README.md` § `cxg pentest scope-init`.
 - `--scope-file` fails CLOSED: an unreadable file refuses the run with exit 4 and never

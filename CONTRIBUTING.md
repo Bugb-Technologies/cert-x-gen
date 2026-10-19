@@ -58,6 +58,16 @@ git checkout -b fix/bug-description
 - Add tests for new functionality
 - Update documentation as needed
 
+When changing files under `pentest/`, regenerate the committed bundle inventory:
+
+```bash
+CXG_REGENERATE_PENTEST_MANIFEST=1 cargo check
+```
+
+`build.rs` validates `pentest-manifest.json` against the filtered bundle and embeds
+its manifest with the crate version. Both the inventory and bundle ship in the
+published crate. This check catches stale inventories in source and registry builds.
+
 ### 3. Test Your Changes
 
 ```bash

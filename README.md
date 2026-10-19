@@ -148,6 +148,15 @@ cargo install cert-x-gen
 
 This builds and installs the `cxg` binary into `~/.cargo/bin`. Make sure that directory is on your `PATH`. To upgrade later, run `cargo install cert-x-gen --force` (or use the built-in `cxg update`).
 
+Homebrew, crates.io and container binary upgrades refresh the per-user pentest
+pipeline offline on the first pentest action. Previous files, including local
+edits, are retained under `~/.cert-x-gen/pentest-backups/`. Use
+`cxg pentest status --json` to inspect freshness or `cxg pentest update` to refresh
+explicitly. Source-derived installs require `update --from-embedded` to opt in.
+Upgrade between runs when migrating from older clients without execution leases.
+Python dependencies and browsers still require explicit setup; see the
+[pentest upgrade guide](pentest/README.md#pipeline-upgrades-and-status).
+
 ### Homebrew (macOS/Linux)
 
 ```bash

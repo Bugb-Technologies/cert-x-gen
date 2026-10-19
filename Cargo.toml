@@ -20,7 +20,7 @@ categories = ["command-line-utilities", "network-programming"]
 # repository entirely.
 #
 # If one is ever added back, do NOT list pentest/ or templates/: both are
-# build-time mandatory. src/main.rs embeds pentest/ via include_dir!, and
+# build-time mandatory. src/pentest_install.rs embeds pentest/ via include_dir!, and
 # src/ai/prompt.rs embeds templates/skeleton/* via include_str!, so excluding
 # either makes the published crate fail to compile.
 
@@ -36,6 +36,8 @@ async-trait = "0.1"
 tempfile = "3.8"
 # Embed the pentest Python orchestrator into the binary at compile time
 include_dir = "0.7"
+# Cross-platform shared execution / exclusive publication leases
+fs2 = "0.4"
 # Object-file parsing for the instrumentation preflight: the sanitizer markers
 # are SYMBOL names, and only a symbol table can tell a linker reference from a
 # string constant that merely spells one. Already in the graph transitively
@@ -163,6 +165,11 @@ schemars = "1.0"
 wasmtime = { version = "16.0", optional = true }
 # Self-update the cxg binary from GitHub releases (plain per-platform binary assets)
 self_update = { version = "0.44.0", default-features = false, features = ["reqwest", "rustls"] }
+
+[build-dependencies]
+sha2 = "0.10"
+hex = "0.4"
+serde_json = "1.0"
 
 [dev-dependencies]
 mockito = "1.2"
