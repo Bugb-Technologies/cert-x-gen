@@ -1,6 +1,7 @@
 // CERT-X-GEN: Advanced Multi-Language Security Scanning Engine
 // Copyright (c) 2024 CERT-X-GEN Core Team
 
+use cert_x_gen::pentest_install::{Bundle, Installer};
 use cert_x_gen::{
     ai::{AIManager, TemplateValidator},
     config::Config,
@@ -14,7 +15,6 @@ use cert_x_gen::{
     utils,
 };
 use clap::Parser;
-use include_dir::{include_dir, Dir};
 use std::io::IsTerminal;
 use std::sync::Arc;
 use std::{
@@ -39,7 +39,9 @@ async fn main() {
     let args: Vec<String> = std::env::args().collect();
     let suppress_banner = std::env::var("CXG_NO_BANNER").is_ok()
         || args.iter().any(|arg| arg == "--quiet" || arg == "-q")
-        || args.iter().any(|arg| arg == "--version" || arg == "-V")
+        || args
+            .iter()
+            .any(|arg| arg == "--version" || arg == "-V" || arg == "--json")
         || !std::io::stdout().is_terminal();
 
     if !suppress_banner {
@@ -94,7 +96,8 @@ fn init_logging(cli: &Cli) -> Result<()> {
 
     let fmt_layer = tracing_subscriber::fmt::layer()
         .with_target(true)
-        .with_thread_ids(true);
+        .with_thread_ids(true)
+        .with_writer(std::io::stderr);
 
     tracing_subscriber::registry()
         .with(env_filter)
@@ -125,10 +128,14 @@ async fn run(cli: Cli) -> Result<()> {
         Some(Commands::Template(cmd)) if matches!(cmd.action, cli::TemplateAction::Update { .. })
     );
 
-    // Handle auto-update flags before running any command (skip for template
-    // update, and for `build`, which needs no templates and whose stdout is a
-    // machine-readable manifest a first-run auto-install would pollute)
-    if !is_template_update && !matches!(&cli.command, Some(Commands::Build(_))) {
+    // Build and pentest commands need no detection-template updates. Pentest
+    // status must stay read-only, and pipeline publication must stay offline.
+    if !is_template_update
+        && !matches!(
+            &cli.command,
+            Some(Commands::Build(_) | Commands::Pentest(_))
+        )
+    {
         handle_auto_update(&cli).await?;
     }
 
@@ -356,20 +363,9 @@ async fn run_update_command(cmd: cli::UpdateCommand) -> Result<()> {
     Ok(())
 }
 
-/// Pentest orchestrator Python sources, embedded into the binary at compile time.
-/// This lets a shipped `cxg` self-install the orchestrator on any machine without
-/// needing the source tree on disk. A development source tree (CXG_SOURCE or a
-/// `pentest/` dir next to the repo) still takes precedence when present.
-static PENTEST_ASSETS: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/pentest");
-
-/// Pentest orchestrator install dir — Python sources copied here on first install.
-// @comment -- "resolves the pentest install dir under the user's home; uses dirs::home_dir() so it works on Windows where $HOME is unset (USERPROFILE is used instead)"
+/// Resolve the pipeline through the existing cross-platform home override.
 fn pentest_home() -> PathBuf {
-    if let Some(home) = dirs::home_dir() {
-        home.join(".cert-x-gen").join("pentest")
-    } else {
-        PathBuf::from(".cert-x-gen/pentest")
-    }
+    cert_x_gen::template::PathResolver::user_config_dir().join("pentest")
 }
 
 /// Dispatch for `cxg pentest …` — shells out to the Python orchestrator installed under
@@ -379,29 +375,66 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
     use std::process::Command as SysCommand;
     let home = pentest_home();
 
-    // Install action — copy bundled Python orchestrator + check deps.
-    if matches!(cmd.action, cli::PentestAction::Install { .. }) {
-        let force = matches!(cmd.action, cli::PentestAction::Install { force: true });
-        return pentest_install(&home, force);
+    let source_override = std::env::var_os("CXG_SOURCE").is_some();
+    let installer = Installer::new(home.parent().unwrap().to_path_buf(), Bundle::embedded());
+    let install_error = |e: anyhow::Error| {
+        Error::Config(format!("pentest pipeline: {e:#}. No stale pipeline was launched; check writable home/disk space and retry `cxg pentest update`."))
+    };
+    match &cmd.action {
+        cli::PentestAction::Status(cli::PentestStatusArgs { json }) => {
+            let status = installer.status();
+            if *json {
+                println!("{}", serde_json::to_string(&status).unwrap());
+            } else {
+                println!(
+                    "Pentest pipeline: {} at {}",
+                    status.freshness,
+                    home.display()
+                );
+            }
+            return Ok(());
+        }
+        cli::PentestAction::Update(cli::PentestUpdateArgs {
+            json,
+            from_embedded,
+        }) => {
+            let result = installer
+                .update(false, *from_embedded, source_override)
+                .map_err(install_error)?;
+            if *json {
+                println!("{}", serde_json::to_string(&result).unwrap());
+            }
+            return Ok(());
+        }
+        cli::PentestAction::Install { force } => {
+            // Source discovery is confined to this explicit development action.
+            let bundle = match find_pentest_source() {
+                Ok(source) => Bundle::source(&source).map_err(install_error)?,
+                Err(e) if source_override => return Err(e),
+                Err(_) => Bundle::embedded(),
+            };
+            Installer::new(home.parent().unwrap().to_path_buf(), bundle)
+                .update(*force, false, source_override)
+                .map_err(install_error)?;
+            // Materialization works before Python or pip is installed.
+            if let Err(e) = check_pentest_dependencies(&home) {
+                eprintln!("{e}");
+            }
+            return Ok(());
+        }
+        _ => {}
     }
-
-    // For every other action, the orchestrator must be installed.
+    let _lease = installer
+        .execution_lease(source_override)
+        .map_err(install_error)?;
     let orchestrator = home.join("cxg_pentest.py");
-    if !orchestrator.exists() {
-        eprintln!(
-            "Pentest orchestrator not installed at {}",
-            orchestrator.display()
-        );
-        eprintln!("Run: cxg pentest install");
-        return Err(Error::Config(
-            "pentest orchestrator not installed".to_string(),
-        ));
-    }
 
     // Build argv for the Python orchestrator.
     let mut args: Vec<String> = vec![orchestrator.to_string_lossy().to_string()];
     match cmd.action {
-        cli::PentestAction::Install { .. } => unreachable!(),
+        cli::PentestAction::Install { .. }
+        | cli::PentestAction::Update(_)
+        | cli::PentestAction::Status(_) => unreachable!(),
         cli::PentestAction::Capabilities => {
             args.push("capabilities".into());
         }
@@ -784,7 +817,7 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
         }
     }
 
-    let python = which_python()?;
+    let python = check_pentest_dependencies(&home)?;
     let status = SysCommand::new(&python)
         .args(&args)
         .status()
@@ -802,13 +835,12 @@ fn which_python() -> Result<PathBuf> {
         return Ok(PathBuf::from(p));
     }
     for candidate in &["python3", "python"] {
-        if let Ok(out) = std::process::Command::new("which").arg(candidate).output() {
-            if out.status.success() {
-                let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
-                if !path.is_empty() {
-                    return Ok(PathBuf::from(path));
-                }
-            }
+        if std::process::Command::new(candidate)
+            .arg("--version")
+            .output()
+            .is_ok_and(|out| out.status.success())
+        {
+            return Ok(PathBuf::from(candidate));
         }
     }
     Err(Error::Config(
@@ -816,70 +848,31 @@ fn which_python() -> Result<PathBuf> {
     ))
 }
 
-/// Install the pentest orchestrator: copy bundled Python sources to ~/.cert-x-gen/pentest/
-/// and verify deps (playwright, anthropic, PyYAML).
-fn pentest_install(home: &Path, force: bool) -> Result<()> {
-    use std::process::Command as SysCommand;
-
-    if home.exists() && !force {
-        println!(
-            "pentest orchestrator already installed at {}",
-            home.display()
-        );
-        println!("  use `cxg pentest install --force` to reinstall");
-    } else {
-        if home.exists() {
-            std::fs::remove_dir_all(home).ok();
-        }
-        std::fs::create_dir_all(home).map_err(|e| Error::Config(format!("mkdir failed: {}", e)))?;
-
-        // Prefer an on-disk source tree when one is available (development, or an
-        // explicit CXG_SOURCE override) so contributors can iterate on the Python
-        // without rebuilding the binary. Otherwise extract the copy embedded into
-        // the binary at compile time — this is the path every shipped install takes.
-        match find_pentest_source() {
-            Ok(src_dir) => {
-                copy_dir_recursive(&src_dir, home)?;
-                println!(
-                    "installed pentest orchestrator → {} (from {})",
-                    home.display(),
-                    src_dir.display()
-                );
-            }
-            Err(_) => {
-                extract_embedded_pentest(home)?;
-                println!(
-                    "installed pentest orchestrator → {} (embedded)",
-                    home.display()
-                );
-            }
-        }
-    }
-
-    // @comment -- "yaml (PyYAML) is checked alongside playwright and anthropic because --scope-file now REFUSES the run when it is absent rather than warning and scanning on defaults. Verifying two of the three dependencies while a containment control depends on the third moves the discovery from install time to engagement time — the operator finds out their scope file cannot be read at the moment they are trying to bound a live scan. The import name is `yaml`, the wheel is `pyyaml`; both spellings appear here for that reason."
-    // Dep check
+/// Check imports before any Python dispatch can contact a target. Never installs deps.
+fn check_pentest_dependencies(home: &Path) -> Result<PathBuf> {
     let python = which_python()?;
-    println!("checking Python deps…");
-    let check = SysCommand::new(&python)
-        .args(["-c", "import playwright, anthropic, yaml; print('OK')"])
+    let check = std::process::Command::new(&python)
+        .args(["-c", "import playwright, yaml"])
         .output();
-    match check {
-        Ok(o) if o.status.success() => println!("  ✓ playwright + anthropic + PyYAML installed"),
-        _ => {
-            println!("  ⚠ missing Python deps. Install with:");
-            println!("    pip3 install --break-system-packages playwright anthropic pyyaml");
-            println!("    python3 -m playwright install chromium");
-        }
+    if !check.is_ok_and(|out| out.status.success()) {
+        return Err(Error::Config(format!(
+            "Python dependency check failed for {}. Run: \"{}\" -m pip install -r \"{}\"; then \"{}\" -m playwright install chromium. No target was contacted.",
+            python.display(), python.display(), home.join("requirements.txt").display(), python.display()
+        )));
     }
-    Ok(())
+    Ok(python)
 }
 
 fn find_pentest_source() -> Result<PathBuf> {
     if let Ok(s) = std::env::var("CXG_SOURCE") {
         let p = PathBuf::from(s).join("pentest");
-        if p.exists() {
+        if p.join("cxg_pentest.py").is_file() {
             return Ok(p);
         }
+        return Err(Error::Config(format!(
+            "CXG_SOURCE has no pentest bundle at {}",
+            p.display()
+        )));
     }
     // 1) sibling to current_exe (release install layout)
     if let Ok(exe) = std::env::current_exe() {
@@ -901,90 +894,6 @@ fn find_pentest_source() -> Result<PathBuf> {
     Err(Error::Config(
         "could not locate pentest source dir. Set CXG_SOURCE=<cxg-repo> to override.".into(),
     ))
-}
-
-fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
-    std::fs::create_dir_all(dst)
-        .map_err(|e| Error::Config(format!("mkdir {}: {}", dst.display(), e)))?;
-    for entry in std::fs::read_dir(src)
-        .map_err(|e| Error::Config(format!("readdir {}: {}", src.display(), e)))?
-    {
-        let entry = entry.map_err(|e| Error::Config(format!("dirent: {}", e)))?;
-        let ft = entry
-            .file_type()
-            .map_err(|e| Error::Config(format!("filetype: {}", e)))?;
-        let name = entry.file_name();
-        // Skip pycache / hidden / temp output
-        let name_s = name.to_string_lossy();
-        if name_s.starts_with("__pycache__") || name_s.starts_with(".") || name_s == "report.json" {
-            continue;
-        }
-        let src_p = entry.path();
-        let dst_p = dst.join(&name);
-        if ft.is_dir() {
-            copy_dir_recursive(&src_p, &dst_p)?;
-        } else {
-            std::fs::copy(&src_p, &dst_p).map_err(|e| {
-                Error::Config(format!(
-                    "copy {}→{}: {}",
-                    src_p.display(),
-                    dst_p.display(),
-                    e
-                ))
-            })?;
-        }
-    }
-    Ok(())
-}
-
-/// Extract the pentest orchestrator embedded in the binary (via include_dir!) into
-/// `dst`. Used by shipped installs where no source tree is present on disk.
-fn extract_embedded_pentest(dst: &Path) -> Result<()> {
-    std::fs::create_dir_all(dst)
-        .map_err(|e| Error::Config(format!("mkdir {}: {}", dst.display(), e)))?;
-    extract_embedded_dir(&PENTEST_ASSETS, dst)
-}
-
-/// Recursively write an embedded directory to disk, mirroring copy_dir_recursive's
-/// exclusions so __pycache__, hidden files, *.pyc, and stale report.json never land
-/// in the install dir. Embedded file paths are relative to the include_dir! root, so
-/// each is joined onto `dst_root` directly.
-fn extract_embedded_dir(dir: &Dir, dst_root: &Path) -> Result<()> {
-    for entry in dir.entries() {
-        match entry {
-            include_dir::DirEntry::Dir(d) => {
-                if embedded_should_skip(d.path()) {
-                    continue;
-                }
-                extract_embedded_dir(d, dst_root)?;
-            }
-            include_dir::DirEntry::File(f) => {
-                let rel = f.path();
-                if embedded_should_skip(rel) {
-                    continue;
-                }
-                let dst_p = dst_root.join(rel);
-                if let Some(parent) = dst_p.parent() {
-                    std::fs::create_dir_all(parent)
-                        .map_err(|e| Error::Config(format!("mkdir {}: {}", parent.display(), e)))?;
-                }
-                std::fs::write(&dst_p, f.contents())
-                    .map_err(|e| Error::Config(format!("write {}: {}", dst_p.display(), e)))?;
-            }
-        }
-    }
-    Ok(())
-}
-
-/// True if any component of an embedded path should be excluded from extraction.
-fn embedded_should_skip(path: &Path) -> bool {
-    path.components().any(|c| {
-        let s = c.as_os_str().to_string_lossy();
-        s.starts_with("__pycache__")
-            || s.starts_with('.')
-            || s == "report.json"
-            || s.ends_with(".pyc")
-    })
 }
 
 /// Handle auto-update logic based on CLI flags

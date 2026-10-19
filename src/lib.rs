@@ -29,6 +29,8 @@ pub mod matcher;
 pub mod mcp;
 pub mod network;
 pub mod output;
+mod pentest_bundle;
+pub mod pentest_install;
 pub mod plugin;
 pub mod progress;
 pub mod sandbox;

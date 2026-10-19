@@ -58,6 +58,10 @@ git checkout -b fix/bug-description
 - Add tests for new functionality
 - Update documentation as needed
 
+`build.rs` derives the pentest bundle manifest automatically from the filtered
+files under `pentest/`. No generated inventory needs to be committed when changing
+the pipeline or its documentation.
+
 ### 3. Test Your Changes
 
 ```bash
