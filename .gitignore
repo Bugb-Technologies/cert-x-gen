@@ -174,6 +174,3 @@ tests/fixtures/cli-baseline/notekeeper_fixed.py
 tests/fixtures/cli-baseline/memtoy_defective
 tests/fixtures/cli-baseline/memtoy_fixed
 tests/fixtures/cli-baseline/*.dSYM
-
-# Build-validated inventory shipped with the embedded pentest bundle.
-!/pentest-manifest.json
