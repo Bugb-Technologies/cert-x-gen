@@ -168,7 +168,19 @@ jobs:
           targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --release --target ${{ matrix.target }}
-      - uses: actions/upload-artifact@v4
+      # Same transient-timeout retry as release.yml's build job.
+      - id: upload
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
         with:
           name: cxg-${{ matrix.target }}
           path: target/${{ matrix.target }}/release/${{ matrix.bin }}
+      - if: steps.upload.outcome == 'failure'
+        shell: bash
+        run: sleep 60
+      - if: steps.upload.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: cxg-${{ matrix.target }}
+          path: target/${{ matrix.target }}/release/${{ matrix.bin }}
+          overwrite: true
