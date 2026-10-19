@@ -27,8 +27,25 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilte
 mod cli;
 use cli::{Cli, Commands};
 
-#[tokio::main]
-async fn main() {
+fn main() {
+    // Clap's full command tree can exceed the native Windows main-thread stack
+    // in debug builds. Give parsing and dispatch the same stack on every platform.
+    std::thread::Builder::new()
+        .name("cxg".into())
+        .stack_size(8 * 1024 * 1024)
+        .spawn(|| {
+            tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .build()
+                .expect("build CLI runtime")
+                .block_on(cli_main());
+        })
+        .expect("start CLI thread")
+        .join()
+        .unwrap_or_else(|panic| std::panic::resume_unwind(panic));
+}
+
+async fn cli_main() {
     // Display the banner first (before parsing CLI), but never onto machine-readable
     // stdout. The default rule is a TTY check: suppress the banner whenever stdout is
     // not a terminal (pipes, redirects, CI, JSON-RPC over stdio for `mcp`, etc.).
