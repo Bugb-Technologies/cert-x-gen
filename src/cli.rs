@@ -337,6 +337,17 @@ pub struct UpdateCommand {
     /// Skip the confirmation prompt before replacing the binary
     #[arg(long, short = 'y')]
     pub yes: bool,
+
+    #[arg(
+        long,
+        help = "Replace the binary even when a package manager owns it",
+        long_help = "Replace the binary even when a package manager owns it. Without this, a cxg \
+                     installed by Homebrew, by `cargo install` or inside a container is left \
+                     alone: `cxg update` prints the command that upgrades it through its manager \
+                     and exits with status 3, because replacing the file behind the manager's \
+                     back leaves the manager believing the old version is installed."
+    )]
+    pub force: bool,
 }
 
 #[derive(Parser, Debug, Clone)]

@@ -145,12 +145,14 @@ async fn run(cli: Cli) -> Result<()> {
         Some(Commands::Template(cmd)) if matches!(cmd.action, cli::TemplateAction::Update { .. })
     );
 
-    // Build and pentest commands need no detection-template updates. Pentest
-    // status must stay read-only, and pipeline publication must stay offline.
+    // Build, pentest and self-update commands need no detection-template
+    // updates. Pentest status must stay read-only, pipeline publication must
+    // stay offline, and `cxg update` must not clone templates on the way to
+    // replacing (or declining to replace) the binary.
     if !is_template_update
         && !matches!(
             &cli.command,
-            Some(Commands::Build(_) | Commands::Pentest(_))
+            Some(Commands::Build(_) | Commands::Pentest(_) | Commands::Update(_))
         )
     {
         handle_auto_update(&cli).await?;
@@ -324,60 +326,154 @@ fn run_build_command(cmd: cli::BuildCommand) -> Result<()> {
     }
 }
 
-/// Handle `cxg update` — self-replace the running binary with the latest GitHub release.
+/// Handle `cxg update` — replace the installed binary with a GitHub release.
 ///
 /// Release assets are plain (non-archived) per-platform binaries named
 /// `cxg-<os>-<arch>` (see `.github/workflows/release.yml`), so we match on that
-/// suffix via `self_update`'s `target` filter rather than the Rust target triple.
-// @comment -- "downloads an untrusted binary artifact from GitHub over TLS and atomically overwrites the on-disk cxg executable"
+/// suffix rather than the Rust target triple. `cert_x_gen::release_update`
+/// explains why the download, the checksum and the replacement happen here
+/// rather than in `self_update`.
+// @comment -- "downloads an untrusted binary artifact from GitHub over TLS, checks it against the release's SHA256SUMS and atomically overwrites the on-disk cxg executable"
 // @g.source (#github_release) -- "release binary fetched from github.com/Bugb-Technologies/cert-x-gen/releases"
 // @g.sink Commands.Update -- "writes the downloaded executable over the running cxg binary"
 async fn run_update_command(cmd: cli::UpdateCommand) -> Result<()> {
+    use cert_x_gen::release_update::{self, CHECKSUMS_ASSET};
+
     let target = release_target()?;
+    let current = env!("CARGO_PKG_VERSION");
+    let invoked = std::env::current_exe()?;
+    let installed = release_update::installed_executable(&invoked)?;
+    let kind = release_update::detect_install(&installed);
 
-    // self_update uses a blocking HTTP client; run it off the async runtime.
-    tokio::task::spawn_blocking(move || -> Result<()> {
-        let current = env!("CARGO_PKG_VERSION");
+    if cmd.check {
+        let latest = lookup_release(None).await?;
+        if self_update::version::bump_is_greater(current, &latest.version).unwrap_or(false) {
+            println!("Update available: v{current} -> v{}", latest.version);
+            match kind.upgrade_command() {
+                Some(command) => println!("Upgrade it with: {command}"),
+                None => println!("Run `cxg update` to install it."),
+            }
+        } else {
+            println!("cxg is up to date (v{current})");
+        }
+        return Ok(());
+    }
 
-        let mut builder = self_update::backends::github::Update::configure();
-        builder
+    // Decided before any network call, so a managed install is answered offline.
+    if let (false, Some(manager), Some(command)) =
+        (cmd.force, kind.manager(), kind.upgrade_command())
+    {
+        eprintln!(
+            "cxg at {} is managed by {manager}, so `cxg update` leaves it alone.",
+            installed.display()
+        );
+        eprintln!("Upgrade it with: {command}");
+        eprintln!("(Pass --force to replace the file anyway.)");
+        std::process::exit(3);
+    }
+
+    let release = lookup_release(cmd.version.clone()).await?;
+    if cmd.version.is_none()
+        && !self_update::version::bump_is_greater(current, &release.version).unwrap_or(false)
+    {
+        println!("cxg is already up to date (v{current})");
+        return Ok(());
+    }
+    let asset = release.asset_for(&target, None).ok_or_else(|| {
+        Error::config(format!(
+            "release v{} has no cxg binary for {target}",
+            release.version
+        ))
+    })?;
+    let sums_asset = release
+        .assets
+        .iter()
+        .find(|a| a.name == CHECKSUMS_ASSET)
+        .ok_or_else(|| {
+            Error::config(format!(
+                "release v{} has no {CHECKSUMS_ASSET}, so its binary cannot be verified",
+                release.version
+            ))
+        })?;
+
+    println!("Current exe: {}", installed.display());
+    if std::fs::symlink_metadata(&invoked).is_ok_and(|m| m.file_type().is_symlink()) {
+        println!("  (invoked as {})", invoked.display());
+    }
+    println!(
+        "New release: v{current} -> v{} ({})",
+        release.version, asset.name
+    );
+    if !cmd.yes {
+        let proceed = dialoguer::Confirm::new()
+            .with_prompt("Replace the installed binary?")
+            .default(true)
+            .interact()
+            .map_err(|e| {
+                Error::config(format!("cannot prompt for confirmation ({e}); pass --yes"))
+            })?;
+        if !proceed {
+            println!("Update cancelled.");
+            return Ok(());
+        }
+    }
+
+    let client = reqwest::Client::builder()
+        .user_agent(concat!("cxg/", env!("CARGO_PKG_VERSION")))
+        .build()?;
+    println!("Downloading {}...", asset.name);
+    let binary = download_release_asset(&client, &asset.download_url).await?;
+    let sums = download_release_asset(&client, &sums_asset.download_url).await?;
+    release_update::verify_sha256(&binary, &String::from_utf8_lossy(&sums), &asset.name)
+        .map_err(Error::config)?;
+    println!("Verified against {CHECKSUMS_ASSET}");
+
+    let staging = tempfile::tempdir()?;
+    let new_exe = staging.path().join(&asset.name);
+    std::fs::write(&new_exe, &binary)?;
+    release_update::replace_executable(&installed, &new_exe).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::PermissionDenied {
+            Error::config(format!(
+                "no permission to replace {} ({e}); re-run with sudo, or reinstall cxg in a \
+                 directory you can write",
+                installed.display()
+            ))
+        } else {
+            Error::config(format!("cannot replace {}: {e}", installed.display()))
+        }
+    })?;
+    println!("Updated cxg to v{}", release.version);
+    Ok(())
+}
+
+/// Look up a release of cxg on GitHub: the given tag, or the latest.
+async fn lookup_release(tag: Option<String>) -> Result<self_update::update::Release> {
+    // self_update's GitHub client is blocking; run it off the async runtime.
+    tokio::task::spawn_blocking(move || -> Result<self_update::update::Release> {
+        let updater = self_update::backends::github::Update::configure()
             .repo_owner("Bugb-Technologies")
             .repo_name("cert-x-gen")
             .bin_name("cxg")
-            .target(&target)
-            .current_version(current)
-            .show_download_progress(true)
-            .no_confirm(cmd.yes);
-
-        if let Some(tag) = &cmd.version {
-            builder.target_version_tag(tag);
-        }
-
-        let updater = builder.build()?;
-
-        if cmd.check {
-            let latest = updater.get_latest_release()?;
-            if latest.version.trim_start_matches('v') == current {
-                println!("cxg is up to date (v{current})");
-            } else {
-                println!("Update available: v{current} -> {}", latest.version);
-                println!("Run `cxg update` to install it.");
-            }
-            return Ok(());
-        }
-
-        let status = updater.update()?;
-        if status.updated() {
-            println!("Updated cxg to {}", status.version());
-        } else {
-            println!("cxg is already up to date ({})", status.version());
-        }
-        Ok(())
+            .current_version(env!("CARGO_PKG_VERSION"))
+            .build()?;
+        Ok(match tag {
+            Some(tag) => updater.get_release_version(&tag)?,
+            None => updater.get_latest_release()?,
+        })
     })
     .await
-    .map_err(|e| Error::Internal(format!("update task panicked: {e}")))??;
+    .map_err(|e| Error::Internal(format!("release lookup task panicked: {e}")))?
+}
 
-    Ok(())
+/// Download one release asset through the GitHub API asset URL.
+async fn download_release_asset(client: &reqwest::Client, url: &str) -> Result<Vec<u8>> {
+    let response = client
+        .get(url)
+        .header(reqwest::header::ACCEPT, "application/octet-stream")
+        .send()
+        .await?
+        .error_for_status()?;
+    Ok(response.bytes().await?.to_vec())
 }
 
 /// Resolve the pipeline through the existing cross-platform home override.

@@ -84,7 +84,7 @@ The full command set:
 | `cxg mcp` | Run as an MCP (Model Context Protocol) server for AI agents |
 | `cxg sandbox` | Manage per-language dependency environments |
 | `cxg config` | Generate / validate / show configuration |
-| `cxg update` | Update cxg to the latest released build |
+| `cxg update` | Update a directly installed cxg to the latest release (see [Updating](#updating)) |
 | `cxg server` | REST API server — **not implemented** (returns an error) |
 | `cxg version` | Display version information |
 
@@ -146,7 +146,7 @@ The quickest cross-platform install if you have a Rust toolchain:
 cargo install cert-x-gen
 ```
 
-This builds and installs the `cxg` binary into `~/.cargo/bin`. Make sure that directory is on your `PATH`. To upgrade later, run `cargo install cert-x-gen --force` (or use the built-in `cxg update`).
+This builds and installs the `cxg` binary into `~/.cargo/bin`. Make sure that directory is on your `PATH`. To upgrade later, run `cargo install cert-x-gen --force`.
 
 Homebrew, crates.io and container binary upgrades refresh the per-user pentest
 pipeline offline on the first pentest action. Previous files, including local
@@ -205,6 +205,27 @@ Download pre-built binaries from [GitHub Releases](https://github.com/Bugb-Techn
 - `cxg-darwin-amd64` — macOS Intel
 - `cxg-darwin-arm64` — macOS Apple Silicon
 - `cxg-windows-amd64.exe` — Windows x86_64
+
+### Updating
+
+`cxg update` replaces a directly installed binary (the install script, a downloaded
+release binary, or a previous `cxg update`) with the latest release, after checking it
+against the release's `SHA256SUMS`. `cxg update --check` only reports whether a newer
+release exists; `--version vX.Y.Z` installs a specific release; `--yes` skips the prompt.
+
+A cxg that a package manager owns is left alone: `cxg update` prints the manager's own
+command and exits with status 3, because replacing the file behind the manager's back
+leaves it believing the old version is installed. Pass `--force` to replace it anyway.
+
+| Installed by | Upgrade with |
+|--------------|--------------|
+| Homebrew | `brew upgrade cxg` |
+| `cargo install` | `cargo install cert-x-gen --force` |
+| Docker image | `docker pull ghcr.io/bugb-technologies/cert-x-gen:latest` |
+
+`cxg update` in 1.5.0 and 1.6.0 fails on a macOS Homebrew install with "No such file or
+directory (os error 2)". Those releases run their own updater, so upgrade them once
+through Homebrew (or a fresh download); later releases answer as above.
 
 ### Verify Installation
 
