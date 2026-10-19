@@ -1,7 +1,7 @@
 [package]
 name = "cert-x-gen"
-# @comment -- "release 1.6.0: pentest proves findings through engine-observed oracles, maps and proves Tauri IPC commands, runs anonymously, and refreshes its pipeline after an upgrade"
-version = "1.6.0"
+# @comment -- "release 1.6.1: cxg update follows relative symlinks and leaves package-managed installs to their package manager"
+version = "1.6.1"
 edition = "2021"
 authors = ["CERT-X-GEN Core Team"]
 description = "Advanced Multi-Language Security Scanning Engine"

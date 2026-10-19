@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.1] - 2026-10-19
+
 ### Fixed
 
 - **`cxg update` failed on Homebrew installs** with `Update failed: IoError: No such file or
@@ -18,7 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   **1.5.0 and 1.6.0 still run their own updater**, so `cxg update` on those releases cannot
   pick up this fix. Upgrade once through your package manager (`brew upgrade cxg`,
-  `cargo install cert-x-gen --force`) or with a fresh download from the releases page.
+  `cargo install cert-x-gen --force`, or pulling the new image with
+  `docker pull ghcr.io/bugb-technologies/cert-x-gen:latest`) or with a fresh download from
+  the releases page.
 
 ### Changed
 
@@ -1456,7 +1460,8 @@ Stated plainly so it produces no more false leads:
 
 ---
 
-[Unreleased]: https://github.com/Bugb-Technologies/cert-x-gen/compare/v1.6.0...HEAD
+[Unreleased]: https://github.com/Bugb-Technologies/cert-x-gen/compare/v1.6.1...HEAD
+[1.6.1]: https://github.com/Bugb-Technologies/cert-x-gen/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/Bugb-Technologies/cert-x-gen/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/Bugb-Technologies/cert-x-gen/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/Bugb-Technologies/cert-x-gen/compare/v1.3.0...v1.4.0
