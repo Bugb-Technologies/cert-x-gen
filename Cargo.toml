@@ -162,7 +162,7 @@ rmcp = { version = "0.8", features = ["server", "transport-io"] }
 schemars = "1.0"
 
 # WASM support for templates
-wasmtime = { version = "16.0", optional = true }
+wasmtime = { version = "36.0", optional = true }
 # Self-update the cxg binary from GitHub releases (plain per-platform binary assets)
 self_update = { version = "0.44.0", default-features = false, features = ["reqwest", "rustls"] }
 
