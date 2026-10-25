@@ -1093,6 +1093,50 @@ pub enum PentestAction {
         )]
         oast_interactsh: Option<String>,
 
+        /// Host a built-in OAST callback cxg OWNS and poll it, bound to an interface
+        /// the TARGET can reach rather than to loopback — the mode that confirms a
+        /// blind vulnerability (SSRF, XXE, command injection, SSTI, NoSQL, LDAP,
+        /// deserialization) against a target with no internet egress, such as an
+        /// `env up` sandbox or internal staging, where `--oast-interactsh` cannot
+        /// (its public servers need egress) and `--oast` cannot be read back.
+        ///
+        /// cxg holds the listener, so templates call `cxg.oast.poll(label)` and a
+        /// callback becomes a `confirmed=true` finding with the interaction as
+        /// evidence. The label rides in the URL path (`http://<host>/<label>`), not a
+        /// subdomain, because the bind address has no wildcard DNS under it.
+        ///
+        /// The optional value selects the bind: omit it or `docker-bridge` for the
+        /// docker bridge gateway (reachable from a container on the default bridge),
+        /// `host-docker-internal` for a Docker Desktop container, or an
+        /// address/hostname (e.g. `10.0.0.5`, or `ip:10.0.0.5`) for internal staging.
+        ///
+        /// Mutually exclusive with `--oast` and `--oast-interactsh`: one canary per
+        /// run, or payloads split between callbacks nobody correlates per finding.
+        // @comment -- "forwarded as the OAST mode, not a session: pentest/oast_listener.py binds the socket and decides reachability, so the Rust and Python CLIs cannot disagree about whether this canary is pollable; the three states (absent/bare/explicit) are carried exactly as --oast-interactsh carries them"
+        #[arg(
+            long,
+            value_name = "BIND",
+            num_args = 0..=1,
+            default_missing_value = "",
+            conflicts_with_all = ["oast", "oast_interactsh"],
+            help_heading = "OAST",
+            display_order = 33,
+            help = "Built-in OAST listener cxg owns, reachable by an egress-less target"
+        )]
+        oast_listener: Option<String>,
+
+        /// Also start a DNS listener alongside `--oast-listener`, for a target whose
+        /// egress is filtered to DNS. Needs the target's resolver pointed at this host
+        /// and privilege to bind udp/53; a bind failure leaves the HTTP listener
+        /// working and notes the reason. No effect without `--oast-listener`.
+        #[arg(
+            long,
+            help_heading = "OAST",
+            display_order = 34,
+            help = "Add a DNS leg to --oast-listener (needs udp/53)"
+        )]
+        oast_listener_dns: bool,
+
         /// Target type to pentest.
         ///
         /// `web` (default): the existing authenticated-browser pipeline against an HTTP
@@ -4055,11 +4099,78 @@ mod oast_flag_tests {
         if let PentestAction::Run {
             oast,
             oast_interactsh,
+            oast_listener,
             ..
         } = run_action(&base())
         {
             assert_eq!(oast, None);
             assert_eq!(oast_interactsh, None);
+            assert_eq!(oast_listener, None);
+            return;
+        }
+        panic!("expected pentest run");
+    }
+
+    // The bare listener form means "bind the docker bridge", a request for a canary,
+    // so like bare --oast-interactsh it must be Some("") and distinguishable from the
+    // None that means no canary — that difference is what main.rs forwards as the flag
+    // alone rather than with an empty-string value.
+    #[test]
+    fn bare_listener_yields_empty_string_not_none() {
+        let mut argv = base();
+        argv.push("--oast-listener");
+        if let PentestAction::Run { oast_listener, .. } = run_action(&argv) {
+            assert_eq!(oast_listener.as_deref(), Some(""));
+            return;
+        }
+        panic!("expected pentest run");
+    }
+
+    #[test]
+    fn listener_takes_an_explicit_bind() {
+        let mut argv = base();
+        argv.extend(["--oast-listener", "host-docker-internal"]);
+        if let PentestAction::Run { oast_listener, .. } = run_action(&argv) {
+            assert_eq!(oast_listener.as_deref(), Some("host-docker-internal"));
+            return;
+        }
+        panic!("expected pentest run");
+    }
+
+    // One canary per run: the listener is a third pollable mode, and pairing it with
+    // either other canary would split payloads between callbacks nobody correlates,
+    // so clap rejects every pairing during parse.
+    #[test]
+    fn listener_conflicts_with_the_other_canaries() {
+        for other in [
+            vec!["--oast", "c4ca4238a0b92.oastify.com"],
+            vec!["--oast-interactsh"],
+            vec!["--oast-interactsh", "https://oast.example.internal"],
+        ] {
+            let mut argv = base();
+            argv.push("--oast-listener");
+            argv.extend(other.iter().copied());
+            assert!(
+                Cli::try_parse_from(&argv).is_err(),
+                "--oast-listener must conflict with {other:?}"
+            );
+        }
+    }
+
+    // The DNS leg is an independent boolean that only means anything alongside the
+    // listener, but it must parse on its own without consuming the listener's value.
+    #[test]
+    fn listener_dns_is_an_independent_boolean() {
+        let mut argv = base();
+        argv.extend(["--oast-listener", "127.0.0.1", "--oast-listener-dns"]);
+        if let PentestAction::Run {
+            oast_listener,
+            oast_listener_dns,
+            ..
+        } = run_action(&argv)
+        {
+            assert_eq!(oast_listener.as_deref(), Some("127.0.0.1"));
+            assert!(oast_listener_dns);
             return;
         }
         panic!("expected pentest run");
