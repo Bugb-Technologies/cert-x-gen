@@ -749,6 +749,8 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
             skip_health_check,
             oast,
             oast_interactsh,
+            oast_listener,
+            oast_listener_dns,
             target_type,
             app_cmd,
             app_binary,
@@ -843,6 +845,16 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
                 if !server.is_empty() {
                     args.push(server);
                 }
+            }
+            // @comment -- "forwards the built-in-listener mode the same way as --oast-interactsh: the bare form is the flag alone (meaning 'bind the docker bridge' downstream), and an empty string as a value would instead be read as an operator address of '' and misparsed, so clap's empty default_missing_value is a branch marker, never a relayed value. pentest/oast_listener.py binds the socket and owns reachability, so the two CLIs cannot disagree about whether this canary is pollable"
+            if let Some(bind) = oast_listener {
+                args.push("--oast-listener".into());
+                if !bind.is_empty() {
+                    args.push(bind);
+                }
+            }
+            if oast_listener_dns {
+                args.push("--oast-listener-dns".into());
             }
             // @comment -- "forwards desktop target selection and launch configuration to the Python orchestrator, which owns substrate construction"
             args.push("--target-type".into());
