@@ -747,6 +747,10 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
             me_path,
             generation_timeout,
             skip_health_check,
+            insecure_tls,
+            proxy,
+            client_cert,
+            client_key,
             oast,
             oast_interactsh,
             oast_listener,
@@ -831,6 +835,18 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
                 "--generation-timeout".into(),
                 generation_timeout.to_string(),
             ]);
+            if insecure_tls {
+                args.push("--insecure-tls".into());
+            }
+            if let Some(proxy) = proxy {
+                args.extend(["--proxy".into(), proxy]);
+            }
+            if let Some(cert) = client_cert {
+                args.extend(["--client-cert".into(), cert.to_string_lossy().to_string()]);
+            }
+            if let Some(key) = client_key {
+                args.extend(["--client-key".into(), key.to_string_lossy().to_string()]);
+            }
             if skip_health_check {
                 args.push("--skip-health-check".into());
             }
