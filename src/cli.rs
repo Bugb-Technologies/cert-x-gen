@@ -892,7 +892,7 @@ pub enum PentestAction {
             default_value = "claude",
             help_heading = "AI Generation",
             display_order = 22,
-            help = "AI provider: auto|bridge|claude|codex|gemini|anthropic|openai"
+            help = "AI provider: auto|bridge|claude|codex|gemini|crush|anthropic|openai"
         )]
         ai_provider: String,
 
@@ -1325,6 +1325,21 @@ pub enum PentestAction {
             help = "One allowlist entry, e.g. 'GET /api/users/{id}' (repeatable)"
         )]
         only_route: Vec<String>,
+
+        /// Append the operator skills in FILE to AI generation and mutation prompts.
+        ///
+        /// Markdown written by a caller (bravos writes the skills its operator tagged
+        /// for template authoring). Appended last, under an untrusted heading: it is
+        /// advice on how to write a probe and never overrides the template rules.
+        // @comment -- "Forwarded only, never read here: the orchestrator owns the heading, the budget and the unreadable-file behaviour, so the two CLIs cannot disagree about what a skills file does."
+        #[arg(
+            long,
+            value_name = "FILE",
+            help_heading = "Hypothesis filtering",
+            display_order = 15,
+            help = "Append operator skills (untrusted guidance) to generation/mutation prompts"
+        )]
+        skills_file: Option<PathBuf>,
 
         /// Permit `cxg.socket`: raw TCP/TLS bytes with no HTTP client in between.
         ///

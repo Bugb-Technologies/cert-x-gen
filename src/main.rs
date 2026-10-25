@@ -764,6 +764,7 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
             no_code_graph,
             only_routes,
             only_route,
+            skills_file,
             enable_chaining,
             batch_size,
             deterministic_templates,
@@ -896,6 +897,9 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
             }
             for entry in only_route {
                 args.extend(["--only-route".into(), entry]);
+            }
+            if let Some(f) = skills_file {
+                args.extend(["--skills-file".into(), f.to_string_lossy().to_string()]);
             }
             if enable_chaining {
                 args.push("--enable-chaining".into());
