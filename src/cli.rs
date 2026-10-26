@@ -1153,6 +1153,24 @@ pub enum PentestAction {
         )]
         oast_listener_dns: bool,
 
+        /// Default Location URL for redirects staged with cxg.oast.redirect(label).
+        #[arg(
+            long,
+            requires = "oast_listener",
+            value_name = "URL",
+            help_heading = "OAST"
+        )]
+        oast_redirect_location: Option<String>,
+
+        /// Default HTTP redirect status (302 when omitted).
+        #[arg(long, requires = "oast_listener", value_parser = ["302", "307"], help_heading = "OAST")]
+        oast_redirect_status: Option<String>,
+
+        /// First A query per name returns the listener IPv4; later queries return
+        /// this IPv4, all with TTL 0. The target resolver must reach this DNS server.
+        #[arg(long, requires_all = ["oast_listener", "oast_listener_dns"], value_name = "IPV4", help_heading = "OAST")]
+        oast_dns_rebind_ip: Option<String>,
+
         /// Target type to pentest.
         ///
         /// `web` (default): the existing authenticated-browser pipeline against an HTTP
@@ -4194,6 +4212,63 @@ mod oast_flag_tests {
             return;
         }
         panic!("expected pentest run");
+    }
+
+    #[test]
+    fn listener_redirect_and_rebinding_options_parse() {
+        let mut argv = base();
+        argv.extend([
+            "--oast-listener",
+            "127.0.0.1",
+            "--oast-listener-dns",
+            "--oast-redirect-location",
+            "http://169.254.169.254/latest/meta-data/",
+            "--oast-redirect-status",
+            "307",
+            "--oast-dns-rebind-ip",
+            "169.254.169.254",
+        ]);
+        if let PentestAction::Run {
+            oast_redirect_location,
+            oast_redirect_status,
+            oast_dns_rebind_ip,
+            ..
+        } = run_action(&argv)
+        {
+            assert_eq!(
+                oast_redirect_location.as_deref(),
+                Some("http://169.254.169.254/latest/meta-data/")
+            );
+            assert_eq!(oast_redirect_status.as_deref(), Some("307"));
+            assert_eq!(oast_dns_rebind_ip.as_deref(), Some("169.254.169.254"));
+            return;
+        }
+        panic!("expected pentest run");
+    }
+
+    #[test]
+    fn redirect_and_rebinding_options_require_the_listener() {
+        for options in [
+            vec!["--oast-redirect-location", "http://internal.example/"],
+            vec!["--oast-redirect-status", "307"],
+            vec!["--oast-dns-rebind-ip", "169.254.169.254"],
+            vec![
+                "--oast-listener",
+                "127.0.0.1",
+                "--oast-dns-rebind-ip",
+                "169.254.169.254",
+            ],
+            vec![
+                "--oast-listener",
+                "127.0.0.1",
+                "--oast-redirect-status",
+                "303",
+            ],
+        ] {
+            let mut argv = base();
+            argv.extend(options);
+            assert!(Cli::try_parse_from(&argv).is_err());
+        }
     }
 }
 
