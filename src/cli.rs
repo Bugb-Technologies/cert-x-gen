@@ -1032,6 +1032,22 @@ pub enum PentestAction {
         )]
         skip_health_check: bool,
 
+        /// Ignore server TLS certificate errors for web browser and raw HTTP requests
+        #[arg(long)]
+        insecure_tls: bool,
+
+        /// Proxy server URL for web browser and raw HTTP requests
+        #[arg(long)]
+        proxy: Option<String>,
+
+        /// PEM client certificate for the target origin
+        #[arg(long, requires = "client_key")]
+        client_cert: Option<PathBuf>,
+
+        /// PEM private key for the client certificate
+        #[arg(long, requires = "client_cert")]
+        client_key: Option<PathBuf>,
+
         /// An external out-of-band callback host cxg can INJECT INTO but cannot read
         /// back (Burp Collaborator, a canary you host, an interactsh domain you
         /// generated yourself). Exposed to templates as `cxg.oast.url(label, scheme?)`
@@ -4494,6 +4510,59 @@ mod track_b_auth_tests {
                 assert_eq!(auth_dir, None);
             }
             _ => panic!("expected pentest run"),
+        }
+    }
+}
+
+#[cfg(test)]
+mod pentest_transport_tests {
+    use super::*;
+    use clap::Parser;
+
+    #[test]
+    fn web_transport_flags_parse_and_require_a_certificate_pair() {
+        let base = [
+            "cxg",
+            "pentest",
+            "run",
+            "--codebase",
+            ".",
+            "--target",
+            "https://example.test",
+        ];
+        let mut argv = base.to_vec();
+        argv.extend([
+            "--insecure-tls",
+            "--proxy",
+            "http://127.0.0.1:8080",
+            "--client-cert",
+            "client.pem",
+            "--client-key",
+            "client.key",
+        ]);
+        let cli = Cli::try_parse_from(argv).unwrap();
+        match cli.command {
+            Some(Commands::Pentest(PentestCommand {
+                action:
+                    PentestAction::Run {
+                        insecure_tls,
+                        proxy,
+                        client_cert,
+                        client_key,
+                        ..
+                    },
+            })) => {
+                assert!(insecure_tls);
+                assert_eq!(proxy.as_deref(), Some("http://127.0.0.1:8080"));
+                assert_eq!(client_cert, Some(PathBuf::from("client.pem")));
+                assert_eq!(client_key, Some(PathBuf::from("client.key")));
+            }
+            _ => panic!("expected pentest run"),
+        }
+        for flag in ["--client-cert", "--client-key"] {
+            let mut argv = base.to_vec();
+            argv.extend([flag, "file.pem"]);
+            assert!(Cli::try_parse_from(argv).is_err());
         }
     }
 }
