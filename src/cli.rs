@@ -1416,6 +1416,10 @@ pub enum PentestAction {
         )]
         allow_raw_socket: bool,
 
+        /// Save redacted per-template HARs and curl reproductions for web JS probes.
+        #[arg(long, help_heading = "Probe execution")]
+        capture_http: bool,
+
         /// Permit native gRPC over HTTP/2, for services with no gRPC-Web proxy in
         /// front of them. Requires grpcio. The call carries the identity's
         /// --header values as gRPC metadata; cxg cannot borrow the browser

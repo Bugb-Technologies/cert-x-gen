@@ -763,6 +763,7 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
             tauri_prove_timeout,
             attacker_origin,
             allow_raw_socket,
+            capture_http,
             allow_grpc,
             grpc_descriptor_set,
             no_grpc_reflection,
@@ -902,6 +903,9 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
             }
             if allow_raw_socket {
                 args.push("--allow-raw-socket".into());
+            }
+            if capture_http {
+                args.push("--capture-http".into());
             }
             // @comment -- "Pushed only when set, like every other boolean here, so an absent flag leaves the orchestrator's own default in force rather than this layer restating it. --no-grpc-reflection matters most for that rule: reflection defaults ON in the orchestrator, so forwarding a false here would silently disable a default this layer does not own."
             if allow_grpc {
