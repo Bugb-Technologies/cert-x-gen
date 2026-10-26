@@ -1347,6 +1347,10 @@ pub enum PentestAction {
         )]
         enable_chaining: bool,
 
+        /// Operator-owned configuration for IMAP and needs-you questions.
+        #[arg(long, value_name = "JSON", help_heading = "Probe execution")]
+        auth_inputs: Option<PathBuf>,
+
         /// Discover routes from source instead of requiring guardlink annotations.
         ///
         /// guardlink only parses GAL annotations, so an un-annotated codebase yields
