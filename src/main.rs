@@ -755,6 +755,9 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
             oast_interactsh,
             oast_listener,
             oast_listener_dns,
+            oast_redirect_location,
+            oast_redirect_status,
+            oast_dns_rebind_ip,
             target_type,
             app_cmd,
             app_binary,
@@ -872,6 +875,16 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
             }
             if oast_listener_dns {
                 args.push("--oast-listener-dns".into());
+            }
+            for (flag, value) in [
+                ("--oast-redirect-location", oast_redirect_location),
+                ("--oast-redirect-status", oast_redirect_status),
+                ("--oast-dns-rebind-ip", oast_dns_rebind_ip),
+            ] {
+                if let Some(value) = value {
+                    args.push(flag.into());
+                    args.push(value);
+                }
             }
             // @comment -- "forwards desktop target selection and launch configuration to the Python orchestrator, which owns substrate construction"
             args.push("--target-type".into());
