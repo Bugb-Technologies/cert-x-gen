@@ -7,6 +7,123 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-10-26
+
+### Upgrading
+
+**After upgrading an existing installation, run `cxg pentest install --force`.** This
+release changes the Python pentest pipeline embedded in the binary. Replacing the binary
+alone does not replace the materialized files under `~/.cert-x-gen/pentest/`; the explicit
+install refreshes them before your next run. The automatic freshness check introduced in
+1.6.0 also refreshes ordinary embedded installations on their first pentest action, but
+source-checkout installations and `CXG_SOURCE` overrides keep their selected source. See
+the [pipeline upgrade guide](pentest/README.md#pipeline-upgrades-and-status) for source
+installations, backups and dependency setup. The pipeline adds the pinned `h2` Python
+dependency for HTTP/2 race transport; without it, races use the HTTP/1.1 fallback.
+
+**Report consumers must handle explicit proof and coverage outcomes.** Findings now include
+`model_vuln_class`, `triage`, `triage_reason`, `reason_kind` and `proof_status`. Reports add
+`inconclusive_refusal`, `not_run` and, on completed JavaScript runs, `mutation_outcome`.
+A refusal without a successful entitled control is no longer a verified mitigation.
+`proof_status` is one of `proven`, `unverified` or `unsupported`; unsupported checks may
+have sent requests without having an oracle able to prove the class. An empty confirmed
+findings list is not evidence that every check ran or every control held.
+
+### Added
+
+#### More vulnerability classes and engine-owned proof
+
+- **User enumeration, IP-header bypass and business-logic checks** now have canonical class
+  names, generation guidance, validation and engine-owned proof oracles. Enumeration compares
+  repeated known-account and absent-account responses; IP-header bypass compares a refused
+  baseline with a permitted spoofed-header request; business-logic proof reads back a
+  server-side invariant through a distinct observer identity.
+- **Response-observable and in-band proof oracles** for server-side template injection,
+  command injection, SSRF, XXE, path traversal, open redirects, credentialed CORS and mass
+  assignment. `cxg.oracle` checks engine-observed computed markers, content, redirect
+  destinations, browser-readable responses or persisted changes, with class-specific controls.
+  Reflection and template-authored verdicts cannot substitute for those observations.
+- **Boolean-blind SQL injection proof** through `cxg.sqli.boolean`, complementing the existing
+  timing and extraction oracles with repeated true/false response comparisons and controls.
+- **A built-in, pollable OAST listener** through `--oast-listener`, for targets that can reach
+  the operator but have no internet egress. Bind to the Docker bridge, Docker Desktop host or
+  an explicit address; optionally add DNS with `--oast-listener-dns`. SSRF redirect staging
+  supports 302/307 responses and configurable destinations, with redirect visits retained in
+  evidence. DNS rebinding support answers successive A queries with configured addresses and
+  TTL zero. Staging a redirect alone never confirms a vulnerability.
+
+#### Authentication and multi-identity probes
+
+- **Mail, TOTP and operator input primitives:** `cxg.mail.latest` reads matching messages over
+  IMAP, `cxg.totp` generates codes from private per-identity seed slots, and `cxg.ask` waits for
+  an operator answer through a bounded file exchange. Configure mail and questions with
+  `--auth-inputs`; templates declare the `mail`, `totp` and `ask` capabilities. Seeds stay
+  outside the page, and missing inputs are explicit errors or scheduling skips.
+- **Named identity requirements** let templates select more than two captured profiles using
+  `// @requires_identities:` (a role-to-profile mapping). `cxg.pageAs(idx)` drives another loaded identity's DOM in its own browser
+  context. DOM XSS probes support POST navigation and `cxg.page.watchXss` observes execution
+  across navigation and interactions without reloading the page.
+- **Wire-learned auth material** records credentials from the target's own traffic rather than
+  relying only on preselected storage keys, improving bearer-token and credential discovery.
+
+#### Transport reach and reproductions
+
+- **Web TLS, proxy and mutual TLS configuration:** `--insecure-tls`, `--proxy`, `--client-cert`
+  and `--client-key` apply to browser contexts, raw HTTP and profile inspection. Navigation to
+  a dead target is rejected instead of continuing on an unusable page.
+- **Single-connection raw socket scripts** through `cxg.socket.exchange`, with ordered send,
+  delimiter-read and timed-read operations for protocols requiring multi-step exchanges.
+  The existing `--allow-raw-socket` and scope gates still apply.
+- **Scripted WebSocket exchanges** support subprotocols, ordered send/expect operations and
+  binary frames. `cxg.attacker.ws` opens a WebSocket from the foreign attacker origin for
+  cross-site WebSocket hijacking probes.
+- **Opt-in HTTP captures:** `--capture-http` writes redacted per-template `traffic.har` and
+  `repro.curl` files for web JavaScript probes. Confirmed findings carry an endpoint-selected
+  HAR slice and curl reproductions under `evidence._cxg_http`. Captures redact credentials;
+  reproductions may need replacement credentials and replay individual requests.
+- **Operator guidance and Crush support:** `--skills-file` appends authoring guidance to
+  generation and mutation prompts as untrusted advice. `--ai-provider crush` explicitly selects
+  the Crush CLI; repository configuration requires `--trust-repo-config` or its environment
+  equivalent. Auto provider selection is unchanged.
+
+### Changed
+
+- **Refutation requires an observed control.** A successful entitled identity and a distinct
+  refused attacker identity must perform the same request in the same dispatch before it can
+  enter `mitigation_verifications`. Missing controls, configuration refusals and Tauri
+  refusals are recorded as `inconclusive_refusal`; transport errors and missing capabilities
+  cannot establish that a control held. `not_run` records why generation or execution was
+  unavailable, and mutation outcomes distinguish resolved, still ambiguous, missing rewrite
+  and no-verdict results.
+- **Cross-identity proof is tied to observed responses.** IDOR and related authorization checks
+  require distinct routed identities and an identifier observed in both response bodies.
+  Credential-substitution proof requires engine-observed credential identifiers. Binary raw
+  response bodies are preserved so non-text downloads can participate in overlap checks.
+- **Race proof uses coordinated transport and independent readback.** HTTP/2 races flush the
+  terminating frames together on one connection; HTTP/1.1 uses last-byte synchronization.
+  Dispatch timing alone cannot prove a race: the engine must read back the violated invariant.
+- **Destructive proof can run on signed disposable remote targets.** `--destructive-ok` still
+  requires a disposable target; non-loopback staging hosts may now qualify through signed
+  `disposable_host_grants` in the scope file. Brute-force proof also enforces the configured
+  `brute_force_min_attempts` floor. A scope-file declaration without a valid signature cannot
+  authorize destructive probes on a remote host.
+- **Capability requirements can be combined.** `// @requires_capability:` accepts multiple capabilities,
+  and scheduling requires all of them. Generation prompts describe the engine's actual proof
+  contracts and supported class vocabulary; generated probes retain their hypothesis class,
+  with a model's different class retained separately as `model_vuln_class`.
+
+### Fixed
+
+- **WAF, bot-challenge and rate-limit responses no longer imply verified application controls.**
+  HTTP interference is recorded in engine evidence and produces inconclusive outcomes. HTTP
+  requests share pacing and 429 backoff across identities, honor `Retry-After`, and group
+  opaque identifier path segments under the same endpoint budget. `request_interval_seconds`
+  in the scope file controls minimum spacing; coordinated race batches remain atomic.
+- **CSRF probes originate from a different site**, preserving real SameSite behavior, and capture
+  the form response for engine-observed proof instead of treating submission alone as success.
+- Mutation retries use the available AI provider chain and retain terminal generation failures
+  in coverage reporting rather than silently dropping unresolved probes.
+
 ## [1.6.1] - 2026-10-19
 
 ### Fixed
@@ -1460,7 +1577,8 @@ Stated plainly so it produces no more false leads:
 
 ---
 
-[Unreleased]: https://github.com/Bugb-Technologies/cert-x-gen/compare/v1.6.1...HEAD
+[Unreleased]: https://github.com/Bugb-Technologies/cert-x-gen/compare/v1.7.0...HEAD
+[1.7.0]: https://github.com/Bugb-Technologies/cert-x-gen/compare/v1.6.1...v1.7.0
 [1.6.1]: https://github.com/Bugb-Technologies/cert-x-gen/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/Bugb-Technologies/cert-x-gen/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/Bugb-Technologies/cert-x-gen/compare/v1.4.0...v1.5.0

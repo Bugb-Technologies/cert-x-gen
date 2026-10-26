@@ -1,7 +1,7 @@
 [package]
 name = "cert-x-gen"
-# @comment -- "release 1.6.1: cxg update follows relative symlinks and leaves package-managed installs to their package manager"
-version = "1.6.1"
+# @comment -- "release 1.7.0: pentest adds engine-owned proof, local OAST, scripted transports, auth inputs and explicit coverage reporting"
+version = "1.7.0"
 edition = "2021"
 authors = ["CERT-X-GEN Core Team"]
 description = "Advanced Multi-Language Security Scanning Engine"
