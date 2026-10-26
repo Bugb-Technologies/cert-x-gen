@@ -776,6 +776,7 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
             only_route,
             skills_file,
             enable_chaining,
+            auth_inputs,
             batch_size,
             deterministic_templates,
             template_timeout,
@@ -948,6 +949,10 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
             }
             if enable_chaining {
                 args.push("--enable-chaining".into());
+            }
+            if let Some(path) = auth_inputs {
+                args.push("--auth-inputs".into());
+                args.push(path.display().to_string());
             }
             if batch_size > 1 {
                 args.push("--batch-size".into());
