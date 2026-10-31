@@ -52,9 +52,10 @@ cxg scan --scope targets.txt --templates redis*.py,docker*.go,system*.sh
 
 > **A note on execution privileges.** Templates execute as ordinary child processes with the
 > invoking user's privileges and full network and filesystem access. Review templates before
-> running them. There is no execution sandbox or resource limiting anywhere in cxg — no flag,
-> no configuration key, no default. Run cxg inside a container or VM, and as a non-privileged
-> user, if you need isolation. See the
+> running them. cxg provides no OS sandbox, CPU quota, or memory containment. Template
+> execution timeouts and the built-in network client's request timeouts are available, but
+> they do not isolate template code or constrain its own network clients. Run cxg inside a
+> container or VM, and as a non-privileged user, if you need isolation. See the
 > [dependency environments guide](https://docs.bugb.io/cxg/guides/manage-dependency-environments/), whose `cxg sandbox`
 > command manages per-language *dependency* environments (not isolation).
 
@@ -69,7 +70,7 @@ CERT-X-GEN ships two distinct workflows:
 | Surface | Command | What it does |
 |---------|---------|--------------|
 | **Template scanning** | `cxg scan` | Runs polyglot detection templates against network/host targets (single host, file, CIDR, URL) or local CLI binaries (`cli://`). |
-| **AI-driven whitebox pentest** | `cxg pentest` | Ranks guardlink source-code hypotheses against an operator goal, has a local AI CLI write JavaScript probe templates that read the target's source, and executes them in parallel **authenticated** Chromium contexts against a running web app or Electron desktop app. Also maps Tauri IPC and capabilities from source, with optional in-process command proof. |
+| **AI-driven whitebox pentest** | `cxg pentest` | Ranks guardlink source-code hypotheses against an operator goal, has a local AI CLI write JavaScript probe templates that read the target's source, and executes them in anonymous or authenticated Chromium contexts against a running web app or Electron desktop app. Also maps Tauri IPC and capabilities from source, with optional in-process command proof. |
 
 The full command set:
 
@@ -87,6 +88,11 @@ The full command set:
 | `cxg update` | Update a directly installed cxg to the latest release (see [Updating](#updating)) |
 | `cxg server` | REST API server — **not implemented** (returns an error) |
 | `cxg version` | Display version information |
+
+For everyday code changes, use the [GuardLink developer loop](#guardlink-developer-loop):
+translate the relevant annotations into scanner templates, review and validate them, then
+execute selected tests. Translation is authoring only; it is separate from the deeper
+browser/runtime pentest and creates no Bravos ledger or managed approval record.
 
 Run `cxg <command> --help` for the full reference on any of them.
 
@@ -238,6 +244,35 @@ cxg template update  # Clones the official template library into ~/.cert-x-gen/t
 
 ## Quick Start
 
+### GuardLink developer loop
+
+Keep security annotations current with the code in the same change. Validate/lint the
+annotations, then use `guardlink translate` with instructions or feature selection scoped
+to that change. Review the generated code and its target, identity, and proof requirements;
+translation generates tests and does not execute them or require a browser session.
+
+For scanner templates written under `.guardlink/cxg-templates/`:
+
+```bash
+# Static validation of the reviewed output directory
+cxg template validate .guardlink/cxg-templates/
+
+# Execute one reviewed template against an authorized target
+cxg scan --scope http://127.0.0.1:8080 \
+  --template-dir .guardlink/cxg-templates/ --templates YOUR_REVIEWED_TEMPLATE_ID
+```
+
+Use the repository's configured runner for tests authored for that runner. Retain useful
+tests as regression coverage, including after a fix removes the original translation
+candidate. Before opening or updating a pull request, run the repository's root `security/`
+suite with its configured runner; report missing prerequisites, failures, skips, or an
+absent suite explicitly. Check execution coverage and evidence as well as the exit code.
+An independent result does not create a Bravos ledger verdict or approval record.
+
+The [whitebox pentest](#whitebox-pentest-cxg-pentest) below is the deeper source-aware
+browser/runtime route. Its JavaScript `cxgProbe` templates have a different contract from
+scanner templates; `cxg pentest run --template-dir` is not the scanner-directory command.
+
 ### Scanning (`cxg scan`)
 
 ```bash
@@ -256,8 +291,11 @@ cxg scan --scope targets.txt --templates redis*.py
 
 ### Whitebox Pentest (`cxg pentest`)
 
-The pentest pipeline drives an authenticated browser (or Electron app), so it needs a captured
-session and a guardlink source-code analysis (`whitebox/findings.sarif`) in the codebase.
+The web/Electron pentest pipeline uses a running target and GuardLink source-code analysis
+(`whitebox/findings.sarif`) in the codebase. Omit `--auth` for a first-class anonymous run;
+authenticated checks require captured identities. Missing required identities are recorded
+as not run, not as refuted. Tauri source mapping needs no captured session or live target;
+see the [Tauri guide](pentest/README.md#tauri-source-map-and-in-process-proof).
 
 ```bash
 # 1. Capture an authenticated session interactively (opens a real browser to log in)
@@ -269,8 +307,9 @@ cxg pentest run --codebase ./repo --target https://app.example.com \
   --goal "test for IDOR in the records and transactions APIs"
 ```
 
-For CI, capture the session once, export it as a Playwright `storage_state`, then replay it
-without a browser:
+For authenticated web checks in CI, capture the session once and export it as Playwright
+`storage_state`. Importing that state needs no interactive browser; the pentest still runs
+browser contexts:
 
 ```bash
 cxg pentest auth import --profile pentest --target https://staging.app \
@@ -376,10 +415,16 @@ for evidence and coverage limits.
 
 ### Writing Templates
 
-All templates follow a simple contract:
-1. Read `CERT_X_GEN_TARGET_HOST` and `CERT_X_GEN_TARGET_PORT` from environment
+Scanner templates follow a simple contract:
+
+1. Read `CERT_X_GEN_TARGET_HOST` and `CERT_X_GEN_TARGET_PORT` from the environment
 2. Perform detection logic
-3. Output JSON with findings array
+3. Write a JSON findings array (`[...]`) or an object containing it (`{"findings": [...]}`)
+   to stdout. Use `[]` or `{"findings": []}` for a completed check with no finding; send
+   diagnostics to stderr and fail on execution errors. The scanner also accepts empty
+   stdout as no findings, but explicit empty JSON makes the output contract clear.
+
+These are scanner templates for `cxg scan`, not the browser pentest's `cxgProbe` contract.
 
 A template can also drive a **local binary** rather than a network host
 (`cxg scan --scope cli:///path/to/binary`), take its probe input from cxg
@@ -395,32 +440,62 @@ with `cxg scan --instrumented-manifest <path>`. The full contract is in
 Note that `CERT_X_GEN_TARGET_PORT` is meaningless when `CERT_X_GEN_TARGET_KIND`
 is `cli` — ignore it there.
 
-**Python example:**
+**Python example:** save as `redis-unauth.py`. It uses only the Python standard library,
+closes the socket, and emits an empty array when the response does not show unauthenticated
+Redis INFO access. A connection or read error fails the check instead of becoming a negative.
 
 ```python
 #!/usr/bin/env python3
 # @id: redis-unauth
-# @name: Redis Unauthenticated Access  
+# @name: Redis Unauthenticated Access
+# @author: CERT-X-GEN contributors
 # @severity: high
+# @description: Detect unauthenticated access to Redis INFO.
+# @tags: redis,unauthenticated,network
+# @cwe: CWE-306
 
-import socket, json, os
+import json
+import os
+import socket
+import sys
 
-host = os.environ['CERT_X_GEN_TARGET_HOST']
-port = int(os.environ.get('CERT_X_GEN_TARGET_PORT', '6379'))
 
-sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-sock.settimeout(5)
-sock.connect((host, port))
-sock.send(b'INFO\r\n')
-response = sock.recv(4096).decode()
+def main():
+    host = os.environ["CERT_X_GEN_TARGET_HOST"]
+    port = int(os.environ.get("CERT_X_GEN_TARGET_PORT", "6379"))
 
-if 'redis_version' in response:
-    print(json.dumps({"findings": [{
-        "id": "redis-unauth",
-        "severity": "high",
-        "host": host,
-        "port": port
-    }]}))
+    with socket.create_connection((host, port), timeout=5) as sock:
+        sock.sendall(b"INFO\r\n")
+        response = sock.recv(4096).decode("utf-8", errors="replace")
+
+    findings = []
+    if "redis_version:" in response:
+        findings.append({
+            "id": "redis-unauth",
+            "template_id": "redis-unauth",
+            "template_name": "Redis Unauthenticated Access",
+            "host": host,
+            "matched_at": f"{host}:{port}",
+            "title": "Redis INFO accessible without authentication",
+            "severity": "high",
+            "description": "The server returned Redis version information to an unauthenticated INFO request.",
+            "evidence": {"response": response},
+        })
+    print(json.dumps(findings))
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except OSError as exc:
+        print(f"Redis check failed: {exc}", file=sys.stderr)
+        sys.exit(1)
+```
+
+```bash
+cxg template validate redis-unauth.py
+# Execute only against a Redis instance you are authorized to test
+cxg scan --scope 127.0.0.1:6379 --templates ./redis-unauth.py
 ```
 
 ---
@@ -429,7 +504,7 @@ if 'redis_version' in response:
 ## Design Principles
 
 - **Code over configuration** — use real languages for real logic
-- **Deterministic execution** — same input, same output
+- **Repeatable execution** — reuse template code and explicit inputs; live target, session, and network state can change results
 - **Composable scans** — mix languages, reuse logic across templates
 - **Automation-first** — built for CI, pipelines, and agentic systems
 
@@ -456,20 +531,31 @@ if 'redis_version' in response:
 
 ### AI providers (pentest)
 
-`cxg pentest` generates probes with a local AI CLI or an HTTP API. `--ai-provider` accepts:
-`auto | bridge | claude | codex | gemini | anthropic | openai`. The **`bridge`** provider posts
-each prompt to `$BUGB_BRIDGE_URL` (with `Authorization: Bearer $BUGB_BRIDGE_TOKEN` when set) and
-reads the completion back — an editor/CI integration point rather than a local CLI. When
-`--ai-provider auto` is used, the bridge is preferred whenever `$BUGB_BRIDGE_URL` is set.
+The Rust CLI advertises `--ai-provider` in this order:
+`auto | bridge | claude | codex | gemini | crush | anthropic | openai`; its default is
+`claude`. For the default JavaScript pentest path, select an installed `claude`, `codex`,
+`gemini`, or `crush` CLI explicitly. The current JS generator does not resolve `auto` or
+use HTTP/bridge providers, and the bundled Python argument parser rejects explicit
+`bridge`. The direct Python entry point defaults to `auto`, so pass a supported CLI there
+too for JS generation.
 
-Findings in `report.json` carry the identity of the exposure they tested — the annotation's
+The legacy Python provider selector's `auto` order is bridge → Claude → Codex → Gemini →
+Anthropic API → OpenAI API; `crush` is never auto-picked. Its bridge posts prompts to
+`$BUGB_BRIDGE_URL`, using `Authorization: Bearer $BUGB_BRIDGE_TOKEN` when set. See the
+[pentest provider reference](pentest/README.md#ai-provider) for the Crush configuration
+trust boundary and the distinction between advertised options and execution paths.
+
+Pentest findings in `report.json` carry the identity of the exposure they tested — the annotation's
 `{file, line}`, its `asset` and `threat`, and guardlink's `threat_id` — so
 `guardlink hypothesis confirm --from-scan report.json` joins each confirmation straight back to
 the claim it settles. A probe with no originating guardlink exposure carries none and is left
 unmatched (an AI-synthesised template, or one generated for a hypothesis cxg minted itself from
 Electron IPC or `--discover-routes`); a mutated retry inherits its parent's. See
 [pentest architecture](pentest/docs/ARCHITECTURE.md) § "The exposure identity a finding carries"
-for the join, its measured bounds, and the `identity_withdrawn` record.
+for the join, its measured bounds, and the `identity_withdrawn` record. This is not a
+promise that arbitrary scanner templates carry those identities. Review import results:
+unmatched or ambiguous evidence is not recorded confirmation, and a standalone cxg result
+is not a Bravos-managed ledger verdict.
 
 ---
 
