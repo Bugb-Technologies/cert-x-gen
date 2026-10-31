@@ -1442,13 +1442,30 @@ impl ServerHandler for CxgMcpServer {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
             instructions: Some(
-                "CERT-X-GEN: Multi-language security scanning engine. \
-                 Search, validate, create, write, test, and run vulnerability scanning templates \
-                 across 12 programming languages with 147 built-in security checks. \
-                 Tools: cxg_search, cxg_template_list, cxg_template_info, cxg_scan, \
-                 cxg_template_validate, cxg_template_create, cxg_template_write, \
-                 cxg_template_get_notes, cxg_ai_generate, cxg_template_test, \
-                 cxg_template_stats, cxg_template_update."
+                "CERT-X-GEN: Polyglot scanner/template tools; the deeper browser/runtime \
+                 pentest is a separate CLI route. For everyday changes: keep GuardLink \
+                 annotations current, scope guardlink translate to the change (authoring only; \
+                 no browser session or Bravos ledger), then review generated code. \
+                 For authoring here, read cxg_template_get_notes before cxg_template_create, \
+                 or use cxg_ai_generate; these produce code, not findings. \
+                 cxg_template_validate is static validation, not execution or proof. \
+                 cxg_template_write validates and saves reviewed code to the home \
+                 agent-created collection. Inspect actual installed inventory with \
+                 cxg_template_list, cxg_search, cxg_template_info, or cxg_template_stats; \
+                 detection templates are distributed separately, with cxg_template_update \
+                 fetching the library. cxg_scan and cxg_template_test execute installed \
+                 templates as the invoking user against an explicitly authorized target. \
+                 They do not accept a repository template-directory parameter: for reviewed \
+                 translated scanner templates select an existing reviewed file by path: \
+                 `cxg scan --scope <target> --templates .guardlink/cxg-templates/reviewed-check.py`. \
+                 Do not combine --template-dir with --templates <id> for repository files. \
+                 Create the report parent directory before using --output (for example, \
+                 `mkdir -p .guardlink/pentest-findings/`). Alternatively, \
+                 explicitly review and install code with cxg_template_write before testing \
+                 its installed id. Retain regression tests; before review run the repository's \
+                 root security/ suite with its configured runner and report failures, skips, \
+                 missing prerequisites, and coverage. Independent results create no Bravos \
+                 ledger verdict or managed approval record."
                     .to_string(),
             ),
             capabilities: ServerCapabilities::builder().enable_tools().build(),
