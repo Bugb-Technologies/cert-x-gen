@@ -251,16 +251,26 @@ annotations, then use `guardlink translate` with instructions or feature selecti
 to that change. Review the generated code and its target, identity, and proof requirements;
 translation generates tests and does not execute them or require a browser session.
 
-For scanner templates written under `.guardlink/cxg-templates/`:
+For scanner templates written under `.guardlink/cxg-templates/`, replace
+`reviewed-check.py` below with the file you reviewed:
 
 ```bash
 # Static validation of the reviewed output directory
 cxg template validate .guardlink/cxg-templates/
 
+# Create the report directory before executing the selected template
+mkdir -p .guardlink/pentest-findings/
+
 # Execute one reviewed template against an authorized target
 cxg scan --scope http://127.0.0.1:8080 \
-  --template-dir .guardlink/cxg-templates/ --templates YOUR_REVIEWED_TEMPLATE_ID
+  --templates .guardlink/cxg-templates/reviewed-check.py \
+  --output .guardlink/pentest-findings/change --output-format json
 ```
+
+Select repository templates by file path as above. Combining `--template-dir` with
+`--templates <id>` does not resolve IDs from that directory. To run the entire reviewed
+directory instead, use `--template-dir .guardlink/cxg-templates/` without `--templates`.
+Create any report parent directory before scanning; cxg does not create it for you.
 
 Use the repository's configured runner for tests authored for that runner. Retain useful
 tests as regression coverage, including after a fix removes the original translation

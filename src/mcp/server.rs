@@ -1456,8 +1456,11 @@ impl ServerHandler for CxgMcpServer {
                  fetching the library. cxg_scan and cxg_template_test execute installed \
                  templates as the invoking user against an explicitly authorized target. \
                  They do not accept a repository template-directory parameter: for reviewed \
-                 translated scanner templates use CLI cxg scan --scope <target> \
-                 --template-dir .guardlink/cxg-templates/ --templates <selected-id>, or \
+                 translated scanner templates select an existing reviewed file by path: \
+                 `cxg scan --scope <target> --templates .guardlink/cxg-templates/reviewed-check.py`. \
+                 Do not combine --template-dir with --templates <id> for repository files. \
+                 Create the report parent directory before using --output (for example, \
+                 `mkdir -p .guardlink/pentest-findings/`). Alternatively, \
                  explicitly review and install code with cxg_template_write before testing \
                  its installed id. Retain regression tests; before review run the repository's \
                  root security/ suite with its configured runner and report failures, skips, \
