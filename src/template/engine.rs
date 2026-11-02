@@ -7,6 +7,33 @@ use crate::types::{Context, Finding, Protocol, Target, TemplateMetadata};
 use async_trait::async_trait;
 use std::path::Path;
 
+/// A discovered file that could not be loaded, or is a helper rather than a template.
+#[derive(Debug)]
+pub struct TemplateLoadIssue {
+    /// File or directory inspected during discovery.
+    pub path: std::path::PathBuf,
+    /// Load failure; `None` identifies a skipped non-template file.
+    pub error: Option<String>,
+}
+
+/// Directory discovery results, including files that were not loaded.
+#[derive(Default)]
+#[allow(missing_debug_implementations)]
+pub struct TemplateLoadReport {
+    /// Successfully loaded templates.
+    pub templates: Vec<Box<dyn Template>>,
+    /// Load failures and skipped helper files.
+    pub issues: Vec<TemplateLoadIssue>,
+}
+
+impl TemplateLoadReport {
+    /// Combine discovery results from another directory.
+    pub fn append(&mut self, mut other: Self) {
+        self.templates.append(&mut other.templates);
+        self.issues.append(&mut other.issues);
+    }
+}
+
 /// Minimum wall-clock budget for [`Template::prepare`], in seconds.
 ///
 /// A first build can download and compile dependencies (a gRPC Go template
@@ -17,6 +44,12 @@ pub const TEMPLATE_BUILD_TIMEOUT_FLOOR_SECS: u64 = 300;
 /// Template trait that all templates must implement
 #[async_trait]
 pub trait Template: Send + Sync {
+    /// Whether this engine accounts for all outbound target requests. Subprocess
+    /// engines cannot observe arbitrary template networking and default to unknown.
+    fn measures_network_requests(&self) -> bool {
+        false
+    }
+
     /// Get template metadata
     fn metadata(&self) -> &TemplateMetadata;
 
@@ -124,7 +157,9 @@ impl TemplateLoader {
     pub async fn load_template(&self, path: &Path) -> Result<Box<dyn Template>> {
         for engine in &self.engines {
             if engine.supports_file(path) {
-                return engine.load_template(path).await;
+                let template = engine.load_template(path).await?;
+                engine.validate_template(template.as_ref()).await?;
+                return Ok(template);
             }
         }
 
@@ -154,14 +189,43 @@ impl TemplateLoader {
         }
     }
 
+    /// Recognise template identity metadata without executing the file. Code
+    /// helpers with ordinary tag variables are not template declarations.
+    fn has_template_metadata(path: &Path) -> Result<bool> {
+        let content = std::fs::read_to_string(path)?;
+        if matches!(
+            path.extension().and_then(|e| e.to_str()),
+            Some("yaml" | "yml")
+        ) {
+            return match serde_yaml::from_str::<serde_yaml::Value>(&content) {
+                Ok(value) => Ok(value
+                    .as_mapping()
+                    .is_some_and(|map| map.contains_key("id") || map.contains_key("name"))),
+                // A malformed candidate must be reported as a load error, not
+                // silently reclassified as a helper.
+                Err(e) => Err(e.into()),
+            };
+        }
+        let metadata = crate::engine::common::parse_metadata_from_comments(&content);
+        Ok(metadata.id.is_some() || metadata.name.is_some())
+    }
+
     /// Load all templates from a directory
     pub fn load_templates_from_dir<'a>(
         &'a self,
         dir: &'a Path,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<Box<dyn Template>>>> + 'a>>
     {
+        Box::pin(async move { Ok(self.discover_templates(dir).await?.templates) })
+    }
+
+    /// Discover templates and retain every load failure and skipped helper.
+    pub fn discover_templates<'a>(
+        &'a self,
+        dir: &'a Path,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<TemplateLoadReport>> + 'a>> {
         Box::pin(async move {
-            let mut templates = Vec::new();
+            let mut report = TemplateLoadReport::default();
 
             if !dir.exists() {
                 return Err(Error::FileNotFound(dir.to_path_buf()));
@@ -170,9 +234,9 @@ impl TemplateLoader {
             let entries = std::fs::read_dir(dir)
                 .map_err(|e| Error::config(format!("Failed to read template directory: {}", e)))?;
 
+            let mut entries = entries.collect::<std::io::Result<Vec<_>>>()?;
+            entries.sort_by_key(|entry| entry.path());
             for entry in entries {
-                let entry = entry
-                    .map_err(|e| Error::config(format!("Failed to read directory entry: {}", e)))?;
                 let path = entry.path();
 
                 if path.is_file() {
@@ -182,10 +246,20 @@ impl TemplateLoader {
                         continue;
                     }
 
-                    match self.load_template(&path).await {
-                        Ok(template) => templates.push(template),
+                    let loaded = match Self::has_template_metadata(&path) {
+                        Ok(true) => self.load_template(&path).await.map(Some),
+                        Ok(false) => Ok(None),
+                        Err(e) => Err(e),
+                    };
+                    match loaded {
+                        Ok(Some(template)) => report.templates.push(template),
+                        Ok(None) => report.issues.push(TemplateLoadIssue { path, error: None }),
                         Err(e) => {
                             tracing::warn!("Failed to load template {}: {}", path.display(), e);
+                            report.issues.push(TemplateLoadIssue {
+                                path,
+                                error: Some(e.to_string()),
+                            });
                         }
                     }
                 } else if path.is_dir() {
@@ -206,20 +280,24 @@ impl TemplateLoader {
                     }
 
                     // Recursively load templates from subdirectories
-                    match self.load_templates_from_dir(&path).await {
-                        Ok(mut sub_templates) => templates.append(&mut sub_templates),
+                    match self.discover_templates(&path).await {
+                        Ok(sub_report) => report.append(sub_report),
                         Err(e) => {
                             tracing::warn!(
                                 "Failed to load templates from {}: {}",
                                 path.display(),
                                 e
                             );
+                            report.issues.push(TemplateLoadIssue {
+                                path,
+                                error: Some(e.to_string()),
+                            });
                         }
                     }
                 }
             }
 
-            Ok(templates)
+            Ok(report)
         })
     }
 

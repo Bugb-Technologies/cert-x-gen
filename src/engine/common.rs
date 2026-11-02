@@ -789,6 +789,9 @@ pub async fn execute_command(
         cmd.env(key, value);
     }
 
+    // Applies to Python templates and Python helpers launched by other engines.
+    cmd.env("PYTHONDONTWRITEBYTECODE", "1");
+
     let output = cmd
         .output()
         .await
@@ -1482,6 +1485,7 @@ pub async fn execute_command_full(
     for (key, value) in env_vars {
         cmd.env(key, value);
     }
+    cmd.env("PYTHONDONTWRITEBYTECODE", "1");
 
     let output = cmd
         .output()

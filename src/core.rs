@@ -4,7 +4,10 @@ use crate::config::Config;
 use crate::error::Result;
 use crate::executor::Executor;
 use crate::scheduler::Scheduler;
-use crate::template::{Template, TemplateFilter, TemplateLoader, TemplateManager};
+use crate::template::{
+    Template, TemplateFilter, TemplateLoadIssue, TemplateLoadReport, TemplateLoader,
+    TemplateManager,
+};
 use crate::types::{Context, ScanResults, Target};
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -71,7 +74,12 @@ impl CertXGen {
 
     /// Load templates from configured directories
     pub async fn load_templates(&self) -> Result<Vec<Box<dyn Template>>> {
-        let mut all_templates = Vec::new();
+        Ok(self.load_templates_with_report().await?.templates)
+    }
+
+    /// Load configured directories, retaining discovery failures and helpers.
+    pub async fn load_templates_with_report(&self) -> Result<TemplateLoadReport> {
+        let mut report = TemplateLoadReport::default();
 
         // Get directories from template manager
         let directories = if self.config.templates.directories.is_empty() {
@@ -85,37 +93,45 @@ impl CertXGen {
         for dir in &directories {
             if !dir.exists() {
                 tracing::debug!("Template directory does not exist: {}", dir.display());
+                if !self.config.templates.directories.is_empty() {
+                    report.issues.push(TemplateLoadIssue {
+                        path: dir.clone(),
+                        error: Some("Template directory does not exist".to_string()),
+                    });
+                }
                 continue;
             }
 
             tracing::info!("Loading templates from: {}", dir.display());
 
-            match self.template_loader.load_templates_from_dir(dir).await {
-                Ok(mut templates) => {
+            match self.template_loader.discover_templates(dir).await {
+                Ok(discovered) => {
                     tracing::info!(
                         "Loaded {} templates from {}",
-                        templates.len(),
+                        discovered.templates.len(),
                         dir.display()
                     );
-                    all_templates.append(&mut templates);
+                    report.append(discovered);
                 }
                 Err(e) => {
                     tracing::warn!("Failed to load templates from {}: {}", dir.display(), e);
+                    report.issues.push(TemplateLoadIssue {
+                        path: dir.clone(),
+                        error: Some(e.to_string()),
+                    });
                 }
             }
         }
 
         // If no templates found, show helpful message
-        if all_templates.is_empty() {
+        if report.templates.is_empty() {
             tracing::warn!("No templates found. Run 'cxg template update' to download templates.");
         }
 
         // Deduplicate templates by ID, keeping first occurrence (priority: Local > User > System)
         let mut seen_ids = std::collections::HashSet::new();
-        let original_count = all_templates.len();
-        let deduplicated_templates: Vec<Box<dyn Template>> = all_templates
-            .into_iter()
-            .filter(|template| {
+        let original_count = report.templates.len();
+        report.templates.retain(|template| {
                 let id = template.id().to_string();
                 if seen_ids.contains(&id) {
                     tracing::debug!("Skipping duplicate template: {} (already loaded from higher priority directory)", id);
@@ -124,20 +140,19 @@ impl CertXGen {
                     seen_ids.insert(id);
                     true
                 }
-            })
-            .collect();
+            });
 
-        if original_count != deduplicated_templates.len() {
+        if original_count != report.templates.len() {
             tracing::info!(
                 "Deduplicated templates: {} -> {} (removed {} duplicates)",
                 original_count,
-                deduplicated_templates.len(),
-                original_count - deduplicated_templates.len()
+                report.templates.len(),
+                original_count - report.templates.len()
             );
         }
 
-        tracing::info!("Total templates loaded: {}", deduplicated_templates.len());
-        Ok(deduplicated_templates)
+        tracing::info!("Total templates loaded: {}", report.templates.len());
+        Ok(report)
     }
 
     /// Create a new scan job
@@ -166,13 +181,20 @@ impl CertXGen {
         drop(scheduler); // Release lock
 
         // Execute scan using executor
-        let (findings, executions) = self.executor.execute_with_records(&job).await?;
+        let requests = Arc::new(crate::network::RequestStatistics::default());
+        let (findings, executions) = crate::network::with_request_statistics(
+            requests.clone(),
+            self.executor.execute_with_records(&job),
+        )
+        .await?;
 
         // Aggregate results
         for finding in findings {
             results.add_finding(finding);
         }
         results.executions = executions;
+        results.statistics.network_requests = requests.total();
+        results.statistics.network_requests_measured = requests.measured();
 
         // Update statistics
         results.statistics.targets_scanned = job.targets.len();

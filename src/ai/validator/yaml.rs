@@ -54,6 +54,13 @@ pub fn validate(code: &str) -> Result<Vec<TemplateDiagnostic>> {
     // Required fields
     diagnostics.extend(validate_required_fields(yaml_map, code));
 
+    if let Err(e) = crate::engine::yaml::validate_template_content(code) {
+        diagnostics.push(TemplateDiagnostic::error(
+            "yaml.loader_schema",
+            e.to_string(),
+        ));
+    }
+
     // Validate author structure
     diagnostics.extend(validate_author(yaml_map));
 
@@ -128,10 +135,10 @@ fn validate_author(yaml_map: &serde_yaml::Mapping) -> Vec<TemplateDiagnostic> {
                     "'author' field must have a 'name' sub-field",
                 ));
             }
-        } else if !author.is_string() {
+        } else {
             diagnostics.push(TemplateDiagnostic::error(
                 "yaml.author_not_mapping",
-                "'author' field must be a mapping or string",
+                "'author' field must be a mapping with a 'name' sub-field",
             ));
         }
     }

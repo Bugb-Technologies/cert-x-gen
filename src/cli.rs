@@ -3,6 +3,29 @@
 use clap::{Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 
+/// Execution outcomes that can make a completed scan fail in CI.
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum FailOnArg {
+    Confirmed,
+    Refuted,
+    Errored,
+    Skipped,
+    TimedOut,
+}
+
+impl FailOnArg {
+    pub fn status(self) -> cert_x_gen::types::ExecutionStatus {
+        use cert_x_gen::types::ExecutionStatus;
+        match self {
+            Self::Confirmed => ExecutionStatus::Confirmed,
+            Self::Refuted => ExecutionStatus::Refuted,
+            Self::Errored => ExecutionStatus::Errored,
+            Self::Skipped => ExecutionStatus::Skipped,
+            Self::TimedOut => ExecutionStatus::TimedOut,
+        }
+    }
+}
+
 #[derive(Parser, Debug)]
 #[command(
     name = "cxg",
@@ -2432,6 +2455,18 @@ pub struct ScanArgs {
                      html (visual report), markdown (docs)."
     )]
     pub output_format: String,
+
+    #[arg(
+        long,
+        value_enum,
+        value_delimiter = ',',
+        help_heading = "Output",
+        help = "Exit 2 after writing reports if any execution has a matching status",
+        long_help = "Fail CI on matching execution statuses (comma-separated or repeated). \
+                     Example: --fail-on confirmed,errored,timed-out. Reports are written before \
+                     exit 2. Without this flag, findings do not change the exit code."
+    )]
+    pub fail_on: Vec<FailOnArg>,
 
     #[arg(
         short,

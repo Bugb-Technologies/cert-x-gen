@@ -52,7 +52,8 @@ impl TemplateEngine for YamlTemplateEngine {
             )
         })?;
 
-        let template_data: YamlTemplateData = serde_yaml::from_str(&content)?;
+        let mut template_data = parse_template_data(&content)?;
+        template_data.metadata.file_path = path.to_path_buf();
 
         Ok(Box::new(YamlTemplateImpl {
             data: template_data,
@@ -126,6 +127,30 @@ struct YamlTemplateData {
 
     /// Flows (multi-step execution)
     flows: Option<Vec<Flow>>,
+}
+
+impl YamlTemplateData {
+    fn validate(&self) -> Result<()> {
+        if self.http.is_none() && self.network.is_none() && self.flows.is_none() {
+            return Err(Error::TemplateValidation {
+                template: self.metadata.id.clone(),
+                reason: "Template must have either 'http', 'network', or 'flows' defined"
+                    .to_string(),
+            });
+        }
+        Ok(())
+    }
+}
+
+fn parse_template_data(content: &str) -> Result<YamlTemplateData> {
+    let data: YamlTemplateData = serde_yaml::from_str(content)?;
+    data.validate()?;
+    Ok(data)
+}
+
+/// Validate using the exact schema and execution-block parser used by loading.
+pub fn validate_template_content(content: &str) -> Result<()> {
+    parse_template_data(content).map(|_| ())
 }
 
 /// HTTP request specification
@@ -258,6 +283,9 @@ impl YamlTemplateImpl {
 
 #[async_trait]
 impl Template for YamlTemplateImpl {
+    fn measures_network_requests(&self) -> bool {
+        true
+    }
     fn metadata(&self) -> &TemplateMetadata {
         &self.data.metadata
     }
@@ -317,16 +345,7 @@ impl Template for YamlTemplateImpl {
     }
 
     fn validate(&self) -> Result<()> {
-        // Validate that we have either HTTP requests, network requests, or flows
-        if self.data.http.is_none() && self.data.network.is_none() && self.data.flows.is_none() {
-            return Err(Error::TemplateValidation {
-                template: self.id().to_string(),
-                reason: "Template must have either 'http', 'network', or 'flows' defined"
-                    .to_string(),
-            });
-        }
-
-        Ok(())
+        self.data.validate()
     }
 
     /// Get supported protocols (dynamically detected from template content)
@@ -700,6 +719,7 @@ impl YamlTemplateImpl {
                 .into_bytes();
 
             // Send payload
+            crate::network::record_request();
             if let Err(e) = writer.write_all(&payload_bytes).await {
                 tracing::debug!("Failed to send payload to {}: {}", addr, e);
                 continue;

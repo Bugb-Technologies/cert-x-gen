@@ -586,8 +586,12 @@ pub struct ScanStatistics {
     pub templates_executed: usize,
     /// Findings by severity
     pub findings_by_severity: HashMap<Severity, usize>,
-    /// Total network requests
-    pub network_requests: usize,
+    /// Outbound request attempts, including retries and redirects. Unknown when
+    /// an executed engine cannot observe template networking.
+    pub network_requests: Option<usize>,
+    /// Requests observed by cxg, even when the aggregate total is unknown.
+    #[serde(default)]
+    pub network_requests_measured: usize,
     /// Total data transferred (bytes)
     pub data_transferred: u64,
     /// Scan duration
@@ -618,6 +622,35 @@ pub struct ScanResults {
 }
 
 impl ScanResults {
+    /// Add discovery outcomes once per file, before any target was selected.
+    /// Such ledger rows have an empty target and use the path as template ID.
+    pub fn add_discovery_issues(&mut self, issues: Vec<crate::template::TemplateLoadIssue>) {
+        for issue in issues {
+            let (status, detail) = if let Some(error) = issue.error {
+                let detail = format!(
+                    "Failed to load template '{}': {}",
+                    issue.path.display(),
+                    error
+                );
+                self.errors.push(detail.clone());
+                (ExecutionStatus::Errored, detail)
+            } else {
+                (ExecutionStatus::Skipped, "skipped-non-template".to_string())
+            };
+            self.executions.push(ExecutionRecord {
+                target: String::new(),
+                target_kind: String::new(),
+                template_id: issue.path.display().to_string(),
+                status,
+                declared_by_template: false,
+                findings: 0,
+                exit_code: None,
+                detail: Some(detail),
+                duration_ms: 0,
+            });
+        }
+    }
+
     /// Create new scan results
     pub fn new(scan_id: Uuid) -> Self {
         Self {

@@ -239,10 +239,7 @@ impl FlowExecutor {
                 }
 
                 // Send request
-                let response = request
-                    .send()
-                    .await
-                    .map_err(|e| Error::Network(format!("HTTP request failed: {}", e)))?;
+                let response = self.network_client.request(request).await?;
 
                 // Process Set-Cookie headers
                 for cookie in response.headers().get_all("set-cookie") {
