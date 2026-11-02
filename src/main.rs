@@ -14,7 +14,6 @@ use cert_x_gen::{
     types::{Protocol, Target, TemplateLanguage},
     utils,
 };
-use clap::Parser;
 use std::io::IsTerminal;
 use std::sync::Arc;
 use std::{
@@ -721,7 +720,7 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
                 output.to_string_lossy().to_string(),
             ]);
         }
-        cli::PentestAction::Run {
+        cli::PentestAction::Run(cli::PentestRunArgs {
             codebase,
             target,
             auth,
@@ -733,6 +732,7 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
             goal,
             threat_id,
             template_dir,
+            no_author,
             max_templates,
             mutation_retries,
             ai_provider,
@@ -784,7 +784,7 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
             no_restart,
             auth_dir,
             ci,
-        } => {
+        }) => {
             args.push("pentest".into());
             args.extend(["--codebase".into(), codebase.to_string_lossy().to_string()]);
             // @comment -- "Forwarded only when the operator supplied it. --target is optional at clap level so a tauri source-surface map can omit it; a web/electron run with no --target is refused by the Python preflight, not here, so this never silently drops a target a live probe needed."
@@ -809,6 +809,9 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
             }
             if let Some(d) = template_dir {
                 args.extend(["--template-dir".into(), d.to_string_lossy().to_string()]);
+            }
+            if no_author {
+                args.push("--no-author".into());
             }
             args.extend(["--max-templates".into(), max_templates.to_string()]);
             args.extend(["--mutation-retries".into(), mutation_retries.to_string()]);

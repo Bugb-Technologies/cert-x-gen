@@ -69,7 +69,7 @@ CERT-X-GEN ships two distinct workflows:
 | Surface | Command | What it does |
 |---------|---------|--------------|
 | **Template scanning** | `cxg scan` | Runs polyglot detection templates against network/host targets (single host, file, CIDR, URL) or local CLI binaries (`cli://`). |
-| **AI-driven whitebox pentest** | `cxg pentest` | Ranks guardlink source-code hypotheses against an operator goal, has a local AI CLI write JavaScript probe templates that read the target's source, and executes them in parallel **authenticated** Chromium contexts against a running web app or Electron desktop app. Also maps Tauri IPC and capabilities from source, with optional in-process command proof. |
+| **AI-driven whitebox pentest** | `cxg scan --pentest` / `cxg pentest run` | Ranks guardlink source-code hypotheses against an operator goal, has a local AI CLI write JavaScript probe templates that read the target's source, and executes them in parallel **authenticated** Chromium contexts against a running web app or Electron desktop app. Also maps Tauri IPC and capabilities from source, with optional in-process command proof. |
 
 The full command set:
 
@@ -253,6 +253,35 @@ cxg scan --scope 192.168.1.0/24 --top-ports 100
 # Scan targets from a file
 cxg scan --scope targets.txt --templates redis*.py
 ```
+
+### Pentest engine through scan
+
+`cxg scan --pentest` accepts every `cxg pentest run` option and runs the same
+pentest engine. `cxg pentest run` remains available. Use `--scope` as an alias
+for one HTTP(S) `--target`, and `--templates DIR` or `--template-dir DIR` for a
+supplied JS probe directory. Ports, CIDR, `cli://` scopes, scan filters and other
+scan-only options are refused. See `cxg scan --pentest --help` for all options.
+
+```bash
+cxg scan --pentest --codebase ./repo --scope https://app.example.com --auth admin
+
+# Execute supplied probes with zero model calls
+cxg scan --pentest --codebase ./repo --scope https://app.example.com \
+  --template-dir ./probes --no-author
+```
+
+`--no-author` requires supplied JS probes, skips ranking and all template
+generation (including deterministic generation), and forces mutation retries to
+zero. Missing, empty, entirely withheld or entirely invalid probe directories
+refuse the run; cxg never falls back to generation. Reports record
+`authoring.mode: "no_author"` and `authoring.model_calls: 0`.
+
+Pentest uses JS probes; any-language probes are not yet supported. The legacy
+`--template-lang py` path remains available, but cannot replay supplied JS probes
+or use `--no-author`. Engine-confirmed pentest verdicts remain distinct from
+ordinary scan's template-reported findings. Browser frontend inspection, DOM/XSS
+oracles, captured authentication, Electron/Tauri support, audit logs and other
+pentest capabilities use the existing engine through either command.
 
 ### Whitebox Pentest (`cxg pentest`)
 
