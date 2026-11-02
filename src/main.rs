@@ -759,6 +759,7 @@ async fn run_pentest_process(
                     session_dir,
                     auth_dir,
                     auth_inputs,
+                    no_author,
                 },
             target,
             interactive_auth,
@@ -769,7 +770,6 @@ async fn run_pentest_process(
             goal,
             threat_id,
             template_dir,
-            no_author,
             max_templates,
             mutation_retries,
             ai_provider,
@@ -1550,6 +1550,7 @@ async fn run_scan(args: cli::ScanArgs, config_path: Option<PathBuf>) -> Result<(
     let start = std::time::Instant::now();
     let mut results = if job.templates.is_empty() {
         let mut results = cert_x_gen::types::ScanResults::new(job.id);
+        results.statistics.network_requests = Some(0);
         results.complete();
         results
     } else {

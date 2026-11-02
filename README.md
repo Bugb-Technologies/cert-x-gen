@@ -264,7 +264,7 @@ runners. A directory may contain both kinds of template.
 
 ```bash
 # Supplied probes, or a mixed directory of scanners and JS probes
-cxg scan --scope https://app.example.com --template-dir ./checks
+cxg scan --scope https://app.example.com --template-dir ./checks --no-author
 
 # Source context, captured identities and engine scope controls
 cxg scan --scope https://app.example.com --templates ./probes/check.js \
@@ -273,7 +273,8 @@ cxg scan --scope https://app.example.com --templates ./probes/check.js \
 ```
 
 The probe target comes from `--scope`; `--codebase` defaults to the current
-directory. `--auth`, `--auth-dir`, `--auth-inputs`, `--scope-file` and
+directory. Plain scan accepts `--no-author` as an explicit zero-model guarantee,
+including scanner-only packs. `--auth`, `--auth-dir`, `--auth-inputs`, `--scope-file` and
 `--session-dir` supply the engine inputs. A probe requiring missing identities,
 an attachment stamp or other inputs is **refused**, with its reason in the
 report and a non-zero exit. Other runnable templates continue. A refusal is
@@ -287,7 +288,18 @@ full report, including refutations, ambiguous results, refused probes, and
 session/report/audit-log locations. It records `authoring.model_calls: 0`.
 JSON is always written when probes are selected, alongside any requested export
 formats. Exit 2 signals engine-confirmed findings; exit 4 signals a refused probe
-or missing engine input and takes precedence. Scanner-only behavior is unchanged.
+or missing engine input. An interrupted engine run retains exit 3. Ordinary
+scanner execution keeps its existing contract.
+
+Probe verdicts also appear in `executions[]` for status-based exit gates:
+confirmed findings are `confirmed`, verified controls are `refuted`, missing
+prerequisites are `skipped`, and runtime errors or inconclusive outcomes are
+`errored`. These rows are engine-adjudicated, never template-declared.
+`statistics.network_requests` is nullable when total networking is unknown;
+`network_requests_measured` retains observed HTTP attempts from the durable audit,
+including engine liveness and identity requests when audited. Each engine session
+separately names `request_counts.audited_http_attempts` and
+`request_counts.probe_budget_requests`. Budget use is not the total traffic.
 
 ### Pentest engine through scan
 

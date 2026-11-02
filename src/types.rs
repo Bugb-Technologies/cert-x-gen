@@ -590,8 +590,12 @@ pub struct ScanStatistics {
     pub templates_executed: usize,
     /// Findings by severity
     pub findings_by_severity: HashMap<Severity, usize>,
-    /// Total network requests
-    pub network_requests: usize,
+    /// Outbound request attempts, including retries and redirects. Unknown when
+    /// an executed engine cannot observe template networking.
+    pub network_requests: Option<usize>,
+    /// Requests observed by cxg, even when the aggregate total is unknown.
+    #[serde(default)]
+    pub network_requests_measured: usize,
     /// Total data transferred (bytes)
     pub data_transferred: u64,
     /// Scan duration

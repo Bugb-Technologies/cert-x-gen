@@ -83,7 +83,7 @@ async function cxgProbe(cxg) {
 }
 '''
 if scenario == 'missing':
-    probe = probe.replace('@requires_auth_count: 0', '@requires_auth_count: 2')
+    probe = probe.replace('@requires_auth_count: 0', '@requires_auth_count: 2\n// @requires_identities: {"victim":"missing-victim","attacker":"missing-attacker"}')
 (pack / 'probe.js').write_text(probe)
 if scenario in {'mixed', 'partial', 'duplicate_id', 'partial_duplicate'}:
     (pack / 'scanner.py').write_text('''# @id: ordinary-scanner
@@ -113,7 +113,7 @@ env.pop('CXG_SOURCE', None)
 env.pop('ANTHROPIC_API_KEY', None)
 env.pop('OPENAI_API_KEY', None)
 try:
-    command = [executable, '--disable-update-check', 'scan', '--scope', f'http://127.0.0.1:{server.server_port}',
+    command = [executable, '--disable-update-check', 'scan', '--no-author', '--scope', f'http://127.0.0.1:{server.server_port}',
         '--template-dir', str(pack), '--session-dir', str(root / 'sessions'), '--output', str(root / 'combined')]
     if scenario == 'refuted':
         state = root / 'state.json'
@@ -129,6 +129,8 @@ try:
     if scenario == 'direct':
         command[command.index('--template-dir')] = '--templates'
         command[command.index(str(pack))] = str(pack / 'probe.js')
+    if os.environ.get('CXG_TEST_FAIL_ON'):
+        command += ['--fail-on', os.environ['CXG_TEST_FAIL_ON']]
     out = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True, timeout=80)
     print(out.stdout)
     print(out.stderr, file=sys.stderr)
@@ -143,11 +145,12 @@ try:
         assert 'requires 2 captured authenticated identities' in json.dumps(engine['refused_probes'])
         if scenario == 'partial_duplicate':
             assert any(r.get('path') == str(pack / 'requires-identities.js') for r in engine['refused_probes'])
+            assert {'confirmed', 'skipped'} <= {e['status'] for e in report['executions'] if e['template_id'] == 'browser-proof'}
         if scenario == 'missing':
             assert not requests, requests
             assert not report['findings']
     elif scenario == 'refuted':
-        assert out.returncode == 0, out.returncode
+        assert out.returncode == (2 if os.environ.get('CXG_TEST_FAIL_ON') == 'refuted' else 0), out.returncode
         assert not report['findings']
         assert engine['sessions'][0]['report']['mitigation_verifications']
     else:
@@ -158,11 +161,35 @@ try:
         assert Path(native['audit_log']).is_file()
         assert Path(native['report_path']).is_file()
         assert native['report']['authoring']['model_calls'] == 0
+        rows = [json.loads(line) for line in Path(native['audit_log']).read_text().splitlines()]
+        audited = sum(r.get('_event') == 'request' and r.get('url', '').startswith(('http://', 'https://')) for r in rows)
+        assert native['request_counts']['audited_http_attempts'] == audited
+        assert report['statistics']['network_requests_measured'] >= audited
+        assert report['statistics']['network_requests'] is None
+        if os.environ.get('CXG_EXPECT_FULL_AUDIT'):
+            scanner_requests = 1 if scenario in {'mixed', 'partial', 'duplicate_id', 'partial_duplicate'} else 0
+            assert audited == len(requests) - scanner_requests, (audited, requests)
+    assert report['executions'], 'probe executions must be available to status gates'
+    if scenario == 'refuted':
+        assert report['executions'][0]['status'] == 'refuted'
     if scenario not in {'missing', 'refuted'}:
+        assert any(e['status'] == 'confirmed' and 'engine-adjudicated' in (e['detail'] or '') for e in report['executions'])
         assert any(f['verdict_source'] == 'engine-adjudicated' for f in report['findings'])
     if scenario in {'mixed', 'partial', 'duplicate_id', 'partial_duplicate'}:
         assert '/scanner' in requests
         assert any(f['verdict_source'] == 'template-reported' for f in report['findings'])
+    if scenario == 'missing':
+        for index, prefix in enumerate([['scan', '--pentest'], ['pentest', 'run']]):
+            native_path = root / f'legacy-{index}.json'
+            replay = subprocess.run([executable, *prefix, '--codebase', str(root),
+                '--target', f'http://127.0.0.1:{server.server_port}', '--template-dir', str(pack),
+                '--no-author', '--session-dir', str(root / f'legacy-session-{index}'),
+                '--output', str(native_path)], cwd=root, env=env, capture_output=True, text=True, timeout=80)
+            assert replay.returncode == 4, (prefix, replay.returncode, replay.stdout, replay.stderr)
+            native_report = json.loads(native_path.read_text())
+            assert native_report['auth_skipped'][0]['missing_roles']
+            assert not native_report['mitigation_verifications']
+        assert not tripwire.exists()
     print('PASS', scenario, 'requests', len(requests), 'model calls 0')
 finally:
     server.shutdown()

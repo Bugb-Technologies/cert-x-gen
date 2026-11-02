@@ -168,10 +168,11 @@ impl Cli {
         let args: Vec<OsString> = args.into_iter().map(Into::into).collect();
         let root = Self::command().mut_subcommand("pentest", |cmd| {
             cmd.mut_subcommand("run", |run| {
-                run.mut_arg("codebase", |arg| {
-                    arg.default_value(clap::builder::Resettable::Reset)
-                        .required(true)
-                })
+                run.mut_arg("no_author", |arg| arg.requires("template_dir"))
+                    .mut_arg("codebase", |arg| {
+                        arg.default_value(clap::builder::Resettable::Reset)
+                            .required(true)
+                    })
             })
         });
         if !args.iter().any(|arg| arg == "--pentest") {
@@ -1001,12 +1002,6 @@ pub struct PentestRunArgs {
     )]
     pub template_dir: Option<PathBuf>,
 
-    /// Execute supplied JS probes only, with zero model calls. Requires
-    /// --template-dir; disables ranking, all generation and mutation retries.
-    /// Refuses missing, empty or entirely withheld template directories.
-    #[arg(long, requires = "template_dir", help_heading = "Generation")]
-    pub no_author: bool,
-
     /// Maximum number of templates the LLM ranker is allowed to select per scan.
     /// Each template = one AI generation call (~60-180s with claude/codex). Lower for
     /// fast feedback loops; higher for engagement-grade coverage.
@@ -1685,6 +1680,12 @@ pub struct PentestRunArgs {
 /// Inputs shared by automatic scan probes and explicit pentest runs.
 #[derive(clap::Args, Debug, Clone)]
 pub struct ProbeInputs {
+    /// Guarantee zero model calls. Plain scan already replays selected scanner
+    /// and JS probe templates without authoring. Explicit pentest runs require
+    /// --template-dir and disable ranking, generation and mutation.
+    #[arg(long, help_heading = "Generation")]
+    pub no_author: bool,
+
     /// Source codebase root. Defaults to the current directory for scan;
     /// pentest run requires an explicit value. Reads whitebox/findings.sarif
     /// when present and supplies source context to the engine.

@@ -3,7 +3,7 @@ use crate::cli::{self, Cli, Commands, PentestAction, PentestCommand};
 use cert_x_gen::{
     error::{Error, Result},
     template::{PathResolver, Template},
-    types::{Finding, ScanResults, Severity},
+    types::{ExecutionRecord, ExecutionStatus, Finding, ScanResults, Severity},
 };
 use serde_json::{json, Value};
 use std::{collections::HashSet, fs};
@@ -124,7 +124,7 @@ pub async fn execute(
             run.probe_inputs = args.probe_inputs.clone();
             run.probe_inputs.session_dir = Some(session.clone());
             run.template_dir = Some(inputs.clone());
-            run.no_author = true;
+            run.probe_inputs.no_author = true;
             run.mutation_retries = 0;
             run.output = Some(report_path.clone());
             // Scanner proxy semantics are identical; other engine controls retain
@@ -162,10 +162,6 @@ pub async fn execute(
                 if executed > 0 {
                     executed_targets.insert(target.clone());
                 }
-                results.statistics.network_requests += report
-                    .pointer("/scope_stats/total_requests")
-                    .and_then(Value::as_u64)
-                    .unwrap_or(0) as usize;
                 for key in [
                     "probe_refusals",
                     "auth_skipped",
@@ -259,12 +255,54 @@ pub async fn execute(
                     exit = 4;
                 }
             }
+            let audited_requests = audited_http_requests(&session.join("audit.jsonl"));
+            results.statistics.network_requests_measured += audited_requests;
+            // The durable audit counts observed HTTP attempts, not arbitrary
+            // networking a probe can cause. Do not present that subset as a total.
+            if audited_requests > 0
+                || report
+                    .as_ref()
+                    .and_then(|r| r.get("templates_executed"))
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0)
+                    > 0
+            {
+                results.statistics.network_requests = None;
+            }
+            append_executions(results, &target, &mappings, report.as_ref(), code, &refused);
             reports.push(json!({"target": target, "session_dir": session, "audit_log": session.join("audit.jsonl"),
-                "report_path": report_path, "exit_code": code, "templates": mappings, "report": report}));
+                "report_path": report_path, "exit_code": code, "templates": mappings,
+                "request_counts": {"audited_http_attempts": audited_requests, "probe_budget_requests": report.as_ref().and_then(|r| r.pointer("/scope_stats/total_requests")).and_then(Value::as_u64).unwrap_or(0)},
+                "report": report}));
         }
     }
-    if !refused.is_empty() {
+    if !refused.is_empty() && exit != 3 {
         exit = 4;
+    }
+    // Refusals before engine dispatch still need a gateable execution row.
+    for entry in &refused {
+        let target = entry.get("target").and_then(Value::as_str).unwrap_or("");
+        let id = entry
+            .get("template")
+            .and_then(Value::as_str)
+            .unwrap_or("probe");
+        if !results
+            .executions
+            .iter()
+            .any(|e| e.target == target && e.template_id == id)
+        {
+            results.executions.push(probe_execution(
+                target,
+                id,
+                ExecutionStatus::Skipped,
+                0,
+                4,
+                &format!(
+                    "probe refused: {}",
+                    entry.get("reason").unwrap_or(&Value::Null)
+                ),
+            ));
+        }
     }
     let mut seen_refusals = HashSet::new();
     refused.retain(|entry| {
@@ -291,4 +329,198 @@ pub async fn execute(
         "sessions": reports, "refused_probes": refused}),
     );
     Ok(exit)
+}
+
+fn audited_http_requests(path: &std::path::Path) -> usize {
+    fs::read_to_string(path)
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+        .filter(|row| {
+            row.get("_event").and_then(Value::as_str) == Some("request")
+                && row
+                    .get("url")
+                    .and_then(Value::as_str)
+                    .is_some_and(|url| url.starts_with("http://") || url.starts_with("https://"))
+        })
+        .count()
+}
+
+fn probe_execution(
+    target: &str,
+    id: &str,
+    status: ExecutionStatus,
+    findings: usize,
+    code: i32,
+    reason: &str,
+) -> ExecutionRecord {
+    ExecutionRecord {
+        target: target.into(),
+        target_kind: "http".into(),
+        template_id: id.into(),
+        status,
+        declared_by_template: false,
+        findings,
+        exit_code: Some(code),
+        detail: Some(format!("engine-adjudicated: {reason}")),
+        duration_ms: 0,
+    }
+}
+
+fn append_executions(
+    results: &mut ScanResults,
+    target: &str,
+    mappings: &[Value],
+    report: Option<&Value>,
+    code: i32,
+    refusals: &[Value],
+) {
+    for mapping in mappings {
+        let id = mapping["template"].as_str().unwrap_or("probe");
+        let count = |key: &str| {
+            report
+                .and_then(|r| r.get(key))
+                .and_then(Value::as_array)
+                .map_or(0, |rows| {
+                    rows.iter()
+                        .filter(|r| {
+                            r.get("template_id")
+                                .or_else(|| r.get("hypothesis_id"))
+                                .or_else(|| r.get("template"))
+                                .and_then(Value::as_str)
+                                == Some(id)
+                        })
+                        .count()
+                })
+        };
+        let findings = count("confirmed_findings");
+        let refusal = refusals.iter().find(|r| {
+            r.get("target").and_then(Value::as_str) == Some(target)
+                && if r.get("path").is_some_and(|p| !p.is_null()) {
+                    r.get("path") == mapping.get("source")
+                } else {
+                    r.get("template").and_then(Value::as_str) == Some(id)
+                }
+        });
+        let native = report
+            .and_then(|r| r.get("probe_executions"))
+            .and_then(Value::as_array)
+            .and_then(|rows| {
+                rows.iter()
+                    .find(|row| row.get("path") == mapping.get("staged"))
+            });
+        if let Some(row) = native {
+            let mut execution = probe_execution(
+                target,
+                id,
+                row.get("status")
+                    .and_then(Value::as_str)
+                    .and_then(ExecutionStatus::parse)
+                    .unwrap_or(ExecutionStatus::Errored),
+                row.get("findings").and_then(Value::as_u64).unwrap_or(0) as usize,
+                code,
+                row.get("reason")
+                    .and_then(Value::as_str)
+                    .unwrap_or("native probe execution"),
+            );
+            execution.duration_ms = row.get("duration_ms").and_then(Value::as_u64).unwrap_or(0);
+            results.executions.push(execution);
+            continue;
+        }
+        let (status, detail) = if let Some(refusal) = refusal {
+            (
+                ExecutionStatus::Skipped,
+                format!(
+                    "probe refused: {}",
+                    refusal.get("reason").unwrap_or(&Value::Null)
+                ),
+            )
+        } else if findings > 0 {
+            (
+                ExecutionStatus::Confirmed,
+                format!("{findings} engine-confirmed finding(s)"),
+            )
+        } else if count("template_errors") > 0 {
+            (
+                ExecutionStatus::Errored,
+                "probe runtime error; see native report".into(),
+            )
+        } else if count("mitigation_verifications") > 0 {
+            (
+                ExecutionStatus::Refuted,
+                "engine verified mitigation/control".into(),
+            )
+        } else {
+            (
+                ExecutionStatus::Errored,
+                "no conclusive engine verdict; see native report (silence is not refutation)"
+                    .into(),
+            )
+        };
+        results
+            .executions
+            .push(probe_execution(target, id, status, findings, code, &detail));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn probe_verdicts_are_gateable_and_silence_is_never_refutation() {
+        for (report, expected) in [
+            (
+                json!({"confirmed_findings":[{"template_id":"p"}]}),
+                ExecutionStatus::Confirmed,
+            ),
+            (
+                json!({"mitigation_verifications":[{"template_id":"p"}]}),
+                ExecutionStatus::Refuted,
+            ),
+            (
+                json!({"ambiguous":[{"template_id":"p"}]}),
+                ExecutionStatus::Errored,
+            ),
+            (json!({}), ExecutionStatus::Errored),
+        ] {
+            let mut results = ScanResults::new(uuid::Uuid::new_v4());
+            append_executions(
+                &mut results,
+                "http://target",
+                &[json!({"template":"p","source":"probe.js"})],
+                Some(&report),
+                0,
+                &[],
+            );
+            assert_eq!(results.executions.len(), 1);
+            assert_eq!(results.executions[0].status, expected);
+            assert!(!results.executions[0].declared_by_template);
+            assert!(results.executions[0]
+                .detail
+                .as_ref()
+                .unwrap()
+                .starts_with("engine-adjudicated:"));
+        }
+    }
+    #[test]
+    fn audit_counts_engine_and_probe_http_attempts_without_budget_or_event_rows() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("audit.jsonl");
+        let rows = [
+            json!({"_event":"request","actor":"engine","url":"http://target/","method":"GET"}),
+            json!({"_event":"request","actor":"engine","url":"http://target/api/me","method":"GET"}),
+            json!({"_event":"request","template_id":"probe","url":"http://target/check","method":"POST"}),
+            json!({"_event":"blocked","url":"http://target/blocked"}),
+            json!({"_event":"request","method":"TEMPLATE_START","url":""}),
+        ];
+        fs::write(
+            &file,
+            rows.iter()
+                .map(Value::to_string)
+                .collect::<Vec<_>>()
+                .join("\n"),
+        )
+        .unwrap();
+        assert_eq!(audited_http_requests(&file), 3);
+    }
 }
