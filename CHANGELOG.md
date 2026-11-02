@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Malformed HTTP probe calls, such as `cxg.fetch({method, path})`, are rejected
+  as authoring errors. Load-time checks catch literal mistakes; runtime checks
+  reject computed arguments before scope accounting or network dispatch and
+  record the template as rejected. The loopback regression tests now declare
+  their pinned aiohttp dependency.
 - Pentest raw HTTP redirects now pass scope checks, request budgets, pacing, and
   auditing at every hop, including redirected methods. Out-of-scope hops stop
   before dispatch. Cross-origin hops discard identity headers and use a fresh
