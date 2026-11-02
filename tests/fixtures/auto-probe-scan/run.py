@@ -17,6 +17,8 @@ if not importlib.util.find_spec('playwright') or not importlib.util.find_spec('y
 from playwright.sync_api import sync_playwright
 try:
     with sync_playwright() as playwright:
+        browser_cache = next((p.parent for p in Path(playwright.chromium.executable_path).parents
+                              if p.name.startswith('chromium-')), None)
         browser = playwright.chromium.launch(headless=True)
         browser.close()
 except Exception:
@@ -106,9 +108,11 @@ for tool in ['claude', 'codex', 'gemini', 'crush', 'node']:
     path = bin_dir / tool
     path.write_text('#!/bin/sh\nprintf "%s\\n" "$0" >> ' + shlex.quote(str(tripwire)) + '\nexit 88\n')
     path.chmod(0o755)
-env = dict(os.environ, PATH=str(bin_dir) + os.pathsep + os.environ.get('PATH', ''),
+env = dict(os.environ, HOME=str(root), PATH=str(bin_dir) + os.pathsep + os.environ.get('PATH', ''),
            CERT_X_GEN_HOME=str(root / 'home'), CXG_NO_BANNER='1', CXG_PYTHON=sys.executable,
            CXG_CODEGRAPH_MCP=str(root / 'missing-codegraph'))
+if browser_cache is not None and 'PLAYWRIGHT_BROWSERS_PATH' not in env:
+    env['PLAYWRIGHT_BROWSERS_PATH'] = str(browser_cache)
 env.pop('CXG_SOURCE', None)
 env.pop('ANTHROPIC_API_KEY', None)
 env.pop('OPENAI_API_KEY', None)
