@@ -116,7 +116,11 @@ impl CertXGen {
         let deduplicated_templates: Vec<Box<dyn Template>> = all_templates
             .into_iter()
             .filter(|template| {
-                let id = template.id().to_string();
+                let id = if template.is_js_probe() {
+                    format!("probe:{}", template.metadata().file_path.display())
+                } else {
+                    template.id().to_string()
+                };
                 if seen_ids.contains(&id) {
                     tracing::debug!("Skipping duplicate template: {} (already loaded from higher priority directory)", id);
                     false

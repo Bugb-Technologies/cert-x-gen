@@ -166,10 +166,18 @@ impl Cli {
         T: Into<OsString> + Clone,
     {
         let args: Vec<OsString> = args.into_iter().map(Into::into).collect();
+        let root = Self::command().mut_subcommand("pentest", |cmd| {
+            cmd.mut_subcommand("run", |run| {
+                run.mut_arg("codebase", |arg| {
+                    arg.default_value(clap::builder::Resettable::Reset)
+                        .required(true)
+                })
+            })
+        });
         if !args.iter().any(|arg| arg == "--pentest") {
-            return <Self as Parser>::try_parse_from(args);
+            return Self::from_arg_matches(&root.try_get_matches_from(args)?);
         }
-        let root = Self::command();
+        let normal = root.clone();
         let scan = root.find_subcommand("scan").unwrap();
         let mut front = root
             .find_subcommand("pentest")
@@ -232,7 +240,7 @@ impl Cli {
             .subcommand()
             .is_some_and(|(name, sub)| name == "scan" && sub.get_flag("pentest"));
         if !is_pentest {
-            return <Self as Parser>::try_parse_from(args);
+            return Self::from_arg_matches(&normal.try_get_matches_from(args)?);
         }
         let mut matches = command.try_get_matches_from(args)?;
         let (_, sub) = matches.remove_subcommand().unwrap();
@@ -863,17 +871,8 @@ TAURI EXAMPLES:
 /// Arguments shared by `pentest run` and `scan --pentest`.
 #[derive(clap::Args, Debug, Clone)]
 pub struct PentestRunArgs {
-    /// Source codebase root. MUST contain `whitebox/findings.sarif` produced by
-    /// `guardlink sarif <codebase> -p my-app -o whitebox/findings.sarif`. The codebase is also
-    /// the working directory of the AI CLI during template generation, so the AI
-    /// can read source via its own Read/Grep tools to craft code-aware payloads.
-    #[arg(
-        long,
-        help_heading = "Target",
-        display_order = 1,
-        help = "Source codebase root (contains whitebox/findings.sarif)"
-    )]
-    pub codebase: PathBuf,
+    #[command(flatten)]
+    pub probe_inputs: ProbeInputs,
 
     /// Running target app URL. Both `http://` and `https://` are supported.
     /// Multi-tenant note: pass the URL where the SESSION cookies live, not a marketing
@@ -890,22 +889,6 @@ pub struct PentestRunArgs {
         help = "Running target app URL (http:// or https://); omit for --target-type tauri"
     )]
     pub target: Option<String>,
-
-    /// Comma-separated auth profile names previously captured via `cxg pentest auth`.
-    /// Probes that need multiple identities (IDOR cross-user, session-replay-against-
-    /// victim) require ≥2 profiles. The lowest-privilege identity is auto-selected as
-    /// the actor for privesc-class probes.
-    ///
-    /// Empty means a first-class anonymous (no-login) web/Electron run, not interactive capture.
-    /// Tauri source maps and in-process proofs need no --auth profile.
-    #[arg(
-        long,
-        default_value = "",
-        help_heading = "Authentication",
-        display_order = 11,
-        help = "Comma-separated captured auth profiles; empty = first-class anonymous (no-login) run on a clean unauthenticated surface with real anonymous probes and auth-only checks reported not-run. Empty does not imply interactive capture; use --interactive-auth"
-    )]
-    pub auth: String,
 
     /// Open N headed browser windows for interactive login at scan start, then run
     /// the pipeline with the resulting fresh profiles. Each capture prompts you for
@@ -1090,31 +1073,6 @@ pub struct PentestRunArgs {
         help = "Show Chromium windows instead of running headless"
     )]
     pub headed: bool,
-
-    /// Path to scope.yaml. Default: safe permissive defaults (any URL, GET/POST/HEAD/
-    /// OPTIONS, 30 reqs/endpoint, 1500 reqs total, kill on 8-streak 5xx).
-    /// Generate one with `cxg pentest scope-init`.
-    ///
-    /// If this flag is given and the file cannot be read — path does not exist,
-    /// unreadable, invalid YAML, not a mapping, empty, or PyYAML not installed —
-    /// the run is REFUSED with exit 4. It does not fall back to the defaults:
-    /// a bound cxg cannot read is not the same as no bound. Omitting the flag
-    /// entirely is the supported way to run on the defaults.
-    ///
-    /// An empty value never reaches that check and is not ignored either:
-    /// `--scope-file "$SCOPE"` with `SCOPE` unset is rejected by the CLI parser
-    /// as a usage error (exit 2, `a value is required for '--scope-file
-    /// <SCOPE_FILE>' but none was supplied`) before the scan starts.
-    ///
-    /// Refused with exit 4 on `--template-lang py` as well: the legacy Python probe
-    /// path enforces no scope at all, so a file accepted there would be discarded.
-    #[arg(
-        long,
-        help_heading = "Execution",
-        display_order = 41,
-        help = "Path to scope.yaml (URL/method allowlist, budgets)"
-    )]
-    pub scope_file: Option<PathBuf>,
 
     /// Allow DELETE/PUT/PATCH methods AND paths matching destructive regexes
     /// (`/wipe`, `/delete-all`, `/factory-reset`, etc.) in scope.yaml.
@@ -1519,10 +1477,6 @@ pub struct PentestRunArgs {
     )]
     pub enable_chaining: bool,
 
-    /// Operator-owned configuration for IMAP and needs-you questions.
-    #[arg(long, value_name = "JSON", help_heading = "Probe execution")]
-    pub auth_inputs: Option<PathBuf>,
-
     /// Discover routes from source instead of requiring guardlink annotations.
     ///
     /// guardlink only parses GAL annotations, so an un-annotated codebase yields
@@ -1694,22 +1648,6 @@ pub struct PentestRunArgs {
     )]
     pub no_restart: bool,
 
-    /// Read auth profiles from this directory instead of ~/.cert-x-gen/auth.
-    ///
-    /// A CI pipeline restores a bundle of profiles (imported via
-    /// `cxg pentest auth import --auth-dir <dir>`) into its own directory and
-    /// points the run at the same directory here, so pre-flight, the engine, and
-    /// the health monitor all read the restored bundle rather than the operator's
-    /// home store.
-    // @comment -- "forwards the auth-store redirect to the orchestrator, which reassigns auth.AUTH_DIR before any profile is loaded; every profile consumer reaches the store only through auth.load_profile, so this one flag moves all of them. Forwarded only when set, so an unset flag leaves the orchestrator's ~/.cert-x-gen/auth default in force — one default, in one place the two CLIs cannot drift apart on."
-    #[arg(
-        long,
-        help_heading = "Authentication",
-        display_order = 18,
-        help = "Read auth profiles from this dir (CI profile bundle)"
-    )]
-    pub auth_dir: Option<PathBuf>,
-
     /// Non-interactive CI mode: fail loud instead of warning.
     ///
     /// A dead or expired auth session becomes a HARD FAIL (exit 5) at pre-flight
@@ -1730,17 +1668,6 @@ pub struct PentestRunArgs {
     )]
     pub ci: bool,
 
-    /// Session directory where this scan's artifacts (audit.jsonl, report.json,
-    /// any captured screenshots) are written.
-    /// Default: ~/.cert-x-gen/sessions/pentest-<YYYYMMDD-HHMMSS>/
-    #[arg(
-        long,
-        help_heading = "Output",
-        display_order = 52,
-        help = "Session artifacts directory (audit.jsonl, report.json)"
-    )]
-    pub session_dir: Option<PathBuf>,
-
     /// JSON report output path. Default: `report.json` under --session-dir.
     /// The report contains: target, codebase, auth_profiles, goal, scope_stats,
     /// confirmed_findings, ambiguous, mitigation_verifications, dead_profiles,
@@ -1753,6 +1680,95 @@ pub struct PentestRunArgs {
         help = "JSON report output path (default report.json in session dir)"
     )]
     pub output: Option<PathBuf>,
+}
+
+/// Inputs shared by automatic scan probes and explicit pentest runs.
+#[derive(clap::Args, Debug, Clone)]
+pub struct ProbeInputs {
+    /// Source codebase root. Defaults to the current directory for scan;
+    /// pentest run requires an explicit value. Reads whitebox/findings.sarif
+    /// when present and supplies source context to the engine.
+    #[arg(
+        long,
+        default_value = ".",
+        help_heading = "Target",
+        display_order = 1,
+        help = "Source codebase root (contains whitebox/findings.sarif)"
+    )]
+    pub codebase: PathBuf,
+
+    /// Comma-separated auth profile names previously captured via `cxg pentest auth`.
+    /// Probes that need multiple identities (IDOR cross-user, session-replay-against-
+    /// victim) require ≥2 profiles. The lowest-privilege identity is auto-selected as
+    /// the actor for privesc-class probes.
+    ///
+    /// Empty means a first-class anonymous (no-login) web/Electron run, not interactive capture.
+    /// Tauri source maps and in-process proofs need no --auth profile.
+    #[arg(
+        long,
+        default_value = "",
+        help_heading = "Authentication",
+        display_order = 11,
+        help = "Comma-separated captured auth profiles; empty = first-class anonymous (no-login) run on a clean unauthenticated surface with real anonymous probes and auth-only checks reported not-run. Empty does not imply interactive capture; use --interactive-auth"
+    )]
+    pub auth: String,
+
+    /// Path to scope.yaml. Default: safe permissive defaults (any URL, GET/POST/HEAD/
+    /// OPTIONS, 30 reqs/endpoint, 1500 reqs total, kill on 8-streak 5xx).
+    /// Generate one with `cxg pentest scope-init`.
+    ///
+    /// If this flag is given and the file cannot be read — path does not exist,
+    /// unreadable, invalid YAML, not a mapping, empty, or PyYAML not installed —
+    /// the run is REFUSED with exit 4. It does not fall back to the defaults:
+    /// a bound cxg cannot read is not the same as no bound. Omitting the flag
+    /// entirely is the supported way to run on the defaults.
+    ///
+    /// An empty value never reaches that check and is not ignored either:
+    /// `--scope-file "$SCOPE"` with `SCOPE` unset is rejected by the CLI parser
+    /// as a usage error (exit 2, `a value is required for '--scope-file
+    /// <SCOPE_FILE>' but none was supplied`) before the scan starts.
+    ///
+    /// Refused with exit 4 on `--template-lang py` as well: the legacy Python probe
+    /// path enforces no scope at all, so a file accepted there would be discarded.
+    #[arg(
+        long,
+        help_heading = "Execution",
+        display_order = 41,
+        help = "Path to scope.yaml (URL/method allowlist, budgets)"
+    )]
+    pub scope_file: Option<PathBuf>,
+
+    /// Operator-owned configuration for IMAP and needs-you questions.
+    #[arg(long, value_name = "JSON", help_heading = "Probe execution")]
+    pub auth_inputs: Option<PathBuf>,
+
+    /// Read auth profiles from this directory instead of ~/.cert-x-gen/auth.
+    ///
+    /// A CI pipeline restores a bundle of profiles (imported via
+    /// `cxg pentest auth import --auth-dir <dir>`) into its own directory and
+    /// points the run at the same directory here, so pre-flight, the engine, and
+    /// the health monitor all read the restored bundle rather than the operator's
+    /// home store.
+    // @comment -- "forwards the auth-store redirect to the orchestrator, which reassigns auth.AUTH_DIR before any profile is loaded; every profile consumer reaches the store only through auth.load_profile, so this one flag moves all of them. Forwarded only when set, so an unset flag leaves the orchestrator's ~/.cert-x-gen/auth default in force — one default, in one place the two CLIs cannot drift apart on."
+    #[arg(
+        long,
+        help_heading = "Authentication",
+        display_order = 18,
+        help = "Read auth profiles from this dir (CI profile bundle)"
+    )]
+    pub auth_dir: Option<PathBuf>,
+
+    /// Session directory where this scan's artifacts (audit.jsonl, report.json,
+    /// any captured screenshots) are written.
+    /// Explicit pentest default: ~/.cert-x-gen/sessions/pentest-<YYYYMMDD-HHMMSS>/
+    /// Plain scan groups probe inputs and per-target engine sessions under a scan-specific directory.
+    #[arg(
+        long,
+        help_heading = "Output",
+        display_order = 52,
+        help = "Session artifacts directory (audit.jsonl, report.json)"
+    )]
+    pub session_dir: Option<PathBuf>,
 }
 
 /// Non-interactive auth subcommands for CI — mirrors `pentest/auth.py`'s
@@ -2166,10 +2182,21 @@ COMMON SCANNING SCENARIOS:
 10. Internal Network Reconnaissance:
     cxg scan --scope 10.0.0.0/24 --passive --top-ports 100 --quiet
 
+Supplied JS probe contracts run automatically through the pentest engine with zero model calls.
+  Scanner templates keep their language runners; mixed packs produce one JSON report with
+  template-reported and engine-adjudicated verdict sources. Missing probe inputs are refused.
+  --scope supplies the target; --codebase defaults to the current directory. Use --auth,
+  --auth-dir, --auth-inputs, --scope-file and --session-dir for probe execution inputs.
+  JS probes only; any-language probes are not yet supported. --pentest exposes full engine options.
+
 For more information, visit: https://cert-x-gen.io/docs"
 )]
 pub struct ScanArgs {
-    /// Use the pentest engine and all `pentest run` options. JS probes only;
+    #[command(flatten)]
+    pub probe_inputs: ProbeInputs,
+
+    /// Enable all `pentest run` options, including authoring and desktop targets.
+    /// Plain scan already runs supplied JS probe contracts with zero model calls. JS probes only;
     /// any-language probes are not supported. Use --no-author --template-dir DIR
     /// for zero model calls. Engine-confirmed verdicts remain pentest verdicts;
     /// ordinary scan findings remain template-reported.
@@ -4735,7 +4762,11 @@ mod track_b_auth_tests {
             "./ci-auth",
         ]);
         match a {
-            PentestAction::Run(PentestRunArgs { ci, auth_dir, .. }) => {
+            PentestAction::Run(PentestRunArgs {
+                ci,
+                probe_inputs: ProbeInputs { auth_dir, .. },
+                ..
+            }) => {
                 assert!(ci);
                 assert_eq!(auth_dir.as_deref(), Some(std::path::Path::new("./ci-auth")));
             }
@@ -4755,7 +4786,11 @@ mod track_b_auth_tests {
             "https://x",
         ]);
         match a {
-            PentestAction::Run(PentestRunArgs { ci, auth_dir, .. }) => {
+            PentestAction::Run(PentestRunArgs {
+                ci,
+                probe_inputs: ProbeInputs { auth_dir, .. },
+                ..
+            }) => {
                 assert!(!ci, "--ci defaults off, so main.rs forwards nothing");
                 assert_eq!(auth_dir, None);
             }
@@ -4869,6 +4904,49 @@ mod scan_front_door_tests {
             matches!(cli.command, Some(Commands::Pentest(PentestCommand {
             action: PentestAction::Run(PentestRunArgs { target_type, target: None, .. })
         })) if target_type == "tauri")
+        );
+    }
+
+    #[test]
+    fn ordinary_scan_accepts_shared_probe_inputs_and_defaults_codebase() {
+        let parsed = Cli::try_parse_from([
+            "cxg",
+            "scan",
+            "--scope",
+            "https://example.test",
+            "--auth",
+            "attacker,victim",
+            "--auth-dir",
+            "profiles",
+            "--auth-inputs",
+            "inputs.json",
+            "--scope-file",
+            "scope.yaml",
+            "--session-dir",
+            "session",
+        ])
+        .unwrap();
+        let Some(Commands::Scan(args)) = parsed.command else {
+            panic!("expected scan")
+        };
+        assert_eq!(args.probe_inputs.codebase, PathBuf::from("."));
+        assert_eq!(args.probe_inputs.auth, "attacker,victim");
+        assert_eq!(args.probe_inputs.auth_dir, Some(PathBuf::from("profiles")));
+        assert_eq!(
+            args.probe_inputs.auth_inputs,
+            Some(PathBuf::from("inputs.json"))
+        );
+        assert_eq!(
+            args.probe_inputs.scope_file,
+            Some(PathBuf::from("scope.yaml"))
+        );
+        assert_eq!(
+            args.probe_inputs.session_dir,
+            Some(PathBuf::from("session"))
+        );
+        assert!(
+            Cli::try_parse_from(["cxg", "pentest", "run", "--target", "https://example.test"])
+                .is_err()
         );
     }
 

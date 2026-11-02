@@ -254,6 +254,41 @@ cxg scan --scope 192.168.1.0/24 --top-ports 100
 cxg scan --scope targets.txt --templates redis*.py
 ```
 
+### JS probes in ordinary scans
+
+Plain `cxg scan` recognises JS probe contracts (`function cxgProbe` or probe
+headers such as `// @attach_scheme:`) during template discovery. It runs those
+probes through the pentest engine automatically, with ranking, generation and
+mutation disabled. Ordinary scanner templates keep their existing language
+runners. A directory may contain both kinds of template.
+
+```bash
+# Supplied probes, or a mixed directory of scanners and JS probes
+cxg scan --scope https://app.example.com --template-dir ./checks
+
+# Source context, captured identities and engine scope controls
+cxg scan --scope https://app.example.com --templates ./probes/check.js \
+  --codebase ./repo --auth attacker,victim --auth-dir ./captured-auth \
+  --scope-file ./scope.yaml --session-dir ./scan-session
+```
+
+The probe target comes from `--scope`; `--codebase` defaults to the current
+directory. `--auth`, `--auth-dir`, `--auth-inputs`, `--scope-file` and
+`--session-dir` supply the engine inputs. A probe requiring missing identities,
+an attachment stamp or other inputs is **refused**, with its reason in the
+report and a non-zero exit. Other runnable templates continue. A refusal is
+never a refuted security hypothesis. JS probes require HTTP(S) targets; CLI and
+CIDR scopes cannot be replayed by the probe engine.
+
+One combined JSON report includes scanner findings with
+`verdict_source: "template-reported"` and engine-confirmed findings with
+`verdict_source: "engine-adjudicated"`. `probe_results` retains each engine's
+full report, including refutations, ambiguous results, refused probes, and
+session/report/audit-log locations. It records `authoring.model_calls: 0`.
+JSON is always written when probes are selected, alongside any requested export
+formats. Exit 2 signals engine-confirmed findings; exit 4 signals a refused probe
+or missing engine input and takes precedence. Scanner-only behavior is unchanged.
+
 ### Pentest engine through scan
 
 `cxg scan --pentest` accepts every `cxg pentest run` option and runs the same
@@ -282,8 +317,9 @@ zero. Missing, empty, entirely withheld or entirely invalid probe directories
 refuse the run; cxg never falls back to generation. Reports record
 `authoring.mode: "no_author"` and `authoring.model_calls: 0`.
 
-Supplied Python, YAML and other scanner templates are refused, including in mixed
-directories containing valid JS probes. JavaScript scanner scripts also need the
+With `--pentest`, supplied Python, YAML and other scanner templates are refused,
+including in mixed directories containing valid JS probes. Use plain `scan` to
+run a mixed directory through its appropriate engines. JavaScript scanner scripts also need the
 probe contract (`@id`, `@vuln_class`, `async function cxgProbe(cxg)`). Convert
 scanner templates in a separate authoring step with
 `guardlink translate --from <template> --contract probe`, using a GuardLink version
