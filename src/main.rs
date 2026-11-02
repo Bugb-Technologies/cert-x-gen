@@ -571,6 +571,7 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
             app_cmd,
             app_binary,
             auth_sub,
+            auth_dir: parent_auth_dir,
         } => match auth_sub {
             // @comment -- "A subcommand routes to auth.py's browser-free CI paths (import/verify) instead of the interactive `auth login` capture. The capture path's --target/--profile are Option at the clap layer (clap derive won't negate a required parent arg for a subcommand — see cli.rs), and the import/verify subcommands carry their own --profile/--target, so the parent-level bindings are simply unused in these two branches."
             Some(cli::AuthSubcommand::Import {
@@ -616,7 +617,7 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
                 for h in headers {
                     args.extend(["--header".into(), h]);
                 }
-                if let Some(d) = auth_dir {
+                if let Some(d) = auth_dir.or(parent_auth_dir) {
                     args.extend(["--auth-dir".into(), d.to_string_lossy().to_string()]);
                 }
                 if ci {
@@ -640,11 +641,20 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
                 if let Some(t) = target {
                     args.extend(["--target".into(), t]);
                 }
-                if let Some(d) = auth_dir {
+                if let Some(d) = auth_dir.or(parent_auth_dir) {
                     args.extend(["--auth-dir".into(), d.to_string_lossy().to_string()]);
                 }
             }
             None => {
+                if let Some(d) = parent_auth_dir {
+                    args.extend([
+                        "auth".into(),
+                        "--auth-dir".into(),
+                        d.to_string_lossy().to_string(),
+                    ]);
+                } else {
+                    args.push("auth".into());
+                }
                 // @comment -- "--target/--profile are Option at the clap layer (see cli.rs: clap derive won't negate a required parent arg for the import/verify subcommands), so the interactive-capture path enforces them here. This reproduces the pre-change 'required argument' guard for bare `cxg pentest auth` without a subcommand; the happy path is unchanged."
                 let (target, profile) = match (target, profile) {
                     (Some(t), Some(p)) => (t, p),
@@ -659,7 +669,6 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
                     }
                 };
                 args.extend([
-                    "auth".into(),
                     "login".into(),
                     "--target".into(),
                     target,
@@ -712,8 +721,11 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
                 }
             }
         },
-        cli::PentestAction::AuthList => {
+        cli::PentestAction::AuthList { auth_dir } => {
             args.extend(["auth".into(), "list".into()]);
+            if let Some(d) = auth_dir {
+                args.extend(["--auth-dir".into(), d.to_string_lossy().to_string()]);
+            }
         }
         cli::PentestAction::ScopeInit { output } => {
             args.extend([
