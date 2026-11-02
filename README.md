@@ -270,6 +270,12 @@ cxg scan --pentest --codebase ./repo --scope https://app.example.com \
   --template-dir ./probes --no-author
 ```
 
+Probe directories are searched recursively, so the parent directory of a
+converted pack can be supplied directly. As with scan's directory walk, nested
+`target`, `node_modules`, `.git`, `__pycache__`, `_disabled` and `skeleton`
+directories are excluded. A replay with no `.js` files reports an empty search;
+an entirely unstamped pack reports attachment withholding separately.
+
 `--no-author` requires supplied JS probes, skips ranking and all template
 generation (including deterministic generation), and forces mutation retries to
 zero. Missing, empty, entirely withheld or entirely invalid probe directories

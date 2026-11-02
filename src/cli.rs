@@ -1000,6 +1000,8 @@ pub struct PentestRunArgs {
     /// different targets, or after fixing engine bugs that affected template execution.
     ///
     /// Template directories are at `~/.cert-x-gen/templates/session-<timestamp>-<pid>/`.
+    /// JS probes are discovered recursively, using scan's exclusions for build
+    /// artifacts, dependencies, disabled templates and skeleton directories.
     /// Scanner templates are refused: convert them separately with
     /// `guardlink translate --from <template> --contract probe` using a GuardLink
     /// version that supports probe translation. cxg never converts on replay.
@@ -1012,7 +1014,7 @@ pub struct PentestRunArgs {
         long,
         help_heading = "AI Generation",
         display_order = 28,
-        help = "Reuse templates from a prior session dir (skip AI)"
+        help = "Reuse JS probes recursively (skip ranking and generation)"
     )]
     pub template_dir: Option<PathBuf>,
 
