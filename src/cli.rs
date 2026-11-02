@@ -272,7 +272,7 @@ impl Cli {
                 || run.template_dir.is_some()
                 || !std::path::Path::new(templates[0]).is_dir()
             {
-                return Err(front_door_error("--templates with --pentest requires one existing JS probe directory; template IDs, individual files and @lists are scan-only. Use --template-dir DIR"));
+                return Err(front_door_error("--templates with --pentest requires one existing JS probe directory; template IDs, individual files and @lists are scan-only. Use --template-dir DIR. Convert scanner templates separately with `guardlink translate --from <template> --contract probe` using a GuardLink version that supports probe translation; --no-author never runs conversion"));
             }
             run.template_dir = Some(PathBuf::from(templates[0]));
         }
@@ -845,6 +845,8 @@ pub enum PentestAction {
   --scope URL aliases --target URL; --templates DIR aliases --template-dir DIR.
   Supply one HTTP(S) URL; ports, CIDR, cli:// targets and scan-only filters are refused.
   JS probes only; any-language probes are not yet supported. The legacy --template-lang py path remains available.
+  Convert scanner templates separately: guardlink translate --from <template> --contract probe
+    (requires a GuardLink version with probe translation; --no-author never converts).
   --no-author --template-dir DIR guarantees zero model calls (ranking, generation and mutation disabled).
   Pentest verdicts are engine-confirmed; ordinary scan findings remain template-reported.
 
@@ -998,6 +1000,9 @@ pub struct PentestRunArgs {
     /// different targets, or after fixing engine bugs that affected template execution.
     ///
     /// Template directories are at `~/.cert-x-gen/templates/session-<timestamp>-<pid>/`.
+    /// Scanner templates are refused: convert them separately with
+    /// `guardlink translate --from <template> --contract probe` using a GuardLink
+    /// version that supports probe translation. cxg never converts on replay.
     ///
     /// A template carrying no `// @attach_scheme: path` header is WITHHELD — never
     /// executed — and named in a `templates_withheld` caveat in report.json, because

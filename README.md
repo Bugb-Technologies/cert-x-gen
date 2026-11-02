@@ -276,6 +276,14 @@ zero. Missing, empty, entirely withheld or entirely invalid probe directories
 refuse the run; cxg never falls back to generation. Reports record
 `authoring.mode: "no_author"` and `authoring.model_calls: 0`.
 
+Supplied Python, YAML and other scanner templates are refused, including in mixed
+directories containing valid JS probes. JavaScript scanner scripts also need the
+probe contract (`@id`, `@vuln_class`, `async function cxgProbe(cxg)`). Convert
+scanner templates in a separate authoring step with
+`guardlink translate --from <template> --contract probe`, using a GuardLink version
+that supports probe translation, then supply the resulting JS probes. cxg never
+runs that conversion automatically; `--no-author` still makes zero model calls.
+
 Pentest uses JS probes; any-language probes are not yet supported. The legacy
 `--template-lang py` path remains available, but cannot replay supplied JS probes
 or use `--no-author`. Engine-confirmed pentest verdicts remain distinct from
