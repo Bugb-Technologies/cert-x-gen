@@ -1443,7 +1443,8 @@ impl ServerHandler for CxgMcpServer {
         ServerInfo {
             instructions: Some(
                 "CERT-X-GEN: Polyglot scanner/template tools; the deeper browser/runtime \
-                 pentest is a separate CLI route. For everyday changes: keep GuardLink \
+                 engine also handles supplied JS probes selected by plain CLI scan. \
+                 Explicit pentest controls use CLI scan --pentest or pentest run. For everyday changes: keep GuardLink \
                  annotations current, scope guardlink translate to the change (authoring only; \
                  no browser session or Bravos ledger), then review generated code. \
                  For authoring here, read cxg_template_get_notes before cxg_template_create, \
@@ -1458,6 +1459,8 @@ impl ServerHandler for CxgMcpServer {
                  They do not accept a repository template-directory parameter: for reviewed \
                  translated scanner templates select an existing reviewed file by path: \
                  `cxg scan --scope <target> --templates .guardlink/cxg-templates/reviewed-check.py`. \
+                 Supplied cxgProbe JS uses the browser engine; scanner scripts retain their \
+                 language runners. Explicit engine replay supports --no-author. \
                  Do not combine --template-dir with --templates <id> for repository files. \
                  Create the report parent directory before using --output (for example, \
                  `mkdir -p .guardlink/pentest-findings/`). Alternatively, \

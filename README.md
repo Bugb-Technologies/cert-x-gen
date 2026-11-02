@@ -70,7 +70,12 @@ CERT-X-GEN ships two distinct workflows:
 | Surface | Command | What it does |
 |---------|---------|--------------|
 | **Template scanning** | `cxg scan` | Runs polyglot detection templates against network/host targets (single host, file, CIDR, URL) or local CLI binaries (`cli://`). |
-| **AI-driven whitebox pentest** | `cxg pentest` | Ranks guardlink source-code hypotheses against an operator goal, has a local AI CLI write JavaScript probe templates that read the target's source, and executes them in anonymous or authenticated Chromium contexts against a running web app or Electron desktop app. Also maps Tauri IPC and capabilities from source, with optional in-process command proof. |
+| **AI-driven whitebox pentest** | `cxg pentest` | Ranks guardlink source-code hypotheses against an operator goal, has a local AI CLI write JavaScript probe templates that read the target's source, and executes them in parallel **authenticated** Chromium contexts against a running web app or Electron desktop app. Also maps Tauri IPC and capabilities from source, with optional in-process command proof. |
+
+Whitebox browser runs support both anonymous and captured authenticated identities.
+Supplied JavaScript `cxgProbe` templates also use the browser/runtime engine when selected
+by ordinary `cxg scan`; their contract remains distinct from a scanner script's JSON output.
+The explicit engine routes are `cxg scan --pentest` and `cxg pentest run`.
 
 The full command set:
 
@@ -279,9 +284,19 @@ suite with its configured runner; report missing prerequisites, failures, skips,
 absent suite explicitly. Check execution coverage and evidence as well as the exit code.
 An independent result does not create a Bravos ledger verdict or approval record.
 
-The [whitebox pentest](#whitebox-pentest-cxg-pentest) below is the deeper source-aware
-browser/runtime route. Its JavaScript `cxgProbe` templates have a different contract from
-scanner templates; `cxg pentest run --template-dir` is not the scanner-directory command.
+Plain `cxg scan` routes supplied JavaScript `cxgProbe` templates to the browser/runtime
+engine automatically, with ranking, generation and mutation disabled; ordinary scanner
+scripts still run in their language engines. Probe execution can require a browser,
+captured identities, source context and scope inputs even though translation does not.
+Use `--no-author` with explicit engine replay (`cxg scan --pentest` or `cxg pentest run`)
+to require supplied probes and forbid all authoring. These commands use the probe contract;
+they do not turn scanner scripts into browser probes.
+
+For scanner CI, `--fail-on confirmed,errored,timed-out` opts into exit 2 for matching
+execution statuses after reports are written. Completed scanner findings do not fail the
+process by default; engine-confirmed probe findings and probe refusals have their own exit
+codes. Inspect the execution and probe results, including declared versus inferred verdicts.
+The [whitebox pentest](#whitebox-pentest-cxg-pentest) remains the deeper source-aware route.
 
 ### Scanning (`cxg scan`)
 
@@ -435,6 +450,9 @@ Scanner templates follow a simple contract:
    stdout as no findings, but explicit empty JSON makes the output contract clear.
 
 These are scanner templates for `cxg scan`, not the browser pentest's `cxgProbe` contract.
+For YAML scanner request paths, prefer target-relative paths such as `/health`. Use only
+placeholders documented by the YAML engine; Nuclei-style interpolation is not a general
+contract across cxg's template languages.
 
 A template can also drive a **local binary** rather than a network host
 (`cxg scan --scope cli:///path/to/binary`), take its probe input from cxg
