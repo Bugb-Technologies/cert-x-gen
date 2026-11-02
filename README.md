@@ -362,6 +362,19 @@ helpers. Other subprocess templates inherit `PYTHONDONTWRITEBYTECODE=1` for Pyth
 helpers they launch. YAML validation uses the loader's schema; for example,
 `author` must be a mapping such as `author: {name: Example}`.
 
+Native YAML HTTP requests expand `{{BaseURL}}`/`{{RootURL}}`, `{{Hostname}}`/`{{Host}}`,
+`{{Port}}`, `{{Scheme}}`, `{{Path}}`, and values supplied through `--context` in
+paths, headers and bodies. Missing context, malformed requests and terminal
+transport failures are errors rather than inferred refutations. HTTP/HTTPS
+fallback still applies to connection failures; a received negative HTTP response
+can still yield an inferred refutation. Requests rejected before transport are
+not counted. Validation shares these request checks and rejects empty operations
+and unsupported network protocols (native network requests currently use TCP).
+
+`CERT_X_GEN_HOME` relocates template-version settings along with template and
+repository configuration. `--disable-update-check` retains its existing persistent
+effect in that home's `.cert-x-gen/.templates-config.json`.
+
 ---
 
 

@@ -332,3 +332,283 @@ async fn native_tcp_counts_payloads_sent_on_one_connection() {
     server.await.unwrap();
     assert_eq!(doc["statistics"]["network_requests"], 2);
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn yaml_base_url_paths_from_the_skeleton_reach_the_target() {
+    let mut server = mockito::Server::new_async().await;
+    let request = server
+        .mock("GET", "/check")
+        .with_body("exposed")
+        .expect(1)
+        .create_async()
+        .await;
+    let dir = tempfile::tempdir().unwrap();
+    pack(dir.path());
+    let content = yaml("{name: Test}").replace(
+        "path: [/, /second]",
+        "path: ['{{BaseURL}}/check']\n    matchers:\n      - type: word\n        words: [exposed]",
+    );
+    std::fs::write(dir.path().join("pack/check.yaml"), content).unwrap();
+    let (out, doc) = scan_at(
+        dir.path(),
+        &server.url(),
+        &["--fail-on", "confirmed,errored"],
+    );
+    assert_eq!(out.status.code(), Some(2), "{doc:#}");
+    request.assert_async().await;
+    assert_eq!(doc["executions"][0]["status"], "confirmed");
+    assert_eq!(doc["findings"].as_array().unwrap().len(), 1);
+    assert_eq!(doc["statistics"]["network_requests"], 1);
+}
+
+#[test]
+fn yaml_failed_transports_are_not_inferred_refutations() {
+    let dir = tempfile::tempdir().unwrap();
+    pack(dir.path());
+    std::fs::write(dir.path().join("pack/check.yaml"), yaml("{name: Test}")).unwrap();
+    let (out, doc) = scan(dir.path(), &["--fail-on", "errored"]);
+    assert_eq!(out.status.code(), Some(2), "{doc:#}");
+    assert_eq!(doc["executions"][0]["status"], "errored");
+}
+
+#[test]
+fn yaml_unresolved_context_and_invalid_builders_do_not_count_as_requests() {
+    for (path, extra) in [
+        ("['/{{missing}}']", vec![]),
+        ("[/]", vec!["--header", "X-Test:invalid\nvalue"]),
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        pack(dir.path());
+        let content = yaml("{name: Test}").replace("[/, /second]", path);
+        std::fs::write(dir.path().join("pack/check.yaml"), content).unwrap();
+        let mut flags = vec!["--fail-on", "errored"];
+        flags.extend(extra);
+        let (out, doc) = scan(dir.path(), &flags);
+        assert_eq!(out.status.code(), Some(2), "{doc:#}");
+        assert_eq!(doc["executions"][0]["status"], "errored");
+        assert_eq!(doc["statistics"]["network_requests"], 0);
+    }
+}
+
+#[test]
+fn yaml_validation_rejects_requests_the_engine_cannot_execute() {
+    for content in [
+        yaml("{name: Test}").replace("method: GET", "method: 'BAD METHOD'"),
+        yaml("{name: Test}").replace("path: [/, /second]", "path: ['{{BaseURL}/unclosed']"),
+        yaml("{name: Test}").replace("path: [/, /second]", "path: []"),
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        pack(dir.path());
+        std::fs::write(dir.path().join("pack/check.yaml"), content).unwrap();
+        let out = cli(dir.path())
+            .args(["template", "validate", "pack/check.yaml", "--json"])
+            .output()
+            .unwrap();
+        assert!(
+            !out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stdout)
+        );
+        let (_, doc) = scan(dir.path(), &["--fail-on", "errored"]);
+        assert_eq!(doc["executions"][0]["status"], "errored");
+        assert_eq!(doc["statistics"]["network_requests"], 0);
+    }
+}
+
+#[test]
+fn scan_update_configuration_honors_the_relocated_home() {
+    let dir = tempfile::tempdir().unwrap();
+    pack(dir.path());
+    python(dir.path(), "check.py", "print('[]')");
+    let shared = dir.path().join("shared");
+    let isolated = dir.path().join("isolated");
+    std::fs::create_dir_all(shared.join(".cert-x-gen")).unwrap();
+    let version = cert_x_gen::template::TemplateVersion {
+        current_version: "keep-this-version".into(),
+        ..Default::default()
+    };
+    let original = serde_json::to_vec_pretty(&version).unwrap();
+    let shared_config = shared.join(".cert-x-gen/.templates-config.json");
+    std::fs::write(&shared_config, &original).unwrap();
+    let out = cli(dir.path())
+        .env("HOME", &shared)
+        .env("CERT_X_GEN_HOME", &isolated)
+        .args([
+            "scan",
+            "--scope",
+            "http://127.0.0.1:1",
+            "--template-dir",
+            "pack",
+            "--output",
+            "relocated",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(std::fs::read(&shared_config).unwrap(), original);
+    let relocated: Value = serde_json::from_slice(
+        &std::fs::read(isolated.join(".cert-x-gen/.templates-config.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(relocated["auto_check_enabled"], false);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn yaml_preserves_http_fallback_and_real_negative_responses() {
+    let mut server = mockito::Server::new_async().await;
+    let request = server
+        .mock("HEAD", "/negative")
+        .with_status(401)
+        .expect(1)
+        .create_async()
+        .await;
+    let dir = tempfile::tempdir().unwrap();
+    pack(dir.path());
+    let content = yaml("{name: Test}")
+        .replace("method: GET", "method: HEAD")
+        .replace("path: [/, /second]", "path: ['{{BaseURL}}/negative']");
+    std::fs::write(dir.path().join("pack/check.yaml"), content).unwrap();
+    let url = server.url().replacen("http://", "https://", 1);
+    let (out, doc) = scan_at(dir.path(), &url, &["--fail-on", "errored"]);
+    request.assert_async().await;
+    assert!(out.status.success(), "{doc:#}");
+    assert_eq!(doc["executions"][0]["status"], "refuted");
+    assert_eq!(doc["statistics"]["network_requests"], 2);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn yaml_context_expansion_preserves_post_body_headers_and_session_cookies() {
+    let mut server = mockito::Server::new_async().await;
+    let login = server
+        .mock("GET", "/login")
+        .with_header("Set-Cookie", "session=proof; Path=/")
+        .expect(1)
+        .create_async()
+        .await;
+    let post = server
+        .mock("POST", "/check")
+        .match_header("Cookie", "session=proof")
+        .match_header("X-Token", "42")
+        .match_body("token=42")
+        .expect(1)
+        .create_async()
+        .await;
+    let dir = tempfile::tempdir().unwrap();
+    pack(dir.path());
+    let content = yaml("{name: Test}").replace("path: [/, /second]", "path: ['/login']\n  - method: POST\n    path: ['{{RootURL}}/check']\n    headers:\n      X-Token: '{{token}}'\n    body: 'token={{token}}'");
+    std::fs::write(dir.path().join("pack/check.yaml"), content).unwrap();
+    let (out, doc) = scan_at(
+        dir.path(),
+        &server.url(),
+        &["--context", r#"{"token":"42"}"#],
+    );
+    login.assert_async().await;
+    post.assert_async().await;
+    assert!(out.status.success(), "{doc:#}");
+    assert_eq!(doc["statistics"]["network_requests"], 2);
+}
+
+#[test]
+fn explicit_file_selection_keeps_legacy_templates_without_headers() {
+    let dir = tempfile::tempdir().unwrap();
+    pack(dir.path());
+    std::fs::write(dir.path().join("pack/helper.py"), "print('[]')").unwrap();
+    let (out, doc) = scan(dir.path(), &["--templates", "pack/helper.py"]);
+    assert!(out.status.success());
+    assert_eq!(doc["statistics"]["templates_executed"], 1);
+    assert_eq!(doc["executions"][0]["status"], "refuted");
+}
+
+#[test]
+fn partial_template_selection_still_warns_about_missing_ids() {
+    let dir = tempfile::tempdir().unwrap();
+    pack(dir.path());
+    python(dir.path(), "check.py", "print('[]')");
+    let (out, doc) = scan(
+        dir.path(),
+        &["--templates", "check,missing-template", "-vvv"],
+    );
+    assert!(out.status.success());
+    assert_eq!(doc["statistics"]["templates_executed"], 1);
+    let logs = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        logs.contains("Template not found: missing-template"),
+        "{logs}"
+    );
+}
+
+#[test]
+fn yaml_tcp_connection_failures_are_errors_and_udp_is_not_run_as_tcp() {
+    let dir = tempfile::tempdir().unwrap();
+    pack(dir.path());
+    let metadata = yaml("{name: Test}")
+        .split("http:")
+        .next()
+        .unwrap()
+        .to_string();
+    for protocol in ["tcp", "udp"] {
+        std::fs::write(
+            dir.path().join("pack/check.yaml"),
+            format!(
+                "{metadata}network:\n  - protocol: {protocol}\n    port: 1\n    payloads: [ping]\n"
+            ),
+        )
+        .unwrap();
+        let (out, doc) = scan_at(dir.path(), "tcp://127.0.0.1:1", &["--fail-on", "errored"]);
+        assert_eq!(out.status.code(), Some(2), "{doc:#}");
+        assert_eq!(doc["executions"][0]["status"], "errored");
+        assert_eq!(doc["statistics"]["network_requests"], 0);
+    }
+}
+
+#[test]
+fn directory_priority_and_duplicate_ids_keep_the_first_configured_source() {
+    let dir = tempfile::tempdir().unwrap();
+    pack(dir.path());
+    python(dir.path(), "check.py", "print('[]')");
+    std::fs::create_dir(dir.path().join("preferred")).unwrap();
+    let content = std::fs::read_to_string(dir.path().join("pack/check.py"))
+        .unwrap()
+        .replace(
+            "print('[]')",
+            r#"print('[{"title":"Preferred finding","description":"Fixture","severity":"info"}]')"#,
+        );
+    std::fs::write(dir.path().join("preferred/check.py"), content).unwrap();
+    std::fs::write(
+        dir.path().join("config.yaml"),
+        "templates:\n  directories: [preferred, pack]\n",
+    )
+    .unwrap();
+    let out = cli(dir.path())
+        .args([
+            "--config",
+            "config.yaml",
+            "scan",
+            "--scope",
+            "http://127.0.0.1:1",
+            "--templates",
+            "check",
+            "--output",
+            "priority",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let doc: Value =
+        serde_json::from_str(&std::fs::read_to_string(dir.path().join("priority.json")).unwrap())
+            .unwrap();
+    assert_eq!(doc["statistics"]["templates_executed"], 1);
+    assert_eq!(doc["findings"][0]["title"], "Preferred finding");
+}

@@ -131,12 +131,55 @@ struct YamlTemplateData {
 
 impl YamlTemplateData {
     fn validate(&self) -> Result<()> {
-        if self.http.is_none() && self.network.is_none() && self.flows.is_none() {
+        let operations = self.http.as_ref().map_or(0, Vec::len)
+            + self.network.as_ref().map_or(0, Vec::len)
+            + self.flows.as_ref().map_or(0, Vec::len);
+        if operations == 0 {
             return Err(Error::TemplateValidation {
                 template: self.metadata.id.clone(),
                 reason: "Template must have either 'http', 'network', or 'flows' defined"
                     .to_string(),
             });
+        }
+        let sample = Target::new("example.test", Protocol::Http);
+        for request in self.http.iter().flatten() {
+            request
+                .method
+                .to_uppercase()
+                .parse::<reqwest::Method>()
+                .map_err(|e| Error::Execution(format!("Invalid HTTP method: {e}")))?;
+            let paths = request.path.as_deref().unwrap_or(&[]);
+            if request.path.is_some() && paths.is_empty() {
+                return Err(Error::Execution("HTTP path list must not be empty".into()));
+            }
+            for path in paths {
+                resolve_http_url(path, &sample, None)?;
+            }
+            for (name, value) in &request.headers {
+                reqwest::header::HeaderName::from_bytes(name.as_bytes())
+                    .map_err(|e| Error::Execution(format!("Invalid HTTP header name: {e}")))?;
+                let (value, dynamic) = render_http_text(value, &sample, None)?;
+                if !dynamic {
+                    reqwest::header::HeaderValue::from_str(&value)
+                        .map_err(|e| Error::Execution(format!("Invalid HTTP header value: {e}")))?;
+                }
+            }
+            if let Some(body) = &request.body {
+                render_http_text(body, &sample, None)?;
+            }
+        }
+        for request in self.network.iter().flatten() {
+            if !request.protocol.eq_ignore_ascii_case("tcp") {
+                return Err(Error::Execution(format!(
+                    "Unsupported network protocol: {} (only tcp is implemented)",
+                    request.protocol
+                )));
+            }
+            if request.port == 0 || request.payloads.is_empty() {
+                return Err(Error::Execution(
+                    "Network requests require a non-zero port and at least one payload".into(),
+                ));
+            }
         }
         Ok(())
     }
@@ -180,6 +223,99 @@ struct HttpRequestSpec {
 
 fn default_method() -> String {
     "GET".to_string()
+}
+
+/// Expand the native HTTP vocabulary and runtime context. During validation,
+/// unknown context values remain dynamic: their values are checked at execution.
+fn render_http_text(
+    input: &str,
+    target: &Target,
+    context: Option<&Context>,
+) -> Result<(String, bool)> {
+    let mut output = String::new();
+    let mut remaining = input;
+    let mut dynamic = false;
+    while let Some((prefix, tail)) = remaining.split_once("{{") {
+        if prefix.contains("}}") {
+            return Err(Error::Execution(
+                "Unbalanced HTTP template placeholder".into(),
+            ));
+        }
+        let (name, rest) = tail
+            .split_once("}}")
+            .ok_or_else(|| Error::Execution("Unclosed HTTP template placeholder".into()))?;
+        let name = name.trim();
+        if name.is_empty()
+            || !name
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-'))
+        {
+            return Err(Error::Execution(format!(
+                "Unsupported HTTP template placeholder: {name}"
+            )));
+        }
+        let value = match name {
+            "BaseURL" | "RootURL" => target.url(),
+            "Hostname" | "Host" => target.address.clone(),
+            "Port" => target
+                .port
+                .unwrap_or(if target.protocol == Protocol::Https {
+                    443
+                } else {
+                    80
+                })
+                .to_string(),
+            "Scheme" => target.protocol.to_string(),
+            "Path" => "/".into(),
+            _ => match context {
+                Some(context) => context.variables.get(name).cloned().ok_or_else(|| {
+                    Error::Execution(format!("Missing HTTP template context variable: {name}"))
+                })?,
+                None => {
+                    dynamic = true;
+                    "cxg".into()
+                }
+            },
+        };
+        output.push_str(prefix);
+        output.push_str(&value);
+        remaining = rest;
+    }
+    if remaining.contains("}}") {
+        return Err(Error::Execution(
+            "Unbalanced HTTP template placeholder".into(),
+        ));
+    }
+    output.push_str(remaining);
+    Ok((output, dynamic))
+}
+
+fn resolve_http_url(path: &str, target: &Target, context: Option<&Context>) -> Result<String> {
+    let (path, dynamic) = render_http_text(path, target, context)?;
+    let url = if path.contains("://") {
+        path
+    } else {
+        format!(
+            "{}{}{}",
+            target.url(),
+            if path.starts_with('/') || path.starts_with('?') {
+                ""
+            } else {
+                "/"
+            },
+            path
+        )
+    };
+    if !dynamic {
+        let parsed = url::Url::parse(&url)
+            .map_err(|e| Error::Execution(format!("Invalid HTTP request URL: {e}")))?;
+        if !matches!(parsed.scheme(), "http" | "https") || parsed.host_str().is_none() {
+            return Err(Error::Execution(
+                "HTTP requests require an http or https URL with a host".into(),
+            ));
+        }
+    }
+    Ok(url)
 }
 
 /// Network/TCP request specification
@@ -291,6 +427,13 @@ impl Template for YamlTemplateImpl {
     }
 
     async fn execute(&self, target: &Target, context: &Context) -> Result<Vec<Finding>> {
+        if self.network_client.is_none()
+            || (self.data.flows.is_some() && self.flow_executor.is_none())
+        {
+            return Err(Error::Execution(
+                "YAML template has no configured network transport".into(),
+            ));
+        }
         tracing::debug!(
             "Executing YAML template {} against {}",
             self.id(),
@@ -400,6 +543,7 @@ impl YamlTemplateImpl {
         // Try each scheme variant - smart fallback logic
         // If first scheme connects successfully, skip the other (even without findings)
         // Only try fallback scheme if connection/timeout error occurs
+        let mut last_error = None;
         for target_variant in target_variants {
             match self
                 .execute_http_request_single(&target_variant, spec, network_client, context)
@@ -421,12 +565,14 @@ impl YamlTemplateImpl {
                         );
                     }
                     // Always break on successful connection - no need to try other scheme
+                    last_error = None;
                     break;
                 }
                 Err(e) => {
                     let error_str = e.to_string().to_lowercase();
                     // Check if this is a connection/protocol error that warrants trying another scheme
-                    let is_connection_error = error_str.contains("connection refused")
+                    let is_connection_error = matches!(&e, Error::HttpRequest(error) if error.is_connect() || error.is_timeout())
+                        || error_str.contains("connection refused")
                         || error_str.contains("connection reset")
                         || error_str.contains("ssl")
                         || error_str.contains("tls")
@@ -447,7 +593,9 @@ impl YamlTemplateImpl {
                             target_variant.url(),
                             e
                         );
-                        // Continue to try next scheme variant
+                        // Continue to try next scheme variant, retaining the
+                        // failure if neither transport can execute the check.
+                        last_error = Some(e);
                     } else {
                         // Non-connection error (e.g., HTTP 4xx/5xx) means the protocol worked
                         // but the request itself had issues - no point trying other scheme
@@ -456,12 +604,15 @@ impl YamlTemplateImpl {
                             target_variant.protocol,
                             e
                         );
-                        break;
+                        return Err(e);
                     }
                 }
             }
         }
 
+        if let Some(error) = last_error {
+            return Err(error);
+        }
         Ok(findings)
     }
 
@@ -486,11 +637,24 @@ impl YamlTemplateImpl {
         let paths = spec.path.clone().unwrap_or_else(|| vec!["/".to_string()]);
 
         for path in paths {
-            let url = format!("{}{}", target.url(), path);
+            let url = resolve_http_url(&path, target, Some(context))?;
             tracing::debug!("{} {}", spec.method, url);
 
             // Build headers: merge template headers + context headers + cookies
-            let mut request_headers = spec.headers.clone();
+            let mut request_headers = HashMap::new();
+            for (key, value) in &spec.headers {
+                request_headers.insert(
+                    key.clone(),
+                    render_http_text(value, target, Some(context))?.0,
+                );
+            }
+            let request_body = spec
+                .body
+                .as_ref()
+                .map(|body| {
+                    render_http_text(body, target, Some(context)).map(|rendered| rendered.0)
+                })
+                .transpose()?;
 
             // Add context headers
             for (key, value) in &context.headers {
@@ -521,14 +685,23 @@ impl YamlTemplateImpl {
                     network_client
                         .post_with_headers(
                             &url,
-                            spec.body.clone().unwrap_or_default(),
+                            request_body.clone().unwrap_or_default(),
                             request_headers.clone(),
                         )
                         .await?
                 }
-                _ => {
-                    tracing::warn!("Unsupported HTTP method: {}", spec.method);
-                    continue;
+                method => {
+                    let method = method
+                        .parse::<reqwest::Method>()
+                        .map_err(|e| Error::Execution(format!("Invalid HTTP method: {e}")))?;
+                    let mut builder = network_client.client().request(method, &url);
+                    for (key, value) in &request_headers {
+                        builder = builder.header(key, value);
+                    }
+                    if let Some(body) = &request_body {
+                        builder = builder.body(body.clone());
+                    }
+                    network_client.request(builder).await?
                 }
             };
             let response_time = start.elapsed();
@@ -578,7 +751,7 @@ impl YamlTemplateImpl {
                         "{} {}\n{}",
                         spec.method.to_uppercase(),
                         url,
-                        spec.body.clone().unwrap_or_default()
+                        request_body.clone().unwrap_or_default()
                     );
                     evidence.request = Some(request_str);
 
@@ -696,12 +869,12 @@ impl YamlTemplateImpl {
         let stream = match timeout(timeout_duration, TcpStream::connect(&addr)).await {
             Ok(Ok(stream)) => stream,
             Ok(Err(e)) => {
-                tracing::debug!("Failed to connect to {}: {}", addr, e);
-                return Ok(findings);
+                return Err(Error::Network(format!("Failed to connect to {addr}: {e}")));
             }
             Err(_) => {
-                tracing::debug!("Connection to {} timed out", addr);
-                return Ok(findings);
+                return Err(Error::Timeout {
+                    duration: format!("TCP connect to {addr}: 10s"),
+                });
             }
         };
 
@@ -721,8 +894,9 @@ impl YamlTemplateImpl {
             // Send payload
             crate::network::record_request();
             if let Err(e) = writer.write_all(&payload_bytes).await {
-                tracing::debug!("Failed to send payload to {}: {}", addr, e);
-                continue;
+                return Err(Error::Network(format!(
+                    "Failed to send payload to {addr}: {e}"
+                )));
             }
 
             // Read response with timeout
@@ -736,12 +910,14 @@ impl YamlTemplateImpl {
                     break;
                 }
                 Ok(Err(e)) => {
-                    tracing::debug!("Failed to read response from {}: {}", addr, e);
-                    break;
+                    return Err(Error::Network(format!(
+                        "Failed to read response from {addr}: {e}"
+                    )));
                 }
                 Err(_) => {
-                    tracing::debug!("Read timeout from {}", addr);
-                    break;
+                    return Err(Error::Timeout {
+                        duration: format!("TCP read from {addr}: 5s"),
+                    });
                 }
             }
         }

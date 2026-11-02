@@ -195,8 +195,7 @@ impl NetworkClient {
                 request = request.header("Authorization", jwt_header);
             }
 
-            record_request();
-            match request.send().await {
+            match Self::send_request(request).await {
                 Ok(response) => {
                     // Check if response is retryable (5xx status codes)
                     let status = response.status();
@@ -243,7 +242,7 @@ impl NetworkClient {
                         continue;
                     }
 
-                    return Err(Error::Network(format!("GET request failed: {}", e)));
+                    return Err(Error::HttpRequest(e));
                 }
             }
         }
@@ -302,8 +301,7 @@ impl NetworkClient {
                 request = request.header("Authorization", jwt_header);
             }
 
-            record_request();
-            match request.send().await {
+            match Self::send_request(request).await {
                 Ok(response) => {
                     // Check if response is retryable (5xx status codes)
                     let status = response.status();
@@ -350,7 +348,7 @@ impl NetworkClient {
                         continue;
                     }
 
-                    return Err(Error::Network(format!("POST request failed: {}", e)));
+                    return Err(Error::HttpRequest(e));
                 }
             }
         }
@@ -373,11 +371,20 @@ impl NetworkClient {
 
     /// Make a custom request
     pub async fn request(&self, builder: reqwest::RequestBuilder) -> Result<Response> {
-        record_request();
-        builder
-            .send()
+        Self::send_request(builder)
             .await
-            .map_err(|e| Error::Network(format!("Request failed: {}", e)))
+            .map_err(Error::HttpRequest)
+    }
+
+    async fn send_request(
+        builder: reqwest::RequestBuilder,
+    ) -> std::result::Result<Response, reqwest::Error> {
+        // Building can fail before any transport is attempted (URL, header or
+        // method errors). Such failures must not inflate the request count.
+        let (client, request) = builder.build_split();
+        let request = request?;
+        record_request();
+        client.execute(request).await
     }
 
     /// Get the underlying client

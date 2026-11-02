@@ -1184,10 +1184,12 @@ async fn run_scan(args: cli::ScanArgs, config_path: Option<PathBuf>) -> Result<b
         let mut discovered = engine.load_templates_with_report().await?;
         discovery_issues = discovered.issues;
         if has_filter_ids {
+            let mut matched_selectors = HashSet::new();
             discovered.templates.retain(|template| {
                 let metadata = template.metadata();
-                filter_ids.iter().any(|filter_id| {
-                    metadata.id.eq_ignore_ascii_case(filter_id)
+                let mut matched = false;
+                for filter_id in &filter_ids {
+                    if metadata.id.eq_ignore_ascii_case(filter_id)
                         || metadata.name.eq_ignore_ascii_case(filter_id)
                         || metadata.file_path.to_string_lossy().contains(filter_id)
                         || metadata
@@ -1195,8 +1197,18 @@ async fn run_scan(args: cli::ScanArgs, config_path: Option<PathBuf>) -> Result<b
                             .file_stem()
                             .and_then(|s| s.to_str())
                             .is_some_and(|s| s.eq_ignore_ascii_case(filter_id))
-                })
+                    {
+                        matched_selectors.insert(filter_id);
+                        matched = true;
+                    }
+                }
+                matched
             });
+            for filter_id in &filter_ids {
+                if !matched_selectors.contains(filter_id) {
+                    tracing::warn!("Template not found: {}", filter_id);
+                }
+            }
             if discovered.templates.is_empty() {
                 selection_error = Some(Error::config(format!(
                     "No templates found matching: {:?}. Use 'cxg template list' to see available templates.",
