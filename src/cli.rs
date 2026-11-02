@@ -175,8 +175,34 @@ impl Cli {
                     })
             })
         });
+        let run_definition = root
+            .find_subcommand("pentest")
+            .unwrap()
+            .find_subcommand("run")
+            .unwrap()
+            .clone();
+        let replay_options: Vec<_> = run_definition
+            .get_arguments()
+            .filter(|arg| !authoring_option(arg.get_id().as_str()) && arg.get_id() != "target")
+            .cloned()
+            .collect();
+        let root = root.mut_subcommand("scan", |mut scan| {
+            for arg in replay_options {
+                if !scan
+                    .get_arguments()
+                    .any(|existing| existing.get_id() == arg.get_id())
+                {
+                    scan =
+                        scan.arg(arg.help_heading("Probe engine (scanner contracts unaffected)"));
+                }
+            }
+            scan
+        });
         if !args.iter().any(|arg| arg == "--pentest") {
-            return Self::from_arg_matches(&root.try_get_matches_from(args)?);
+            return Self::with_scan_replay_inputs(
+                &root.try_get_matches_from(args)?,
+                run_definition,
+            );
         }
         let normal = root.clone();
         let scan = root.find_subcommand("scan").unwrap();
@@ -241,7 +267,10 @@ impl Cli {
             .subcommand()
             .is_some_and(|(name, sub)| name == "scan" && sub.get_flag("pentest"));
         if !is_pentest {
-            return Self::from_arg_matches(&normal.try_get_matches_from(args)?);
+            return Self::with_scan_replay_inputs(
+                &normal.try_get_matches_from(args)?,
+                run_definition,
+            );
         }
         let mut matches = command.try_get_matches_from(args)?;
         let (_, sub) = matches.remove_subcommand().unwrap();
@@ -291,6 +320,70 @@ impl Cli {
         }));
         Ok(cli)
     }
+
+    fn with_scan_replay_inputs(
+        matches: &clap::ArgMatches,
+        definition: clap::Command,
+    ) -> Result<Self, clap::Error> {
+        let mut cli = Self::from_arg_matches(matches)?;
+        if let Some(Commands::Scan(scan)) = &mut cli.command {
+            let (_, selected) = matches.subcommand().unwrap();
+            let selected_ids: std::collections::HashSet<_> =
+                selected.ids().map(|id| id.as_str()).collect();
+            let mut argv = vec![OsString::from("cxg-probe-inputs")];
+            for arg in definition.get_arguments() {
+                let id = arg.get_id().as_str();
+                if authoring_option(id)
+                    || !selected_ids.contains(id)
+                    || selected.value_source(id) != Some(clap::parser::ValueSource::CommandLine)
+                {
+                    continue;
+                }
+                let flag = OsString::from(format!(
+                    "--{}",
+                    arg.get_long().expect("pentest option has a long name")
+                ));
+                if matches!(
+                    arg.get_action(),
+                    clap::ArgAction::SetTrue | clap::ArgAction::SetFalse
+                ) {
+                    argv.push(flag);
+                } else if let Some(values) = selected.get_raw(id) {
+                    for value in values {
+                        argv.push(flag.clone());
+                        argv.push(value.to_os_string());
+                    }
+                } else {
+                    argv.push(flag);
+                }
+            }
+            let parser = definition
+                .mut_arg("codebase", |arg| arg.required(false).default_value("."))
+                .mut_arg("no_author", |arg| {
+                    arg.requires(clap::builder::Resettable::Reset)
+                });
+            scan.probe_run = Some(Box::new(PentestRunArgs::from_arg_matches(
+                &parser.try_get_matches_from(argv)?,
+            )?));
+        }
+        Ok(cli)
+    }
+}
+
+// All other engine inputs are replay controls and reuse their original clap definitions.
+fn authoring_option(id: &str) -> bool {
+    matches!(
+        id,
+        "goal"
+            | "max_templates"
+            | "mutation_retries"
+            | "ai_provider"
+            | "ai"
+            | "generation_timeout"
+            | "batch_size"
+            | "deterministic_templates"
+            | "skills_file"
+    )
 }
 
 fn front_door_error(message: &str) -> clap::Error {
@@ -2188,11 +2281,19 @@ Supplied JS probe contracts run automatically through the pentest engine with ze
   template-reported and engine-adjudicated verdict sources. Missing probe inputs are refused.
   --scope supplies the target; --codebase defaults to the current directory. Use --auth,
   --auth-dir, --auth-inputs, --scope-file and --session-dir for probe execution inputs.
-  JS probes only; any-language probes are not yet supported. --pentest exposes full engine options.
+  All non-authoring pentest inputs are accepted for the probe engine, including CI,
+  containment, protocol, chaining, capture and timeout controls. They do not change
+  scanner contracts; scanner-only runs do not use these probe-engine controls.
+  Profile/scope inputs require a selected probe. Plain scan always disables authoring.
+  JS probes only; any-language probes are not yet supported. --pentest exposes authoring too.
 
 For more information, visit: https://cert-x-gen.io/docs"
 )]
 pub struct ScanArgs {
+    /// Parsed from the same engine definitions; no parallel list of option types/defaults.
+    #[arg(skip)]
+    pub probe_run: Option<Box<PentestRunArgs>>,
+
     #[command(flatten)]
     pub probe_inputs: ProbeInputs,
 
@@ -4906,6 +5007,76 @@ mod scan_front_door_tests {
             action: PentestAction::Run(PentestRunArgs { target_type, target: None, .. })
         })) if target_type == "tauri")
         );
+    }
+
+    #[test]
+    fn replay_inputs_preserve_bare_optional_values_and_repeated_options() {
+        let parsed = Cli::try_parse_from([
+            "cxg",
+            "scan",
+            "--scope",
+            "http://localhost",
+            "--oast-listener",
+            "--only-route",
+            "GET /a",
+            "--only-route",
+            "POST /b",
+        ])
+        .unwrap();
+        let Some(Commands::Scan(scan)) = parsed.command else {
+            panic!("expected scan")
+        };
+        let run = scan.probe_run.unwrap();
+        assert_eq!(run.oast_listener.as_deref(), Some(""));
+        assert_eq!(run.only_route, ["GET /a", "POST /b"]);
+    }
+
+    #[test]
+    fn plain_scan_reuses_non_authoring_engine_values_and_constraints() {
+        let parsed = Cli::try_parse_from([
+            "cxg",
+            "scan",
+            "--scope",
+            "http://localhost",
+            "--no-author",
+            "--no-code-graph",
+            "--attestation",
+            "local fixture",
+            "--mitigation-mode",
+            "mitigated",
+            "--me-path",
+            "/identity",
+            "--ci",
+            "--enable-chaining",
+            "--template-timeout",
+            "1.25",
+            "--stall-timeout",
+            "9.5",
+            "--destructive-ok",
+            "--allow-grpc",
+            "--grpc-descriptor-set",
+            "descriptors.pb",
+            "--tauri-prove",
+            "--host-scan-path",
+            "/fixture/install",
+        ])
+        .unwrap();
+        let Some(Commands::Scan(scan)) = parsed.command else {
+            panic!("expected scan")
+        };
+        let run = scan.probe_run.unwrap();
+        assert!(run.probe_inputs.no_author && run.no_code_graph && run.ci && run.enable_chaining);
+        assert_eq!(run.attestation.as_deref(), Some("local fixture"));
+        assert_eq!(run.mitigation_mode, "mitigated");
+        assert_eq!(run.me_path, "/identity");
+        assert_eq!(run.template_timeout, Some(1.25));
+        assert_eq!(run.stall_timeout, Some(9.5));
+        assert!(run.destructive_ok && run.allow_grpc && run.tauri_prove);
+        assert_eq!(run.grpc_descriptor_set.as_deref(), Some("descriptors.pb"));
+        assert_eq!(run.host_scan_path.as_deref(), Some("/fixture/install"));
+        assert!(Cli::try_parse_from(["cxg", "scan", "--client-cert", "cert.pem"]).is_err());
+        assert!(Cli::try_parse_from(["cxg", "scan", "--ai"]).is_err());
+        assert!(Cli::try_parse_from(["cxg", "scan", "--mutation-retries", "1"]).is_err());
     }
 
     #[test]

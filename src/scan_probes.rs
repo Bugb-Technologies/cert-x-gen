@@ -105,30 +105,38 @@ pub async fn execute(
                 continue;
             }
             let report_path = session.join("report.json");
-            let parsed = Cli::try_parse_from([
-                "cxg",
-                "pentest",
-                "run",
-                "--codebase",
-                ".",
-                "--target",
-                &target,
-            ])
-            .map_err(|e| Error::config(e.to_string()))?;
-            let Some(Commands::Pentest(PentestCommand {
-                action: PentestAction::Run(mut run),
-            })) = parsed.command
-            else {
-                unreachable!()
+            let mut run = if let Some(run) = &args.probe_run {
+                run.as_ref().clone()
+            } else {
+                let parsed = Cli::try_parse_from([
+                    "cxg",
+                    "pentest",
+                    "run",
+                    "--codebase",
+                    ".",
+                    "--target",
+                    &target,
+                ])
+                .map_err(|e| Error::config(e.to_string()))?;
+                let Some(Commands::Pentest(PentestCommand {
+                    action: PentestAction::Run(run),
+                })) = parsed.command
+                else {
+                    unreachable!()
+                };
+                run
             };
+            run.target = Some(target.clone());
             run.probe_inputs = args.probe_inputs.clone();
             run.probe_inputs.session_dir = Some(session.clone());
             run.template_dir = Some(inputs.clone());
             run.probe_inputs.no_author = true;
             run.mutation_retries = 0;
+            run.ai = false;
+            run.deterministic_templates = false;
             run.output = Some(report_path.clone());
-            // Scanner proxy semantics are identical; other engine controls retain
-            // their native defaults and are bounded by --scope-file.
+            // Shared options retain scanner proxy semantics. All other controls
+            // come from the engine's own parser, including its defaults.
             run.proxy = args.proxy.clone();
             let outcome = crate::run_pentest_process(
                 PentestCommand {

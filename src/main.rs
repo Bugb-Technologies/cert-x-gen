@@ -818,6 +818,9 @@ async fn run_pentest_process(
             no_restart,
             ci,
         }) => {
+            let mutation_retries = if no_author { 0 } else { mutation_retries };
+            let ai = ai && !no_author;
+            let deterministic_templates = deterministic_templates && !no_author;
             args.push("pentest".into());
             args.extend(["--codebase".into(), codebase.to_string_lossy().to_string()]);
             // @comment -- "Forwarded only when the operator supplied it. --target is optional at clap level so a tauri source-surface map can omit it; a web/electron run with no --target is refused by the Python preflight, not here, so this never silently drops a target a live probe needed."

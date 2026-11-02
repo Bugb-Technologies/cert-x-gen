@@ -117,7 +117,9 @@ env.pop('CXG_SOURCE', None)
 env.pop('ANTHROPIC_API_KEY', None)
 env.pop('OPENAI_API_KEY', None)
 try:
-    command = [executable, '--disable-update-check', 'scan', '--no-author', '--scope', f'http://127.0.0.1:{server.server_port}',
+    command = [executable, '--disable-update-check', 'scan', '--no-author', '--no-code-graph', '--attestation', 'owned local fixture',
+        '--enable-chaining', '--destructive-ok', '--mitigation-mode', 'any', '--me-path', '/fixture-identity',
+        '--template-timeout', '20', '--stall-timeout', '40', '--scope', f'http://127.0.0.1:{server.server_port}',
         '--template-dir', str(pack), '--session-dir', str(root / 'sessions'), '--output', str(root / 'combined')]
     if scenario == 'refuted':
         state = root / 'state.json'
@@ -166,6 +168,11 @@ try:
         assert Path(native['report_path']).is_file()
         assert native['report']['authoring']['model_calls'] == 0
         rows = [json.loads(line) for line in Path(native['audit_log']).read_text().splitlines()]
+        header = next(r for r in rows if r.get('_event') == 'scan_start')
+        assert header['attestation'] == 'owned local fixture'
+        assert header['scope']['destructive_ok'] is True
+        if scenario == 'refuted':
+            assert '/fixture-identity' in requests, requests
         audited = sum(r.get('_event') == 'request' and r.get('url', '').startswith(('http://', 'https://')) for r in rows)
         assert native['request_counts']['audited_http_attempts'] == audited
         assert report['statistics']['network_requests_measured'] >= audited

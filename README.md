@@ -281,6 +281,29 @@ report and a non-zero exit. Other runnable templates continue. A refusal is
 never a refuted security hypothesis. JS probes require HTTP(S) targets; CLI and
 CIDR scopes cannot be replayed by the probe engine.
 
+All non-authoring pentest inputs use the same definitions and values as
+`pentest run`: CI/session health, containment and attestation, protocol controls,
+chaining, capture, desktop inputs and timeouts. For example:
+
+```bash
+cxg scan --scope https://app.example.com --template-dir ./probes --no-author \
+  --no-code-graph --attestation "authorized staging replay" \
+  --mitigation-mode any --me-path /api/me --ci --enable-chaining \
+  --template-timeout 60 --stall-timeout 120
+```
+
+This includes `--destructive-ok`, `--allow-grpc`, `--grpc-descriptor-set`,
+`--host-scan-path` and the target-specific proof controls. Inputs apply to the
+probe engine; they do not change native scanner contracts. On scanner-only runs, controls
+that apply only to probes have no effect; profile/scope inputs still require a
+selected probe. Authoring switches such as
+`--ai` and `--mutation-retries` require the explicit `--pentest` front door.
+Automatic replay always forces no-author, AI/deterministic generation off and
+mutation retries to zero. Unsupported combinations (including supplied JS replay
+on the legacy Python or Tauri mapping/proof paths, or host paths on a web target)
+refuse clearly rather than ignoring the input. CI permission checks run before
+saved profiles are read.
+
 One combined JSON report includes scanner findings with
 `verdict_source: "template-reported"` and engine-confirmed findings with
 `verdict_source: "engine-adjudicated"`. `probe_results` retains each engine's
