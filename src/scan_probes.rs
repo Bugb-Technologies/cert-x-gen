@@ -351,7 +351,7 @@ fn probe_execution(
     id: &str,
     status: ExecutionStatus,
     findings: usize,
-    code: i32,
+    _engine_code: i32,
     reason: &str,
 ) -> ExecutionRecord {
     ExecutionRecord {
@@ -361,7 +361,8 @@ fn probe_execution(
         status,
         declared_by_template: false,
         findings,
-        exit_code: Some(code),
+        // Probes execute inside a shared engine, without individual processes.
+        exit_code: None,
         detail: Some(format!("engine-adjudicated: {reason}")),
         duration_ms: 0,
     }
