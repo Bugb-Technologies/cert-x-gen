@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Pentest raw HTTP redirects now pass scope checks, request budgets, pacing, and
+  auditing at every hop, including redirected methods. Out-of-scope hops stop
+  before dispatch. Cross-origin hops discard identity headers and use a fresh
+  cookie jar; `maxRedirects: 0` still returns the original redirect response.
+- An explicit pentest `method_allowlist` now refuses **every** method outside the
+  list, including POST and arbitrary extension methods. `--destructive-ok` no
+  longer overrides an explicit list. Destructive path consent and the built-in
+  defaults when no method list is declared retain their existing behavior.
+- `cxg.fetch` and `cxg.fetchAs` check the resolved destination host before sending
+  requests. Probe validation rejects native network API references, aliases,
+  dynamic imports, and script injection, directing authors to engine primitives.
+  Source validation remains a backstop rather than a JavaScript sandbox; see the
+  [browser traffic limitations](pentest/README.md#browser-traffic-limitations).
+
 ## [1.7.0] - 2026-10-26
 
 ### Upgrading
