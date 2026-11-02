@@ -50,7 +50,7 @@ cxg scan --scope targets.txt --templates redis*.py,docker*.go,system*.sh
 - A **bridge** between research scripts and production scanners
 - A scanner **designed for CI, automation, and agentic systems**
 
-> **A note on execution privileges.** Templates execute as ordinary child processes with the
+> **A note on execution privileges.** Scanner scripts execute as ordinary child processes with the
 > invoking user's privileges and full network and filesystem access. Review templates before
 > running them. cxg provides no OS sandbox, CPU quota, or memory containment. Template
 > execution timeouts and the built-in network client's request timeouts are available, but
@@ -450,9 +450,10 @@ Scanner templates follow a simple contract:
    stdout as no findings, but explicit empty JSON makes the output contract clear.
 
 These are scanner templates for `cxg scan`, not the browser pentest's `cxgProbe` contract.
-For YAML scanner request paths, prefer target-relative paths such as `/health`. Use only
-placeholders documented by the YAML engine; Nuclei-style interpolation is not a general
-contract across cxg's template languages.
+For YAML scanner request paths, prefer target-relative paths such as `/health` for
+compatibility with versions that do not expand `{{BaseURL}}`. Use only placeholders
+supported by the YAML engine; Nuclei-style interpolation is not a general contract across
+cxg's template languages.
 
 A template can also drive a **local binary** rather than a network host
 (`cxg scan --scope cli:///path/to/binary`), take its probe input from cxg
