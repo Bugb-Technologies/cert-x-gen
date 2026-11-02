@@ -340,6 +340,8 @@ The terminal summary splits each status into template-declared and cxg-inferred
 counts. Templates without a declared verdict retain the existing inference:
 findings imply `confirmed`, and no findings imply `refuted`. An inferred refutation
 is not a template's explicit conclusion about the target.
+Engine-adjudicated execution rows retain their separate label and summary count
+when a combined report includes them.
 
 In JSON, `statistics.network_requests` counts outbound target request attempts
 observed by the native YAML HTTP, flow and TCP engines, including HTTP retries and

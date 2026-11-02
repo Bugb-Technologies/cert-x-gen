@@ -4608,6 +4608,20 @@ fn print_scan_summary(results: &cert_x_gen::types::ScanResults) {
 /// Rows of the execution ledger printed under the summary before it is elided.
 const LEDGER_ROW_LIMIT: usize = 25;
 
+fn execution_verdict_source(record: &cert_x_gen::types::ExecutionRecord) -> &'static str {
+    if record.declared_by_template {
+        "template-declared"
+    } else if record
+        .detail
+        .as_deref()
+        .is_some_and(|detail| detail.starts_with("engine-adjudicated:"))
+    {
+        "engine-adjudicated"
+    } else {
+        "cxg-inferred"
+    }
+}
+
 /// Print the per-(template, target) execution ledger.
 ///
 /// Findings tell you what was confirmed. This tells you what was *refuted*,
@@ -4634,12 +4648,21 @@ fn print_execution_ledger(results: &cert_x_gen::types::ScanResults) {
             .iter()
             .filter(|e| e.status == status && e.declared_by_template)
             .count();
-        let value = format!(
+        let engine = results
+            .executions
+            .iter()
+            .filter(|e| e.status == status && execution_verdict_source(e) == "engine-adjudicated")
+            .count();
+        let mut value = format!(
             "{} ({} declared, {} inferred)",
             count,
             declared,
-            count - declared
+            count - declared - engine
         );
+        if engine > 0 {
+            value.pop();
+            value.push_str(&format!(", {} engine-adjudicated)", engine));
+        }
         let label = format!("{}:", status.to_string().to_uppercase());
         let styled = match status {
             ExecutionStatus::Confirmed => style(format!("{:<11}{}", label, value)).red(),
@@ -4663,11 +4686,7 @@ fn print_execution_ledger(results: &cert_x_gen::types::ScanResults) {
                 .as_ref()
                 .map(|d| format!("  [{}]", d))
                 .unwrap_or_default(),
-            if e.declared_by_template {
-                style("  (template-declared)").dim().to_string()
-            } else {
-                style("  (cxg-inferred)").dim().to_string()
-            }
+            style(format!("  ({})", execution_verdict_source(e))).dim()
         );
     }
     if results.executions.len() > LEDGER_ROW_LIMIT {
@@ -5234,6 +5253,21 @@ async fn handle_providers_command(action: cli::ProviderAction) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn engine_adjudication_is_not_labelled_as_scanner_inference() {
+        let mut record: cert_x_gen::types::ExecutionRecord =
+            serde_json::from_value(serde_json::json!({
+                "target": "127.0.0.1", "template_id": "probe", "status": "confirmed", "findings": 1,
+                "detail": "engine-adjudicated: engine-confirmed finding"
+            }))
+            .unwrap();
+        assert_eq!(execution_verdict_source(&record), "engine-adjudicated");
+        record.detail = None;
+        assert_eq!(execution_verdict_source(&record), "cxg-inferred");
+        record.declared_by_template = true;
+        assert_eq!(execution_verdict_source(&record), "template-declared");
+    }
 
     #[test]
     fn parse_target_string_accepts_cli_scheme_with_authority() {
