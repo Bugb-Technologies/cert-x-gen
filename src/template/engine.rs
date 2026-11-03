@@ -44,6 +44,11 @@ pub const TEMPLATE_BUILD_TIMEOUT_FLOOR_SECS: u64 = 300;
 /// Template trait that all templates must implement
 #[async_trait]
 pub trait Template: Send + Sync {
+    /// Whether this template needs the authenticated JS probe engine.
+    fn is_js_probe(&self) -> bool {
+        false
+    }
+
     /// Whether this engine accounts for all outbound target requests. Subprocess
     /// engines cannot observe arbitrary template networking and default to unknown.
     fn measures_network_requests(&self) -> bool {
