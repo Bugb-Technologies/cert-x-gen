@@ -36,28 +36,6 @@ const SCAN_SCOPE_ALIASES: &[&str] = &[
     "domain-file",
     "cidr",
 ];
-/// Execution outcomes that can make a completed scan fail in CI.
-#[derive(Debug, Clone, Copy, ValueEnum)]
-pub enum FailOnArg {
-    Confirmed,
-    Refuted,
-    Errored,
-    Skipped,
-    TimedOut,
-}
-
-impl FailOnArg {
-    pub fn status(self) -> cert_x_gen::types::ExecutionStatus {
-        use cert_x_gen::types::ExecutionStatus;
-        match self {
-            Self::Confirmed => ExecutionStatus::Confirmed,
-            Self::Refuted => ExecutionStatus::Refuted,
-            Self::Errored => ExecutionStatus::Errored,
-            Self::Skipped => ExecutionStatus::Skipped,
-            Self::TimedOut => ExecutionStatus::TimedOut,
-        }
-    }
-}
 
 #[derive(Parser, Debug)]
 #[command(

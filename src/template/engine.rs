@@ -55,12 +55,6 @@ pub trait Template: Send + Sync {
         false
     }
 
-    /// Whether this engine accounts for all outbound target requests. Subprocess
-    /// engines cannot observe arbitrary template networking and default to unknown.
-    fn measures_network_requests(&self) -> bool {
-        false
-    }
-
     /// Get template metadata
     fn metadata(&self) -> &TemplateMetadata;
 
