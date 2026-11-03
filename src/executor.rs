@@ -621,6 +621,10 @@ impl Executor {
         // Set timeout for template execution
         let timeout = std::time::Duration::from_secs(self.config.templates.timeout_secs);
 
+        if !template.measures_network_requests() {
+            crate::network::mark_requests_unknown();
+        }
+
         match tokio::time::timeout(timeout, template.execute_with_status(target, context)).await {
             Ok(Ok(findings)) => Ok(findings),
             Ok(Err(e)) => Err(e),

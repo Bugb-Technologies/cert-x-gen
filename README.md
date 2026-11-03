@@ -499,6 +499,62 @@ cxg scan --scope target.com --output-format json,html,sarif -o report
 
 Supported formats: **json, csv, sarif, html, markdown**.
 
+For CI, opt into a failing exit code with `--fail-on`:
+
+```bash
+cxg scan --scope target.com --template-dir ./checks \
+  --fail-on confirmed,errored,timed-out --output-format json -o results
+```
+
+The flag accepts `confirmed`, `refuted`, `errored`, `skipped`, and `timed-out`
+(comma-separated or repeated). A matching execution status causes exit **2**, after
+all requested reports are written. **Without `--fail-on`, the default exit behavior
+is unchanged:** findings and template execution errors do not change a completed
+scan's exit code. Command/configuration failures still exit **1**.
+If every candidate fails to load, the scan still exits **1** by default, now with
+a written report; a matching `--fail-on` instead selects exit **2**.
+
+The terminal summary splits each status into template-declared and cxg-inferred
+counts. Templates without a declared verdict retain the existing inference:
+findings imply `confirmed`, and no findings imply `refuted`. An inferred refutation
+is not a template's explicit conclusion about the target.
+Engine-adjudicated execution rows retain their separate label and summary count
+when a combined report includes them.
+
+In JSON, `statistics.network_requests` counts outbound target request attempts
+observed by the native YAML HTTP, flow and TCP engines, including HTTP retries and
+followed redirects. If an executed subprocess template can make requests cxg
+cannot observe, the total is **`null`**, not zero. The additive
+`statistics.network_requests_measured` field preserves the observed portion even
+when the total is unknown. Build dependency downloads are outside this count.
+
+Directory discovery requires identity metadata: `@id:` or `@name:` in a code
+template's first 50 lines, or top-level `id` or `name` in YAML. Files with a supported
+extension but no such metadata are recorded in the JSON execution ledger as
+`skipped` with detail `skipped-non-template`; they are not executed. A file that
+fails to load produces an `errored` row and an `errors` entry, including when no
+templates load successfully. Discovery rows occur once per file, have an empty
+target, and use the file path as the template ID. They participate in `--fail-on`.
+Explicit `--templates <file>` selection still loads the named file directly.
+
+Python template execution disables bytecode writes, including for imported local
+helpers. Other subprocess templates inherit `PYTHONDONTWRITEBYTECODE=1` for Python
+helpers they launch. YAML validation uses the loader's schema; for example,
+`author` must be a mapping such as `author: {name: Example}`.
+
+Native YAML HTTP requests expand `{{BaseURL}}`/`{{RootURL}}`, `{{Hostname}}`/`{{Host}}`,
+`{{Port}}`, `{{Scheme}}`, `{{Path}}`, and values supplied through `--context` in
+paths, headers and bodies. Missing context, malformed requests and terminal
+transport failures are errors rather than inferred refutations. HTTP/HTTPS
+fallback still applies to connection failures; a received negative HTTP response
+can still yield an inferred refutation. Requests rejected before transport are
+not counted. Validation shares these request checks and rejects empty operations
+and unsupported network protocols (native network requests currently use TCP).
+
+`CERT_X_GEN_HOME` relocates template-version settings along with template and
+repository configuration. `--disable-update-check` retains its existing persistent
+effect in that home's `.cert-x-gen/.templates-config.json`.
+
 ---
 
 

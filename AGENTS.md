@@ -358,10 +358,11 @@ This file is the project's committed home for project-intrinsic agent knowledge:
 - A test that needs a real detection pack vendors its own copy under `tests/fixtures/`
   (see `tests/fixtures/cli-baseline/pack/`) rather than reaching for one in another
   repository, so this repository's suite is green on its own contents.
-- A file's **extension** decides whether cxg loads it as a template, and there are two
+- A file's **extension and identity metadata** decide whether cxg discovers it as a template, and there are two
   independent allow-lists that must agree: the scan loader (`src/template/engine.rs`) and
-  the `template validate` walk (`src/main.rs`). A helper that must not be run as a check
-  needs an extension in neither.
+  the `template validate` walk (`src/main.rs`). Helpers without `@id:` or `@name:` headers
+  (top-level `id` or `name` for YAML) are reported as skipped-non-template. Explicit
+  `--templates <file>` selection still loads the named file directly.
 - `cxg template validate` gates `cxg ai generate`'s save path and `cxg template add`, but
   **not** `cxg scan` — a template can run fine and still fail validation.
 

@@ -68,8 +68,8 @@ impl TemplateVersion {
 
     /// Get the default config path (~/.cert-x-gen/.templates-config.json)
     pub fn default_config_path() -> Result<PathBuf> {
-        let home_dir =
-            dirs::home_dir().ok_or_else(|| Error::config("Failed to get home directory"))?;
+        let home_dir = super::PathResolver::user_home()
+            .ok_or_else(|| Error::config("Failed to get home directory"))?;
 
         Ok(home_dir.join(".cert-x-gen").join(".templates-config.json"))
     }

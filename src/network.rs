@@ -11,8 +11,46 @@ use governor::{
 use reqwest::{Client, ClientBuilder, Response};
 use std::collections::HashMap;
 use std::num::NonZeroU32;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
+
+/// Per-scan transport accounting, shared by concurrent template futures.
+#[derive(Debug, Default)]
+pub(crate) struct RequestStatistics {
+    measured: AtomicUsize,
+    unknown: AtomicBool,
+}
+
+impl RequestStatistics {
+    pub(crate) fn measured(&self) -> usize {
+        self.measured.load(Ordering::Relaxed)
+    }
+
+    pub(crate) fn total(&self) -> Option<usize> {
+        (!self.unknown.load(Ordering::Relaxed)).then(|| self.measured())
+    }
+}
+
+tokio::task_local! {
+    static REQUEST_STATISTICS: Arc<RequestStatistics>;
+}
+
+/// Scope counters to this scan rather than to a reusable client or process.
+pub(crate) async fn with_request_statistics<F: std::future::Future>(
+    statistics: Arc<RequestStatistics>,
+    future: F,
+) -> F::Output {
+    REQUEST_STATISTICS.scope(statistics, future).await
+}
+
+pub(crate) fn record_request() {
+    let _ = REQUEST_STATISTICS.try_with(|stats| stats.measured.fetch_add(1, Ordering::Relaxed));
+}
+
+pub(crate) fn mark_requests_unknown() {
+    let _ = REQUEST_STATISTICS.try_with(|stats| stats.unknown.store(true, Ordering::Relaxed));
+}
 
 /// Type alias for the rate limiter used in NetworkClient
 type ClientRateLimiter = RateLimiter<NotKeyed, InMemoryState, DefaultClock>;
@@ -53,9 +91,15 @@ impl NetworkClient {
 
         // Configure redirects
         if config.network.follow_redirects {
-            builder = builder.redirect(reqwest::redirect::Policy::limited(
-                config.network.max_redirects,
-            ));
+            let max = config.network.max_redirects;
+            builder = builder.redirect(reqwest::redirect::Policy::custom(move |attempt| {
+                if attempt.previous().len() > max {
+                    attempt.error("too many redirects")
+                } else {
+                    record_request();
+                    attempt.follow()
+                }
+            }));
         } else {
             builder = builder.redirect(reqwest::redirect::Policy::none());
         }
@@ -151,7 +195,7 @@ impl NetworkClient {
                 request = request.header("Authorization", jwt_header);
             }
 
-            match request.send().await {
+            match Self::send_request(request).await {
                 Ok(response) => {
                     // Check if response is retryable (5xx status codes)
                     let status = response.status();
@@ -198,7 +242,7 @@ impl NetworkClient {
                         continue;
                     }
 
-                    return Err(Error::Network(format!("GET request failed: {}", e)));
+                    return Err(Error::HttpRequest(e));
                 }
             }
         }
@@ -257,7 +301,7 @@ impl NetworkClient {
                 request = request.header("Authorization", jwt_header);
             }
 
-            match request.send().await {
+            match Self::send_request(request).await {
                 Ok(response) => {
                     // Check if response is retryable (5xx status codes)
                     let status = response.status();
@@ -304,7 +348,7 @@ impl NetworkClient {
                         continue;
                     }
 
-                    return Err(Error::Network(format!("POST request failed: {}", e)));
+                    return Err(Error::HttpRequest(e));
                 }
             }
         }
@@ -327,10 +371,20 @@ impl NetworkClient {
 
     /// Make a custom request
     pub async fn request(&self, builder: reqwest::RequestBuilder) -> Result<Response> {
-        builder
-            .send()
+        Self::send_request(builder)
             .await
-            .map_err(|e| Error::Network(format!("Request failed: {}", e)))
+            .map_err(Error::HttpRequest)
+    }
+
+    async fn send_request(
+        builder: reqwest::RequestBuilder,
+    ) -> std::result::Result<Response, reqwest::Error> {
+        // Building can fail before any transport is attempted (URL, header or
+        // method errors). Such failures must not inflate the request count.
+        let (client, request) = builder.build_split();
+        let request = request?;
+        record_request();
+        client.execute(request).await
     }
 
     /// Get the underlying client
@@ -469,6 +523,44 @@ impl DnsResolver {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn concurrent_scans_on_one_client_keep_separate_request_totals() {
+        let mut server = mockito::Server::new_async().await;
+        let a = server
+            .mock("GET", "/a")
+            .with_status(200)
+            .expect(1)
+            .create_async()
+            .await;
+        let b = server
+            .mock("GET", "/b")
+            .with_status(200)
+            .expect(2)
+            .create_async()
+            .await;
+        let client = NetworkClient::new(Arc::new(Config::default()))
+            .await
+            .unwrap();
+        let first = Arc::new(RequestStatistics::default());
+        let second = Arc::new(RequestStatistics::default());
+        tokio::join!(
+            with_request_statistics(first.clone(), async {
+                client.get(&format!("{}/a", server.url())).await.unwrap();
+            }),
+            with_request_statistics(second.clone(), async {
+                mark_requests_unknown();
+                for _ in 0..2 {
+                    client.get(&format!("{}/b", server.url())).await.unwrap();
+                }
+            }),
+        );
+        a.assert_async().await;
+        b.assert_async().await;
+        assert_eq!(first.total(), Some(1));
+        assert_eq!(second.total(), None);
+        assert_eq!(second.measured(), 2);
+    }
 
     #[tokio::test]
     async fn test_network_client_creation() {

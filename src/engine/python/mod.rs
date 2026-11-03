@@ -39,7 +39,10 @@ impl PythonEngine {
         // Execute Python script
         let stdout = execute_command(
             &self.python_path,
-            &[template_path.to_string_lossy().to_string()],
+            &[
+                "-B".to_string(),
+                template_path.to_string_lossy().to_string(),
+            ],
             &env_vars,
         )
         .await?;

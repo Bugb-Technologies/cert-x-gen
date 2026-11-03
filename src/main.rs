@@ -173,7 +173,9 @@ async fn run(cli: Cli) -> Result<()> {
 
     match command {
         Commands::Scan(args) => {
-            run_scan(args, cli.config).await?;
+            if run_scan(args, cli.config).await? {
+                std::process::exit(2);
+            }
         }
         Commands::Build(cmd) => {
             run_build_command(cmd)?;
@@ -1162,7 +1164,7 @@ async fn handle_auto_update(cli: &Cli) -> Result<()> {
 }
 
 /// Run a security scan
-async fn run_scan(args: cli::ScanArgs, config_path: Option<PathBuf>) -> Result<()> {
+async fn run_scan(args: cli::ScanArgs, config_path: Option<PathBuf>) -> Result<bool> {
     // Load configuration
     let mut config = if let Some(path) = config_path {
         Config::from_file(path)?
@@ -1194,6 +1196,8 @@ async fn run_scan(args: cli::ScanArgs, config_path: Option<PathBuf>) -> Result<(
     // Load templates based on what user specified
     tracing::info!("Loading templates...");
 
+    let mut discovery_issues = Vec::new();
+    let mut selection_error = None;
     let templates: Vec<Box<dyn Template>> = if has_direct_paths {
         // CASE 1: User specified direct file paths - load ONLY those (most efficient)
         tracing::info!(
@@ -1232,88 +1236,43 @@ async fn run_scan(args: cli::ScanArgs, config_path: Option<PathBuf>) -> Result<(
         }
 
         direct_templates
-    } else if has_filter_ids {
-        // CASE 2: User specified template IDs - search and load only matching templates
-        tracing::info!(
-            "Searching for {} specified template ID(s): {:?}",
-            filter_ids.len(),
-            filter_ids
-        );
-        let mut matched_templates: Vec<Box<dyn Template>> = Vec::new();
-        let mut found_ids: HashSet<String> = HashSet::new();
-
-        // Search in template directories for matching templates
-        for dir in engine.template_manager().get_template_dirs() {
-            if !dir.exists() {
-                continue;
-            }
-
-            match engine.template_loader().load_templates_from_dir(&dir).await {
-                Ok(templates) => {
-                    for template in templates {
-                        let template_id = template.id().to_string();
-                        let template_name = template.name().to_string();
-                        let file_path = template.metadata().file_path.to_string_lossy().to_string();
-
-                        // Check if this template matches any of the filter IDs
-                        let matches = filter_ids.iter().any(|filter_id| {
-                            template_id.eq_ignore_ascii_case(filter_id)
-                                || template_name.eq_ignore_ascii_case(filter_id)
-                                || file_path.contains(filter_id)
-                                || template
-                                    .metadata()
-                                    .file_path
-                                    .file_stem()
-                                    .and_then(|s| s.to_str())
-                                    .map(|s| s.eq_ignore_ascii_case(filter_id))
-                                    .unwrap_or(false)
-                        });
-
-                        if matches && !found_ids.contains(&template_id) {
-                            tracing::info!(
-                                "Found matching template: {} ({}) in {}",
-                                template_id,
-                                template.metadata().language,
-                                dir.display()
-                            );
-                            found_ids.insert(template_id);
-                            matched_templates.push(template);
-                        }
+    } else {
+        let mut discovered = engine.load_templates_with_report().await?;
+        discovery_issues = discovered.issues;
+        if has_filter_ids {
+            let mut matched_selectors = HashSet::new();
+            discovered.templates.retain(|template| {
+                let metadata = template.metadata();
+                let mut matched = false;
+                for filter_id in &filter_ids {
+                    if metadata.id.eq_ignore_ascii_case(filter_id)
+                        || metadata.name.eq_ignore_ascii_case(filter_id)
+                        || metadata.file_path.to_string_lossy().contains(filter_id)
+                        || metadata
+                            .file_path
+                            .file_stem()
+                            .and_then(|s| s.to_str())
+                            .is_some_and(|s| s.eq_ignore_ascii_case(filter_id))
+                    {
+                        matched_selectors.insert(filter_id);
+                        matched = true;
                     }
                 }
-                Err(e) => {
-                    tracing::warn!("Failed to search templates in {}: {}", dir.display(), e);
+                matched
+            });
+            for filter_id in &filter_ids {
+                if !matched_selectors.contains(filter_id) {
+                    tracing::warn!("Template not found: {}", filter_id);
                 }
             }
-        }
-
-        // Report any filter IDs that weren't found
-        for filter_id in &filter_ids {
-            if !found_ids
-                .iter()
-                .any(|id| id.eq_ignore_ascii_case(filter_id))
-            {
-                tracing::warn!("Template not found: {}", filter_id);
+            if discovered.templates.is_empty() {
+                selection_error = Some(Error::config(format!(
+                    "No templates found matching: {:?}. Use 'cxg template list' to see available templates.",
+                    filter_ids
+                )));
             }
         }
-
-        if matched_templates.is_empty() {
-            return Err(Error::config(format!(
-                "No templates found matching: {:?}. Use 'cxg template list' to see available templates.",
-                filter_ids
-            )));
-        }
-
-        matched_templates
-    } else {
-        // CASE 3: No specific templates - load all templates from directories
-        tracing::debug!("No specific templates specified, loading all from directories");
-        let loaded = engine.load_templates().await?;
-        tracing::info!(
-            "Loaded {} templates from template directories",
-            loaded.len()
-        );
-        loaded
+        discovered.templates
     };
 
     tracing::info!("Total templates to use: {}", templates.len());
@@ -1328,11 +1287,13 @@ async fn run_scan(args: cli::ScanArgs, config_path: Option<PathBuf>) -> Result<(
         );
     }
 
-    if templates.is_empty() {
-        return Err(Error::config(
-            "No templates loaded. Please add templates to the templates directory.",
-        ));
+    if templates.is_empty() && discovery_issues.is_empty() {
+        return Err(selection_error.unwrap_or_else(|| {
+            Error::config("No templates loaded. Please add templates to the templates directory.")
+        }));
     }
+    let no_templates_loaded =
+        templates.is_empty() && discovery_issues.iter().any(|issue| issue.error.is_some());
 
     // Parse targets
     let mut targets = parse_targets(&args)?;
@@ -1559,6 +1520,7 @@ async fn run_scan(args: cli::ScanArgs, config_path: Option<PathBuf>) -> Result<(
     } else {
         engine.execute_scan(job).await?
     };
+    results.add_discovery_issues(discovery_issues);
     let probe_exit = if has_probes {
         for finding in &mut results.findings {
             finding.verdict_source = Some("template-reported".into());
@@ -1602,13 +1564,27 @@ async fn run_scan(args: cli::ScanArgs, config_path: Option<PathBuf>) -> Result<(
     // A quiet, infrequent nudge — only after a completed scan on an interactive terminal.
     maybe_print_star_nag(args.quiet);
 
+    if let Some(error) = selection_error {
+        return Err(error);
+    }
+
     if probe_exit != 0 {
         use std::io::Write;
         std::io::stdout().flush()?;
         std::process::exit(probe_exit);
     }
 
-    Ok(())
+    let gate_failed = results.executions.iter().any(|execution| {
+        args.fail_on
+            .iter()
+            .any(|status| status.status() == execution.status)
+    });
+    if no_templates_loaded && !gate_failed {
+        return Err(Error::config(
+            "No templates could be loaded from the specified directories.",
+        ));
+    }
+    Ok(gate_failed)
 }
 
 /// Apply scan arguments to configuration
@@ -2896,7 +2872,7 @@ async fn run_template_command(cmd: cli::TemplateCommand) -> Result<()> {
             };
             run_validate_command(
                 path, recursive, false,  // show_score
-                false,  // strict
+                true,   // strict
                 format, // format
                 false,  // summary
                 None,   // language
@@ -4727,6 +4703,20 @@ fn print_scan_summary(results: &cert_x_gen::types::ScanResults) {
 /// Rows of the execution ledger printed under the summary before it is elided.
 const LEDGER_ROW_LIMIT: usize = 25;
 
+fn execution_verdict_source(record: &cert_x_gen::types::ExecutionRecord) -> &'static str {
+    if record.declared_by_template {
+        "template-declared"
+    } else if record
+        .detail
+        .as_deref()
+        .is_some_and(|detail| detail.starts_with("engine-adjudicated:"))
+    {
+        "engine-adjudicated"
+    } else {
+        "cxg-inferred"
+    }
+}
+
 /// Print the per-(template, target) execution ledger.
 ///
 /// Findings tell you what was confirmed. This tells you what was *refuted*,
@@ -4748,13 +4738,33 @@ fn print_execution_ledger(results: &cert_x_gen::types::ScanResults) {
             .iter()
             .filter(|e| e.status == status)
             .count();
+        let declared = results
+            .executions
+            .iter()
+            .filter(|e| e.status == status && e.declared_by_template)
+            .count();
+        let engine = results
+            .executions
+            .iter()
+            .filter(|e| e.status == status && execution_verdict_source(e) == "engine-adjudicated")
+            .count();
+        let mut value = format!(
+            "{} ({} declared, {} inferred)",
+            count,
+            declared,
+            count - declared - engine
+        );
+        if engine > 0 {
+            value.pop();
+            value.push_str(&format!(", {} engine-adjudicated)", engine));
+        }
         let label = format!("{}:", status.to_string().to_uppercase());
         let styled = match status {
-            ExecutionStatus::Confirmed => style(format!("{:<11}{}", label, count)).red(),
-            ExecutionStatus::Refuted => style(format!("{:<11}{}", label, count)).green(),
-            ExecutionStatus::Skipped => style(format!("{:<11}{}", label, count)).yellow(),
+            ExecutionStatus::Confirmed => style(format!("{:<11}{}", label, value)).red(),
+            ExecutionStatus::Refuted => style(format!("{:<11}{}", label, value)).green(),
+            ExecutionStatus::Skipped => style(format!("{:<11}{}", label, value)).yellow(),
             ExecutionStatus::Errored | ExecutionStatus::TimedOut => {
-                style(format!("{:<11}{}", label, count)).magenta()
+                style(format!("{:<11}{}", label, value)).magenta()
             }
         };
         println!("  {}", styled);
@@ -4771,11 +4781,7 @@ fn print_execution_ledger(results: &cert_x_gen::types::ScanResults) {
                 .as_ref()
                 .map(|d| format!("  [{}]", d))
                 .unwrap_or_default(),
-            if e.declared_by_template {
-                style("  (template-declared)").dim().to_string()
-            } else {
-                String::new()
-            }
+            style(format!("  ({})", execution_verdict_source(e))).dim()
         );
     }
     if results.executions.len() > LEDGER_ROW_LIMIT {
@@ -5342,6 +5348,21 @@ async fn handle_providers_command(action: cli::ProviderAction) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn engine_adjudication_is_not_labelled_as_scanner_inference() {
+        let mut record: cert_x_gen::types::ExecutionRecord =
+            serde_json::from_value(serde_json::json!({
+                "target": "127.0.0.1", "template_id": "probe", "status": "confirmed", "findings": 1,
+                "detail": "engine-adjudicated: engine-confirmed finding"
+            }))
+            .unwrap();
+        assert_eq!(execution_verdict_source(&record), "engine-adjudicated");
+        record.detail = None;
+        assert_eq!(execution_verdict_source(&record), "cxg-inferred");
+        record.declared_by_template = true;
+        assert_eq!(execution_verdict_source(&record), "template-declared");
+    }
 
     #[test]
     fn parse_target_string_accepts_cli_scheme_with_authority() {
