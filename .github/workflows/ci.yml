@@ -19,43 +19,29 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
-  check:
-    name: Check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - run: cargo check --all-features
-
-  fmt:
-    name: Format
+  # Pull requests share one Rust toolchain and cache for formatting, linting and
+  # tests. Clippy checks the crate too, so a separate cargo check is redundant.
+  # The main-integrity ruleset must migrate its old Rust contexts to `Rust`
+  # when this change merges; keep `Test (macos-latest)` required as before.
+  rust:
+    name: Rust
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all -- --check
-
-  clippy:
-    name: Clippy
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
-      - uses: Swatinem/rust-cache@v2
       - run: cargo clippy --all-features -- -W clippy::all
+      - run: cargo test --all-features
 
-  test:
-    name: Test
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
+  # Windows coverage runs after merge, with a standalone job so pull requests
+  # show a visible skip rather than silently omitting a matrix leg.
+  test-windows:
+    name: Test (windows-latest)
+    runs-on: windows-latest
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -101,15 +87,36 @@ jobs:
   pentest:
     name: Pentest (Python)
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ['3.12', '3.13']
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: pentest/requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: python -m pip install --upgrade pip
+      - run: pip install -r pentest/requirements.txt
+      # Track B's `auth verify` liveness tests drive a real headless Chromium;
+      # the pip package ships no browser binary. Install it (with OS deps) so
+      # those tests run against the same substrate a real `auth verify --ci` does.
+      - run: python -m playwright install --with-deps chromium
+      - run: python -m pytest -v
+        working-directory: pentest
+
+  # Python 3.13 covers pull requests; 3.12 remains a merge-only compatibility
+  # check. Keep it standalone so the skipped coverage is visible on each PR.
+  pentest-python312:
+    name: Pentest (Python 3.12)
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
           cache: pip
           cache-dependency-path: pentest/requirements.txt
       - uses: actions/setup-node@v4
@@ -130,8 +137,8 @@ jobs:
   # untouched here — nothing in this file can stop a release being built.
   #
   # Two of its four legs are macOS at a 10x multiplier, which made it the single
-  # largest line in the bill. A pull request is served by `check` (cargo check)
-  # and the Linux and Windows `test` legs; compiling release binaries for four
+  # largest line in the bill. A pull request is served by the combined `rust`
+  # job on Linux; compiling release binaries for four
   # platforms on every push to a draft pull request is not what it needs.
   #
   # The condition is on github.ref rather than github.event_name so that it
