@@ -36,6 +36,28 @@ const SCAN_SCOPE_ALIASES: &[&str] = &[
     "domain-file",
     "cidr",
 ];
+/// Execution outcomes that can make a completed scan fail in CI.
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum FailOnArg {
+    Confirmed,
+    Refuted,
+    Errored,
+    Skipped,
+    TimedOut,
+}
+
+impl FailOnArg {
+    pub fn status(self) -> cert_x_gen::types::ExecutionStatus {
+        use cert_x_gen::types::ExecutionStatus;
+        match self {
+            Self::Confirmed => ExecutionStatus::Confirmed,
+            Self::Refuted => ExecutionStatus::Refuted,
+            Self::Errored => ExecutionStatus::Errored,
+            Self::Skipped => ExecutionStatus::Skipped,
+            Self::TimedOut => ExecutionStatus::TimedOut,
+        }
+    }
+}
 
 #[derive(Parser, Debug)]
 #[command(
@@ -863,6 +885,10 @@ pub enum PentestAction {
         // @comment -- "optional so bare `cxg pentest auth --target ... --profile ...` still means interactive capture; present it routes to the browser-free import/verify paths auth.py exposes for CI"
         #[command(subcommand)]
         auth_sub: Option<AuthSubcommand>,
+
+        /// Auth profile directory (also honours CERT_X_GEN_HOME).
+        #[arg(long)]
+        auth_dir: Option<PathBuf>,
     },
 
     /// List saved auth profiles under ~/.cert-x-gen/auth/
@@ -870,7 +896,11 @@ pub enum PentestAction {
     /// Shows profile name, label, target URL, and whether extra_headers are present.
     /// Useful before running `cxg pentest run --auth <name>` to confirm which profile
     /// you'll be scanning as.
-    AuthList,
+    AuthList {
+        /// Read saved profiles from this directory.
+        #[arg(long)]
+        auth_dir: Option<PathBuf>,
+    },
 
     /// Write an example scope.yaml the operator can edit
     ///
@@ -4612,6 +4642,31 @@ mod oast_flag_tests {
 #[cfg(test)]
 mod track_b_auth_tests {
     use super::*;
+
+    #[test]
+    fn auth_capture_and_list_accept_auth_dir() {
+        for args in [
+            vec![
+                "cxg",
+                "pentest",
+                "auth",
+                "--target",
+                "https://x",
+                "--profile",
+                "p",
+                "--auth-dir",
+                "./profiles",
+            ],
+            vec!["cxg", "pentest", "auth-list", "--auth-dir", "./profiles"],
+        ] {
+            match action(&args) {
+                PentestAction::Auth { auth_dir, .. } | PentestAction::AuthList { auth_dir } => {
+                    assert_eq!(auth_dir, Some(PathBuf::from("./profiles")));
+                }
+                _ => panic!("expected auth action"),
+            }
+        }
+    }
 
     fn action(args: &[&str]) -> PentestAction {
         let cli = Cli::try_parse_from(args).expect("should parse");

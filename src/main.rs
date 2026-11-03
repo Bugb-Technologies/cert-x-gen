@@ -600,6 +600,7 @@ async fn run_pentest_process(
             app_cmd,
             app_binary,
             auth_sub,
+            auth_dir: parent_auth_dir,
         } => match auth_sub {
             // @comment -- "A subcommand routes to auth.py's browser-free CI paths (import/verify) instead of the interactive `auth login` capture. The capture path's --target/--profile are Option at the clap layer (clap derive won't negate a required parent arg for a subcommand — see cli.rs), and the import/verify subcommands carry their own --profile/--target, so the parent-level bindings are simply unused in these two branches."
             Some(cli::AuthSubcommand::Import {
@@ -645,7 +646,7 @@ async fn run_pentest_process(
                 for h in headers {
                     args.extend(["--header".into(), h]);
                 }
-                if let Some(d) = auth_dir {
+                if let Some(d) = auth_dir.or(parent_auth_dir) {
                     args.extend(["--auth-dir".into(), d.to_string_lossy().to_string()]);
                 }
                 if ci {
@@ -669,7 +670,7 @@ async fn run_pentest_process(
                 if let Some(t) = target {
                     args.extend(["--target".into(), t]);
                 }
-                if let Some(d) = auth_dir {
+                if let Some(d) = auth_dir.or(parent_auth_dir) {
                     args.extend(["--auth-dir".into(), d.to_string_lossy().to_string()]);
                 }
             }
@@ -699,6 +700,11 @@ async fn run_pentest_process(
                     "--login-path".into(),
                     login_path,
                 ]);
+                // The outer Python parser starts its REMAINDER at `login`;
+                // capture options must follow that positional subcommand.
+                if let Some(d) = parent_auth_dir {
+                    args.extend(["--auth-dir".into(), d.to_string_lossy().to_string()]);
+                }
                 if let Some(c) = creds {
                     args.extend(["--creds".into(), c]);
                 }
@@ -741,8 +747,11 @@ async fn run_pentest_process(
                 }
             }
         },
-        cli::PentestAction::AuthList => {
+        cli::PentestAction::AuthList { auth_dir } => {
             args.extend(["auth".into(), "list".into()]);
+            if let Some(d) = auth_dir {
+                args.extend(["--auth-dir".into(), d.to_string_lossy().to_string()]);
+            }
         }
         cli::PentestAction::ScopeInit { output } => {
             args.extend([
