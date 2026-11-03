@@ -50,6 +50,11 @@ pub trait Template: Send + Sync {
         false
     }
 
+    /// Whether this template needs the authenticated JS probe engine.
+    fn is_js_probe(&self) -> bool {
+        false
+    }
+
     /// Get template metadata
     fn metadata(&self) -> &TemplateMetadata;
 

@@ -14,7 +14,6 @@ use cert_x_gen::{
     types::{Protocol, Target, TemplateLanguage},
     utils,
 };
-use clap::Parser;
 use std::io::IsTerminal;
 use std::sync::Arc;
 use std::{
@@ -25,6 +24,7 @@ use std::{
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 mod cli;
+mod scan_probes;
 use cli::{Cli, Commands};
 
 fn main() {
@@ -486,8 +486,37 @@ fn pentest_home() -> PathBuf {
 /// Dispatch for `cxg pentest …` — shells out to the Python orchestrator installed under
 /// ~/.cert-x-gen/pentest/. The orchestrator is a Python module that handles auth capture,
 /// codebase ingest, AI generation, browser execution, scope enforcement, and reporting.
+#[derive(Debug, Default)]
+struct PentestProcess {
+    code: i32,
+    error: String,
+}
+
 async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
+    let result = run_pentest_process(cmd, false).await?;
+    if result.code != 0 {
+        std::process::exit(result.code);
+    }
+    Ok(())
+}
+
+async fn run_pentest_process(
+    cmd: cli::PentestCommand,
+    scan_dispatch: bool,
+) -> Result<PentestProcess> {
     use std::process::Command as SysCommand;
+    let process_log = if scan_dispatch {
+        match &cmd.action {
+            cli::PentestAction::Run(run) => run
+                .probe_inputs
+                .session_dir
+                .as_ref()
+                .map(|dir| dir.join("engine.stderr.log")),
+            _ => None,
+        }
+    } else {
+        None
+    };
     let home = pentest_home();
 
     let source_override = std::env::var_os("CXG_SOURCE").is_some();
@@ -507,7 +536,7 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
                     home.display()
                 );
             }
-            return Ok(());
+            return Ok(PentestProcess::default());
         }
         cli::PentestAction::Update(cli::PentestUpdateArgs {
             json,
@@ -519,7 +548,7 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
             if *json {
                 println!("{}", serde_json::to_string(&result).unwrap());
             }
-            return Ok(());
+            return Ok(PentestProcess::default());
         }
         cli::PentestAction::Install { force } => {
             // Source discovery is confined to this explicit development action.
@@ -535,7 +564,7 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
             if let Err(e) = check_pentest_dependencies(&home) {
                 eprintln!("{e}");
             }
-            return Ok(());
+            return Ok(PentestProcess::default());
         }
         _ => {}
     }
@@ -723,10 +752,18 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
                 output.to_string_lossy().to_string(),
             ]);
         }
-        cli::PentestAction::Run {
-            codebase,
+        cli::PentestAction::Run(cli::PentestRunArgs {
+            probe_inputs:
+                cli::ProbeInputs {
+                    codebase,
+                    auth,
+                    scope_file,
+                    session_dir,
+                    auth_dir,
+                    auth_inputs,
+                    no_author,
+                },
             target,
-            auth,
             interactive_auth,
             auth_profile,
             auth_numbers,
@@ -740,10 +777,8 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
             ai_provider,
             ai,
             headed,
-            scope_file,
             destructive_ok,
             attestation,
-            session_dir,
             output,
             mitigation_mode,
             me_path,
@@ -778,15 +813,16 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
             only_route,
             skills_file,
             enable_chaining,
-            auth_inputs,
             batch_size,
             deterministic_templates,
             template_timeout,
             stall_timeout,
             no_restart,
-            auth_dir,
             ci,
-        } => {
+        }) => {
+            let mutation_retries = if no_author { 0 } else { mutation_retries };
+            let ai = ai && !no_author;
+            let deterministic_templates = deterministic_templates && !no_author;
             args.push("pentest".into());
             args.extend(["--codebase".into(), codebase.to_string_lossy().to_string()]);
             // @comment -- "Forwarded only when the operator supplied it. --target is optional at clap level so a tauri source-surface map can omit it; a web/electron run with no --target is refused by the Python preflight, not here, so this never silently drops a target a live probe needed."
@@ -811,6 +847,9 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
             }
             if let Some(d) = template_dir {
                 args.extend(["--template-dir".into(), d.to_string_lossy().to_string()]);
+            }
+            if no_author {
+                args.push("--no-author".into());
             }
             args.extend(["--max-templates".into(), max_templates.to_string()]);
             args.extend(["--mutation-retries".into(), mutation_retries.to_string()]);
@@ -987,15 +1026,32 @@ async fn run_pentest_command(cmd: cli::PentestCommand) -> Result<()> {
     }
 
     let python = check_pentest_dependencies(&home)?;
-    let status = SysCommand::new(&python)
-        .args(&args)
-        .status()
-        .map_err(|e| Error::Config(format!("failed to spawn python orchestrator: {}", e)))?;
-    if !status.success() {
-        // Bubble the non-zero exit code up — Python uses 2 for "findings found", 3 for hard-kill
-        std::process::exit(status.code().unwrap_or(1));
+    let mut process = SysCommand::new(&python);
+    process.args(&args);
+    if scan_dispatch {
+        process.arg("--scan-dispatch");
+        let log = process_log
+            .ok_or_else(|| Error::config("automatic probes require an engine session directory"))?;
+        process.stderr(std::fs::File::create(&log)?);
+        process.stdin(std::process::Stdio::inherit());
+        let status = process
+            .status()
+            .map_err(|e| Error::Config(format!("failed to spawn python orchestrator: {e}")))?;
+        let error = std::fs::read_to_string(log).unwrap_or_default();
+        use std::io::Write;
+        std::io::stderr().write_all(error.as_bytes())?;
+        return Ok(PentestProcess {
+            code: status.code().unwrap_or(1),
+            error,
+        });
     }
-    Ok(())
+    let status = process
+        .status()
+        .map_err(|e| Error::Config(format!("failed to spawn python orchestrator: {e}")))?;
+    Ok(PentestProcess {
+        code: status.code().unwrap_or(1),
+        error: String::new(),
+    })
 }
 
 /// Find a usable python3 binary. Tries CXG_PYTHON env var first.
@@ -1423,6 +1479,19 @@ async fn run_scan(args: cli::ScanArgs, config_path: Option<PathBuf>) -> Result<b
 
     apply_probe_input(&args, &mut job.context)?;
 
+    let (probe_templates, scanner_templates): (Vec<_>, Vec<_>) = std::mem::take(&mut job.templates)
+        .into_iter()
+        .partition(|template| template.is_js_probe());
+    job.templates = scanner_templates;
+    let has_probes = !probe_templates.is_empty();
+    if !has_probes
+        && (!args.probe_inputs.auth.is_empty()
+            || args.probe_inputs.scope_file.is_some()
+            || args.probe_inputs.auth_inputs.is_some())
+    {
+        return Err(Error::config("--auth, --auth-inputs and --scope-file apply to JS probes; no probe-contract templates were selected"));
+    }
+
     tracing::info!(
         "Scan job created: {} targets × {} templates = {} total checks",
         job.targets.len(),
@@ -1436,15 +1505,32 @@ async fn run_scan(args: cli::ScanArgs, config_path: Option<PathBuf>) -> Result<b
     plugin_manager.notify_scan_start(job.id);
 
     // Initialize progress bar
-    if let Some(progress) = get_progress() {
+    if let Some(progress) = get_progress().filter(|_| !job.templates.is_empty()) {
         progress.init(job.targets.len(), job.templates.len());
     }
 
     // Execute scan
     tracing::info!("Starting scan execution...");
     let start = std::time::Instant::now();
-    let mut results = engine.execute_scan(job).await?;
+    let mut results = if job.templates.is_empty() {
+        let mut results = cert_x_gen::types::ScanResults::new(job.id);
+        results.statistics.network_requests = Some(0);
+        results.complete();
+        results
+    } else {
+        engine.execute_scan(job).await?
+    };
     results.add_discovery_issues(discovery_issues);
+    let probe_exit = if has_probes {
+        for finding in &mut results.findings {
+            finding.verdict_source = Some("template-reported".into());
+        }
+        let code = scan_probes::execute(&args, probe_templates, &mut results).await?;
+        results.complete();
+        code
+    } else {
+        0
+    };
     let duration = start.elapsed();
 
     // Finish progress bar
@@ -1460,11 +1546,14 @@ async fn run_scan(args: cli::ScanArgs, config_path: Option<PathBuf>) -> Result<b
 
     // Output results
     let output_manager = OutputManager::new();
-    let formats: Vec<String> = args
+    let mut formats: Vec<String> = args
         .output_format
         .split(',')
         .map(|s| s.trim().to_string())
         .collect();
+    if has_probes && !formats.iter().any(|format| format == "json") {
+        formats.push("json".into());
+    }
 
     let output_path = PathBuf::from(&args.output);
     output_manager.write_results(&results, &output_path, &formats)?;
@@ -1477,6 +1566,12 @@ async fn run_scan(args: cli::ScanArgs, config_path: Option<PathBuf>) -> Result<b
 
     if let Some(error) = selection_error {
         return Err(error);
+    }
+
+    if probe_exit != 0 {
+        use std::io::Write;
+        std::io::stdout().flush()?;
+        std::process::exit(probe_exit);
     }
 
     let gate_failed = results.executions.iter().any(|execution| {

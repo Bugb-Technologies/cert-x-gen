@@ -559,6 +559,7 @@ fn parse_simple_findings(
     let mut findings = Vec::new();
     for simple in simple_findings {
         let finding = Finding {
+            verdict_source: None,
             id: uuid::Uuid::new_v4(),
             target: target.address.clone(),
             template_id: simple

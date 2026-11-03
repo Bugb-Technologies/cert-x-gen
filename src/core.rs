@@ -132,7 +132,11 @@ impl CertXGen {
         let mut seen_ids = std::collections::HashSet::new();
         let original_count = report.templates.len();
         report.templates.retain(|template| {
-                let id = template.id().to_string();
+                let id = if template.is_js_probe() {
+                    format!("probe:{}", template.metadata().file_path.display())
+                } else {
+                    template.id().to_string()
+                };
                 if seen_ids.contains(&id) {
                     tracing::debug!("Skipping duplicate template: {} (already loaded from higher priority directory)", id);
                     false
