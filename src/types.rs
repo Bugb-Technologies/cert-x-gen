@@ -389,6 +389,9 @@ impl Default for Evidence {
 /// Security finding
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Finding {
+    /// How the verdict was established in a combined scanner/probe report.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verdict_source: Option<String>,
     /// Unique finding ID
     pub id: Uuid,
     /// Target that was scanned
@@ -434,6 +437,7 @@ impl Finding {
             id: Uuid::new_v4(),
             target: target.into(),
             template_id: template_id.into(),
+            verdict_source: None,
             severity,
             confidence: 90,
             title: title.into(),
@@ -586,8 +590,12 @@ pub struct ScanStatistics {
     pub templates_executed: usize,
     /// Findings by severity
     pub findings_by_severity: HashMap<Severity, usize>,
-    /// Total network requests
-    pub network_requests: usize,
+    /// Outbound request attempts, including retries and redirects. Unknown when
+    /// an executed engine cannot observe template networking.
+    pub network_requests: Option<usize>,
+    /// Requests observed by cxg, even when the aggregate total is unknown.
+    #[serde(default)]
+    pub network_requests_measured: usize,
     /// Total data transferred (bytes)
     pub data_transferred: u64,
     /// Scan duration
@@ -599,6 +607,9 @@ pub struct ScanStatistics {
 /// Scan results
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScanResults {
+    /// Native probe reports, refused inputs, and persistent engine session paths.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub probe_results: Option<serde_json::Value>,
     /// Scan ID
     pub scan_id: Uuid,
     /// Start time
@@ -622,6 +633,7 @@ impl ScanResults {
     pub fn new(scan_id: Uuid) -> Self {
         Self {
             scan_id,
+            probe_results: None,
             started_at: Utc::now(),
             completed_at: None,
             findings: Vec::new(),

@@ -1,7 +1,18 @@
 //! Command-line interface for CERT-X-GEN
 
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{CommandFactory, FromArgMatches, Parser, Subcommand, ValueEnum};
+use std::ffi::OsString;
 use std::path::PathBuf;
+
+const SCAN_SCOPE_ALIASES: &[&str] = &[
+    "target",
+    "targets",
+    "target-file",
+    "domain",
+    "domains",
+    "domain-file",
+    "cidr",
+];
 
 #[derive(Parser, Debug)]
 #[command(
@@ -140,6 +151,243 @@ pub struct Cli {
         help = "Force template update on every startup (aggressive)"
     )]
     pub update_templates_on_startup: bool,
+}
+
+impl Cli {
+    pub fn parse() -> Self {
+        Self::try_parse_from(std::env::args_os()).unwrap_or_else(|e| e.exit())
+    }
+
+    /// Build the pentest scan front door from the existing argument definitions.
+    /// Ordinary invocations retain clap's original parser and defaults.
+    pub fn try_parse_from<I, T>(args: I) -> Result<Self, clap::Error>
+    where
+        I: IntoIterator<Item = T>,
+        T: Into<OsString> + Clone,
+    {
+        let args: Vec<OsString> = args.into_iter().map(Into::into).collect();
+        let root = Self::command().mut_subcommand("pentest", |cmd| {
+            cmd.mut_subcommand("run", |run| {
+                run.mut_arg("no_author", |arg| arg.requires("template_dir"))
+                    .mut_arg("codebase", |arg| {
+                        arg.default_value(clap::builder::Resettable::Reset)
+                            .required(true)
+                    })
+            })
+        });
+        let run_definition = root
+            .find_subcommand("pentest")
+            .unwrap()
+            .find_subcommand("run")
+            .unwrap()
+            .clone();
+        let replay_options: Vec<_> = run_definition
+            .get_arguments()
+            .filter(|arg| !authoring_option(arg.get_id().as_str()) && arg.get_id() != "target")
+            .cloned()
+            .collect();
+        let root = root.mut_subcommand("scan", |mut scan| {
+            for arg in replay_options {
+                if !scan
+                    .get_arguments()
+                    .any(|existing| existing.get_id() == arg.get_id())
+                {
+                    scan =
+                        scan.arg(arg.help_heading("Probe engine (scanner contracts unaffected)"));
+                }
+            }
+            scan
+        });
+        if !args.iter().any(|arg| arg == "--pentest") {
+            return Self::with_scan_replay_inputs(
+                &root.try_get_matches_from(args)?,
+                run_definition,
+            );
+        }
+        let normal = root.clone();
+        let scan = root.find_subcommand("scan").unwrap();
+        let mut front = root
+            .find_subcommand("pentest")
+            .unwrap()
+            .find_subcommand("run")
+            .unwrap()
+            .clone()
+            .name("scan")
+            .bin_name("cxg scan --pentest");
+        let mut scan_only = Vec::new();
+        for arg in scan.get_arguments() {
+            if front
+                .get_arguments()
+                .any(|existing| existing.get_id() == arg.get_id())
+            {
+                continue;
+            }
+            let shared = matches!(arg.get_id().as_str(), "scope" | "templates" | "pentest");
+            if !shared {
+                scan_only.push((
+                    arg.get_id().clone(),
+                    format!("--{}", arg.get_long().unwrap()),
+                ));
+            }
+            front = front.arg(arg.clone().hide(!shared));
+        }
+        // `scope`'s legacy --target alias collides with pentest's --target.
+        // Keep the actual target option and the identical --scope/-s/-t spellings.
+        front = front
+            .mut_arg("scope", |arg| {
+                arg.alias(None::<&str>).aliases(
+                    SCAN_SCOPE_ALIASES
+                        .iter()
+                        .copied()
+                        .filter(|alias| *alias != "target"),
+                )
+            })
+            .group(clap::ArgGroup::new("supplied_templates").args(["templates", "template_dir"]))
+            .mut_arg("no_author", |arg| {
+                arg.requires(clap::builder::Resettable::Reset)
+                    .requires("supplied_templates")
+            });
+        let command = root.mut_subcommand("scan", |_| front);
+        // Select using clap itself so a value such as `--arg --pentest` cannot
+        // switch engines. Relax validation and make help inert for this pass;
+        // the selected parser performs all validation and renders its own help.
+        let selection = command
+            .clone()
+            .ignore_errors(true)
+            .mut_subcommand("scan", |cmd| {
+                cmd.disable_help_flag(true).arg(
+                    clap::Arg::new("scan_help")
+                        .long("help")
+                        .short('h')
+                        .action(clap::ArgAction::SetTrue),
+                )
+            })
+            .try_get_matches_from(args.clone())?;
+        let is_pentest = selection
+            .subcommand()
+            .is_some_and(|(name, sub)| name == "scan" && sub.get_flag("pentest"));
+        if !is_pentest {
+            return Self::with_scan_replay_inputs(
+                &normal.try_get_matches_from(args)?,
+                run_definition,
+            );
+        }
+        let mut matches = command.try_get_matches_from(args)?;
+        let (_, sub) = matches.remove_subcommand().unwrap();
+        for (id, flag) in scan_only {
+            if sub.value_source(id.as_str()) == Some(clap::parser::ValueSource::CommandLine) {
+                return Err(front_door_error(&format!("{flag} is a scan-only option that --pentest cannot honour; use `cxg scan --pentest --help` for pentest options")));
+            }
+        }
+        let mut run = PentestRunArgs::from_arg_matches(&sub)?;
+        let scopes = sub
+            .get_many::<String>("scope")
+            .map(|v| v.collect::<Vec<_>>())
+            .unwrap_or_default();
+        if !scopes.is_empty() {
+            if scopes.len() != 1 || run.target.is_some() {
+                return Err(front_door_error(
+                    "--pentest requires one target; use either --scope URL or --target URL",
+                ));
+            }
+            run.target = Some(scopes[0].clone());
+        }
+        if let Some(target) = &run.target {
+            let url = url::Url::parse(target).ok();
+            if !url.as_ref().is_some_and(|u| {
+                matches!(u.scheme(), "http" | "https")
+                    && u.host_str().is_some_and(|host| !host.contains(','))
+            }) {
+                return Err(front_door_error("--pentest requires one http:// or https:// target URL; hosts, CIDR, target lists/files and cli:// scopes are scan-only"));
+            }
+        }
+        let templates = sub
+            .get_many::<String>("templates")
+            .map(|v| v.collect::<Vec<_>>())
+            .unwrap_or_default();
+        if !templates.is_empty() {
+            if templates.len() != 1
+                || run.template_dir.is_some()
+                || !std::path::Path::new(templates[0]).is_dir()
+            {
+                return Err(front_door_error("--templates with --pentest requires one existing JS probe directory; template IDs, individual files and @lists are scan-only. Use --template-dir DIR. Convert scanner templates separately with `guardlink translate --from <template> --contract probe` using a GuardLink version that supports probe translation; --no-author never runs conversion"));
+            }
+            run.template_dir = Some(PathBuf::from(templates[0]));
+        }
+        let mut cli = Self::from_arg_matches(&matches)?;
+        cli.command = Some(Commands::Pentest(PentestCommand {
+            action: PentestAction::Run(run),
+        }));
+        Ok(cli)
+    }
+
+    fn with_scan_replay_inputs(
+        matches: &clap::ArgMatches,
+        definition: clap::Command,
+    ) -> Result<Self, clap::Error> {
+        let mut cli = Self::from_arg_matches(matches)?;
+        if let Some(Commands::Scan(scan)) = &mut cli.command {
+            let (_, selected) = matches.subcommand().unwrap();
+            let selected_ids: std::collections::HashSet<_> =
+                selected.ids().map(|id| id.as_str()).collect();
+            let mut argv = vec![OsString::from("cxg-probe-inputs")];
+            for arg in definition.get_arguments() {
+                let id = arg.get_id().as_str();
+                if authoring_option(id)
+                    || !selected_ids.contains(id)
+                    || selected.value_source(id) != Some(clap::parser::ValueSource::CommandLine)
+                {
+                    continue;
+                }
+                let flag = OsString::from(format!(
+                    "--{}",
+                    arg.get_long().expect("pentest option has a long name")
+                ));
+                if matches!(
+                    arg.get_action(),
+                    clap::ArgAction::SetTrue | clap::ArgAction::SetFalse
+                ) {
+                    argv.push(flag);
+                } else if let Some(values) = selected.get_raw(id) {
+                    for value in values {
+                        argv.push(flag.clone());
+                        argv.push(value.to_os_string());
+                    }
+                } else {
+                    argv.push(flag);
+                }
+            }
+            let parser = definition
+                .mut_arg("codebase", |arg| arg.required(false).default_value("."))
+                .mut_arg("no_author", |arg| {
+                    arg.requires(clap::builder::Resettable::Reset)
+                });
+            scan.probe_run = Some(Box::new(PentestRunArgs::from_arg_matches(
+                &parser.try_get_matches_from(argv)?,
+            )?));
+        }
+        Ok(cli)
+    }
+}
+
+// All other engine inputs are replay controls and reuse their original clap definitions.
+fn authoring_option(id: &str) -> bool {
+    matches!(
+        id,
+        "goal"
+            | "max_templates"
+            | "mutation_retries"
+            | "ai_provider"
+            | "ai"
+            | "generation_timeout"
+            | "batch_size"
+            | "deterministic_templates"
+            | "skills_file"
+    )
+}
+
+fn front_door_error(message: &str) -> clap::Error {
+    clap::Error::raw(clap::error::ErrorKind::ArgumentConflict, message)
 }
 
 #[derive(Subcommand, Debug)]
@@ -694,894 +942,927 @@ pub enum PentestAction {
     ///   5 → CI mode (`--ci` / CXG_CI=1): an auth session was dead/expired at
     ///       pre-flight, so the run stopped before spending any AI calls rather
     ///       than silently probing UNAUTHENTICATED
-    #[command(after_help = "TAURI EXAMPLES:
+    #[command(after_help = "SCAN FRONT DOOR:
+  cxg scan --pentest accepts every option listed above through the same pentest engine.
+  --scope URL aliases --target URL; --templates DIR aliases --template-dir DIR.
+  Supply one HTTP(S) URL; ports, CIDR, cli:// targets and scan-only filters are refused.
+  JS probes only; any-language probes are not yet supported. The legacy --template-lang py path remains available.
+  Convert scanner templates separately: guardlink translate --from <template> --contract probe
+    (requires a GuardLink version with probe translation; --no-author never converts).
+  --no-author --template-dir DIR guarantees zero model calls (ranking, generation and mutation disabled).
+  Pentest verdicts are engine-confirmed; ordinary scan findings remain template-reported.
+
+TAURI EXAMPLES:
   # Prepare the source threat model (after cxg pentest install)
   guardlink sarif ./app-repo -p my-app -o ./app-repo/whitebox/findings.sarif
   # Source map only; no commands invoked
   cxg pentest run --target-type tauri --codebase ./app-repo
   # Opt in to headless in-process command proof
   cxg pentest run --target-type tauri --codebase ./app-repo --tauri-prove --tauri-prove-timeout 1200")]
-    Run {
-        /// Source codebase root. MUST contain `whitebox/findings.sarif` produced by
-        /// `guardlink sarif <codebase> -p my-app -o whitebox/findings.sarif`. The codebase is also
-        /// the working directory of the AI CLI during template generation, so the AI
-        /// can read source via its own Read/Grep tools to craft code-aware payloads.
-        #[arg(
-            long,
-            help_heading = "Target",
-            display_order = 1,
-            help = "Source codebase root (contains whitebox/findings.sarif)"
-        )]
-        codebase: PathBuf,
+    Run(PentestRunArgs),
+}
 
-        /// Running target app URL. Both `http://` and `https://` are supported.
-        /// Multi-tenant note: pass the URL where the SESSION cookies live, not a marketing
-        /// host. The landing test verifies you arrive at a non-login page from this URL.
-        ///
-        /// Required for `--target-type web` and `electron`; omit it for
-        /// `--target-type tauri`, which maps the IPC surface from source and navigates
-        /// nowhere. A web/Electron run without --target is refused at preflight (exit 4).
-        // @comment -- "Optional at clap level ONLY so a tauri source-surface map can omit it. The Python preflight refuses a web/electron run with no --target, so the live-probe paths keep their 'you must say what to probe' guarantee; main.rs forwards --target only when it is present, so an absent one reaches the orchestrator as the empty default it treats as 'no live target'."
-        #[arg(
-            long,
-            help_heading = "Target",
-            display_order = 2,
-            help = "Running target app URL (http:// or https://); omit for --target-type tauri"
-        )]
-        target: Option<String>,
+/// Arguments shared by `pentest run` and `scan --pentest`.
+#[derive(clap::Args, Debug, Clone)]
+pub struct PentestRunArgs {
+    #[command(flatten)]
+    pub probe_inputs: ProbeInputs,
 
-        /// Comma-separated auth profile names previously captured via `cxg pentest auth`.
-        /// Probes that need multiple identities (IDOR cross-user, session-replay-against-
-        /// victim) require ≥2 profiles. The lowest-privilege identity is auto-selected as
-        /// the actor for privesc-class probes.
-        ///
-        /// Empty means a first-class anonymous (no-login) web/Electron run, not interactive capture.
-        /// Tauri source maps and in-process proofs need no --auth profile.
-        #[arg(
-            long,
-            default_value = "",
-            help_heading = "Authentication",
-            display_order = 11,
-            help = "Comma-separated captured auth profiles; empty = first-class anonymous (no-login) run on a clean unauthenticated surface with real anonymous probes and auth-only checks reported not-run. Empty does not imply interactive capture; use --interactive-auth"
-        )]
-        auth: String,
+    /// Running target app URL. Both `http://` and `https://` are supported.
+    /// Multi-tenant note: pass the URL where the SESSION cookies live, not a marketing
+    /// host. The landing test verifies you arrive at a non-login page from this URL.
+    ///
+    /// Required for `--target-type web` and `electron`; omit it for
+    /// `--target-type tauri`, which maps the IPC surface from source and navigates
+    /// nowhere. A web/Electron run without --target is refused at preflight (exit 4).
+    // @comment -- "Optional at clap level ONLY so a tauri source-surface map can omit it. The Python preflight refuses a web/electron run with no --target, so the live-probe paths keep their 'you must say what to probe' guarantee; main.rs forwards --target only when it is present, so an absent one reaches the orchestrator as the empty default it treats as 'no live target'."
+    #[arg(
+        long,
+        help_heading = "Target",
+        display_order = 2,
+        help = "Running target app URL (http:// or https://); omit for --target-type tauri"
+    )]
+    pub target: Option<String>,
 
-        /// Open N headed browser windows for interactive login at scan start, then run
-        /// the pipeline with the resulting fresh profiles. Each capture prompts you for
-        /// a per-identity label. Use this when your captured profiles have expired or
-        /// when you don't want to manage profile lifecycle separately.
-        ///
-        /// Profiles are saved as `<--auth-profile>-1`, `<--auth-profile>-2`, etc.
-        #[arg(
-            long,
-            default_value = "0",
-            help_heading = "Authentication",
-            display_order = 13,
-            help = "Capture N fresh identities interactively at start"
-        )]
-        interactive_auth: usize,
+    /// Open N headed browser windows for interactive login at scan start, then run
+    /// the pipeline with the resulting fresh profiles. Each capture prompts you for
+    /// a per-identity label. Use this when your captured profiles have expired or
+    /// when you don't want to manage profile lifecycle separately.
+    ///
+    /// Profiles are saved as `<--auth-profile>-1`, `<--auth-profile>-2`, etc.
+    #[arg(
+        long,
+        default_value = "0",
+        help_heading = "Authentication",
+        display_order = 13,
+        help = "Capture N fresh identities interactively at start"
+    )]
+    pub interactive_auth: usize,
 
-        /// Name prefix for `--interactive-auth` captures. The final profile names are
-        /// `<auth_profile>-1`, `<auth_profile>-2`, etc.
-        #[arg(
-            long,
-            default_value = "pentest",
-            help_heading = "Authentication",
-            display_order = 12,
-            help = "Name prefix for --interactive-auth captures"
-        )]
-        auth_profile: String,
+    /// Name prefix for `--interactive-auth` captures. The final profile names are
+    /// `<auth_profile>-1`, `<auth_profile>-2`, etc.
+    #[arg(
+        long,
+        default_value = "pentest",
+        help_heading = "Authentication",
+        display_order = 12,
+        help = "Name prefix for --interactive-auth captures"
+    )]
+    pub auth_profile: String,
 
-        /// Minimum auth contexts the scan requires. If you pass `--auth a,b` but
-        /// `--auth-numbers 3`, chained-auth templates that need 3 contexts will be
-        /// skipped with a warning. Pure usability check — engine doesn't fabricate
-        /// extra contexts.
-        #[arg(
-            long,
-            help_heading = "Authentication",
-            display_order = 14,
-            help = "Minimum auth contexts the scan requires"
-        )]
-        auth_numbers: Option<usize>,
+    /// Minimum auth contexts the scan requires. If you pass `--auth a,b` but
+    /// `--auth-numbers 3`, chained-auth templates that need 3 contexts will be
+    /// skipped with a warning. Pure usability check — engine doesn't fabricate
+    /// extra contexts.
+    #[arg(
+        long,
+        help_heading = "Authentication",
+        display_order = 14,
+        help = "Minimum auth contexts the scan requires"
+    )]
+    pub auth_numbers: Option<usize>,
 
-        /// File of `profile:email:password[:label]` lines used to AUTO RE-AUTH a
-        /// dead session mid-scan (the session-health monitor detects death via the
-        /// landing test). Without this, a probe that kills its own session — e.g.
-        /// session_replay's logout — leaves remaining probes unable to run.
-        ///
-        /// Recommended for any scan with `--mutation-retries > 0` or scans with
-        /// SessionReplay / Csrf class templates.
-        #[arg(
-            long,
-            help_heading = "Authentication",
-            display_order = 15,
-            help = "Creds file for auto re-auth of a dead session"
-        )]
-        creds_file: Option<PathBuf>,
+    /// File of `profile:email:password[:label]` lines used to AUTO RE-AUTH a
+    /// dead session mid-scan (the session-health monitor detects death via the
+    /// landing test). Without this, a probe that kills its own session — e.g.
+    /// session_replay's logout — leaves remaining probes unable to run.
+    ///
+    /// Recommended for any scan with `--mutation-retries > 0` or scans with
+    /// SessionReplay / Csrf class templates.
+    #[arg(
+        long,
+        help_heading = "Authentication",
+        display_order = 15,
+        help = "Creds file for auto re-auth of a dead session"
+    )]
+    pub creds_file: Option<PathBuf>,
 
-        /// Template language. `js` (default): AI generates copy-paste-runnable JS
-        /// templates that drive the cxg JS bridge — recommended for all interactive
-        /// pentests. `py`: Python probe path (legacy) — only built-in probes in
-        /// `pentest/payloads/`, no AI generation.
-        #[arg(
-            long,
-            default_value = "js",
-            help_heading = "AI Generation",
-            display_order = 27,
-            help = "Template language: js (default; required for Tauri/Electron) or py (legacy web)"
-        )]
-        template_lang: String,
+    /// Template language. `js` (default): AI generates copy-paste-runnable JS
+    /// templates that drive the cxg JS bridge — recommended for all interactive
+    /// pentests. `py`: Python probe path (legacy) — only built-in probes in
+    /// `pentest/payloads/`, no AI generation.
+    #[arg(
+        long,
+        default_value = "js",
+        help_heading = "AI Generation",
+        display_order = 27,
+        help = "Template language: js (default; required for Tauri/Electron) or py (legacy web)"
+    )]
+    pub template_lang: String,
 
-        /// Natural-language pentest goal. Used as context for both LLM-based hypothesis
-        /// ranking AND template generation. Be specific about which vuln classes,
-        /// endpoints, or claims you want tested.
-        ///
-        /// Examples:
-        ///   "test for IDOR in records and transactions APIs"
-        ///   "verify each declared @mitigates actually holds at runtime"
-        ///   "find unguarded admin endpoints accessible to non-admin tokens"
-        #[arg(
-            long,
-            help_heading = "AI Generation",
-            display_order = 23,
-            help = "Natural-language pentest goal (ranking + generation)"
-        )]
-        goal: Option<String>,
+    /// Natural-language pentest goal. Used as context for both LLM-based hypothesis
+    /// ranking AND template generation. Be specific about which vuln classes,
+    /// endpoints, or claims you want tested.
+    ///
+    /// Examples:
+    ///   "test for IDOR in records and transactions APIs"
+    ///   "verify each declared @mitigates actually holds at runtime"
+    ///   "find unguarded admin endpoints accessible to non-admin tokens"
+    #[arg(
+        long,
+        help_heading = "AI Generation",
+        display_order = 23,
+        help = "Natural-language pentest goal (ranking + generation)"
+    )]
+    pub goal: Option<String>,
 
-        /// Exactly select imported hypotheses carrying this GuardLink id before ranking.
-        /// Unknown ids refuse before target contact. Requires JS generation on web/electron;
-        /// disables unrelated discovery, boundary and host probes. Not authorization.
-        #[arg(long, help_heading = "AI Generation")]
-        threat_id: Option<String>,
+    /// Exactly select imported hypotheses carrying this GuardLink id before ranking.
+    /// Unknown ids refuse before target contact. Requires JS generation on web/electron;
+    /// disables unrelated discovery, boundary and host probes. Not authorization.
+    #[arg(long, help_heading = "AI Generation")]
+    pub threat_id: Option<String>,
 
-        /// Reuse JS templates from a previously-generated session directory. Skips the
-        /// AI generation step entirely. Useful for re-running the same templates against
-        /// different targets, or after fixing engine bugs that affected template execution.
-        ///
-        /// Template directories are at `~/.cert-x-gen/templates/session-<timestamp>-<pid>/`.
-        ///
-        /// A template carrying no `// @attach_scheme: path` header is WITHHELD — never
-        /// executed — and named in a `templates_withheld` caveat in report.json, because
-        /// it may have been generated under a same-named file's intent context. See
-        /// `pentest/docs/ARCHITECTURE.md` for the rule and the remedy for each case.
-        #[arg(
-            long,
-            help_heading = "AI Generation",
-            display_order = 28,
-            help = "Reuse templates from a prior session dir (skip AI)"
-        )]
-        template_dir: Option<PathBuf>,
+    /// Reuse JS templates from a previously-generated session directory. Skips the
+    /// AI generation step entirely. Useful for re-running the same templates against
+    /// different targets, or after fixing engine bugs that affected template execution.
+    ///
+    /// Template directories are at `~/.cert-x-gen/templates/session-<timestamp>-<pid>/`.
+    /// JS probes are discovered recursively, using scan's exclusions for build
+    /// artifacts, dependencies, disabled templates and skeleton directories.
+    /// Scanner templates are refused: convert them separately with
+    /// `guardlink translate --from <template> --contract probe` using a GuardLink
+    /// version that supports probe translation. cxg never converts on replay.
+    ///
+    /// A template carrying no `// @attach_scheme: path` header is WITHHELD — never
+    /// executed — and named in a `templates_withheld` caveat in report.json, because
+    /// it may have been generated under a same-named file's intent context. See
+    /// `pentest/docs/ARCHITECTURE.md` for the rule and the remedy for each case.
+    #[arg(
+        long,
+        help_heading = "AI Generation",
+        display_order = 28,
+        help = "Reuse JS probes recursively (skip ranking and generation)"
+    )]
+    pub template_dir: Option<PathBuf>,
 
-        /// Maximum number of templates the LLM ranker is allowed to select per scan.
-        /// Each template = one AI generation call (~60-180s with claude/codex). Lower for
-        /// fast feedback loops; higher for engagement-grade coverage.
-        #[arg(
-            long,
-            default_value = "8",
-            help_heading = "AI Generation",
-            display_order = 24,
-            help = "Max templates the LLM ranker may select"
-        )]
-        max_templates: usize,
+    /// Maximum number of templates the LLM ranker is allowed to select per scan.
+    /// Each template = one AI generation call (~60-180s with claude/codex). Lower for
+    /// fast feedback loops; higher for engagement-grade coverage.
+    #[arg(
+        long,
+        default_value = "8",
+        help_heading = "AI Generation",
+        display_order = 24,
+        help = "Max templates the LLM ranker may select"
+    )]
+    pub max_templates: usize,
 
-        /// Maximum times the AI is allowed to mutate a template after AMBIGUOUS triage.
-        /// Environment-bound AMBIGUOUS (missing role, missing primitive) skip mutation
-        /// automatically; only payload-fixable ones consume retries.
-        /// 0 disables the loop entirely.
-        #[arg(
-            long,
-            default_value = "2",
-            help_heading = "AI Generation",
-            display_order = 25,
-            help = "Max AI mutation retries on AMBIGUOUS triage"
-        )]
-        mutation_retries: usize,
+    /// Maximum times the AI is allowed to mutate a template after AMBIGUOUS triage.
+    /// Environment-bound AMBIGUOUS (missing role, missing primitive) skip mutation
+    /// automatically; only payload-fixable ones consume retries.
+    /// 0 disables the loop entirely.
+    #[arg(
+        long,
+        default_value = "2",
+        help_heading = "AI Generation",
+        display_order = 25,
+        help = "Max AI mutation retries on AMBIGUOUS triage"
+    )]
+    pub mutation_retries: usize,
 
-        /// AI provider. `auto` prefers the editor bridge when $BUGB_BRIDGE_URL is set,
-        /// then the first available CLI tool (claude > codex > gemini), falling back to
-        /// ANTHROPIC_API_KEY / OPENAI_API_KEY HTTP APIs. Otherwise specify explicitly.
-        /// CLI providers don't need API keys — they use your existing CLI auth.
-        ///
-        /// Options: auto | bridge | claude | codex | gemini | anthropic | openai
-        ///
-        /// `bridge` posts each prompt to $BUGB_BRIDGE_URL (with Authorization: Bearer
-        /// $BUGB_BRIDGE_TOKEN when set) and reads the completion back — an editor/CI
-        /// integration point rather than a local CLI.
-        #[arg(
-            long,
-            default_value = "claude",
-            help_heading = "AI Generation",
-            display_order = 22,
-            help = "AI provider: auto|bridge|claude|codex|gemini|crush|anthropic|openai"
-        )]
-        ai_provider: String,
+    /// AI provider. `auto` prefers the editor bridge when $BUGB_BRIDGE_URL is set,
+    /// then the first available CLI tool (claude > codex > gemini), falling back to
+    /// ANTHROPIC_API_KEY / OPENAI_API_KEY HTTP APIs. Otherwise specify explicitly.
+    /// CLI providers don't need API keys — they use your existing CLI auth.
+    ///
+    /// Options: auto | bridge | claude | codex | gemini | anthropic | openai
+    ///
+    /// `bridge` posts each prompt to $BUGB_BRIDGE_URL (with Authorization: Bearer
+    /// $BUGB_BRIDGE_TOKEN when set) and reads the completion back — an editor/CI
+    /// integration point rather than a local CLI.
+    #[arg(
+        long,
+        default_value = "claude",
+        help_heading = "AI Generation",
+        display_order = 22,
+        help = "AI provider: auto|bridge|claude|codex|gemini|crush|anthropic|openai"
+    )]
+    pub ai_provider: String,
 
-        /// Enable AI-driven template generation. Without `--ai`, only built-in probes
-        /// from `pentest/payloads/` run. With `--ai`, the orchestrator invokes the
-        /// chosen `--ai-provider` to read the codebase and synthesize code-aware
-        /// templates per guardlink hypothesis.
-        #[arg(
-            long,
-            help_heading = "AI Generation",
-            display_order = 21,
-            help = "Enable AI-driven template generation"
-        )]
-        ai: bool,
+    /// Enable AI-driven template generation. Without `--ai`, only built-in probes
+    /// from `pentest/payloads/` run. With `--ai`, the orchestrator invokes the
+    /// chosen `--ai-provider` to read the codebase and synthesize code-aware
+    /// templates per guardlink hypothesis.
+    #[arg(
+        long,
+        help_heading = "AI Generation",
+        display_order = 21,
+        help = "Enable AI-driven template generation"
+    )]
+    pub ai: bool,
 
-        /// Show Chromium windows during scan instead of running headless. Useful for
-        /// debugging probes, watching auth flows, or when WAF bot-detection is blocking
-        /// headless requests (real Chromium has a stronger fingerprint than headless).
-        #[arg(
-            long,
-            help_heading = "Execution",
-            display_order = 43,
-            help = "Show Chromium windows instead of running headless"
-        )]
-        headed: bool,
+    /// Show Chromium windows during scan instead of running headless. Useful for
+    /// debugging probes, watching auth flows, or when WAF bot-detection is blocking
+    /// headless requests (real Chromium has a stronger fingerprint than headless).
+    #[arg(
+        long,
+        help_heading = "Execution",
+        display_order = 43,
+        help = "Show Chromium windows instead of running headless"
+    )]
+    pub headed: bool,
 
-        /// Path to scope.yaml. Default: safe permissive defaults (any URL, GET/POST/HEAD/
-        /// OPTIONS, 30 reqs/endpoint, 1500 reqs total, kill on 8-streak 5xx).
-        /// Generate one with `cxg pentest scope-init`.
-        ///
-        /// If this flag is given and the file cannot be read — path does not exist,
-        /// unreadable, invalid YAML, not a mapping, empty, or PyYAML not installed —
-        /// the run is REFUSED with exit 4. It does not fall back to the defaults:
-        /// a bound cxg cannot read is not the same as no bound. Omitting the flag
-        /// entirely is the supported way to run on the defaults.
-        ///
-        /// An empty value never reaches that check and is not ignored either:
-        /// `--scope-file "$SCOPE"` with `SCOPE` unset is rejected by the CLI parser
-        /// as a usage error (exit 2, `a value is required for '--scope-file
-        /// <SCOPE_FILE>' but none was supplied`) before the scan starts.
-        ///
-        /// Refused with exit 4 on `--template-lang py` as well: the legacy Python probe
-        /// path enforces no scope at all, so a file accepted there would be discarded.
-        #[arg(
-            long,
-            help_heading = "Execution",
-            display_order = 41,
-            help = "Path to scope.yaml (URL/method allowlist, budgets)"
-        )]
-        scope_file: Option<PathBuf>,
+    /// Allow DELETE/PUT/PATCH methods AND paths matching destructive regexes
+    /// (`/wipe`, `/delete-all`, `/factory-reset`, etc.) in scope.yaml.
+    /// Default OFF. Required for templates that test destructive-action authz.
+    ///
+    /// USE WITH CARE on production targets. The engine emits a warning at startup
+    /// and every blocked request is still recorded in the audit log.
+    #[arg(
+        long,
+        help_heading = "Execution",
+        display_order = 42,
+        help = "Allow DELETE/PUT/PATCH + destructive paths (use with care)"
+    )]
+    pub destructive_ok: bool,
 
-        /// Allow DELETE/PUT/PATCH methods AND paths matching destructive regexes
-        /// (`/wipe`, `/delete-all`, `/factory-reset`, etc.) in scope.yaml.
-        /// Default OFF. Required for templates that test destructive-action authz.
-        ///
-        /// USE WITH CARE on production targets. The engine emits a warning at startup
-        /// and every blocked request is still recorded in the audit log.
-        #[arg(
-            long,
-            help_heading = "Execution",
-            display_order = 42,
-            help = "Allow DELETE/PUT/PATCH + destructive paths (use with care)"
-        )]
-        destructive_ok: bool,
+    /// Free-text written authorization statement recorded in the audit log header.
+    /// Include engagement ID, operator name, change-management ticket, etc.
+    ///
+    /// Example: "Engagement PT-2026-003, operator J. Doe, ticket CHG-1234"
+    ///
+    /// Strongly recommended for any non-local scan. The audit log header is the
+    /// dispute-ready record of "I had authorization to do this scan."
+    #[arg(
+        long,
+        help_heading = "Execution",
+        display_order = 47,
+        help = "Written authorization statement for the audit log"
+    )]
+    pub attestation: Option<String>,
 
-        /// Free-text written authorization statement recorded in the audit log header.
-        /// Include engagement ID, operator name, change-management ticket, etc.
-        ///
-        /// Example: "Engagement PT-2026-003, operator J. Doe, ticket CHG-1234"
-        ///
-        /// Strongly recommended for any non-local scan. The audit log header is the
-        /// dispute-ready record of "I had authorization to do this scan."
-        #[arg(
-            long,
-            help_heading = "Execution",
-            display_order = 47,
-            help = "Written authorization statement for the audit log"
-        )]
-        attestation: Option<String>,
+    /// Hypothesis filter by declared-mitigation status from guardlink:
+    ///   `any`         — all HTTP-testable hypotheses (default)
+    ///   `unmitigated` — only threats WITHOUT a declared @mitigates
+    ///                   (find unguarded holes)
+    ///   `mitigated`   — only threats WITH @mitigates declared
+    ///                   (verify defenses actually hold at runtime)
+    #[arg(
+        long,
+        default_value = "any",
+        help_heading = "AI Generation",
+        display_order = 29,
+        help = "Hypothesis filter: any|unmitigated|mitigated"
+    )]
+    pub mitigation_mode: String,
 
-        /// Hypothesis filter by declared-mitigation status from guardlink:
-        ///   `any`         — all HTTP-testable hypotheses (default)
-        ///   `unmitigated` — only threats WITHOUT a declared @mitigates
-        ///                   (find unguarded holes)
-        ///   `mitigated`   — only threats WITH @mitigates declared
-        ///                   (verify defenses actually hold at runtime)
-        #[arg(
-            long,
-            default_value = "any",
-            help_heading = "AI Generation",
-            display_order = 29,
-            help = "Hypothesis filter: any|unmitigated|mitigated"
-        )]
-        mitigation_mode: String,
+    /// Optional identity endpoint hit during pre-flight inspection to extract
+    /// role/email/id from a JSON response. Failure here does NOT mark the profile
+    /// dead — the landing test is the source of truth. Override only when you
+    /// want role-tier-based probe selection AND the app has a stable /me endpoint.
+    ///
+    /// Default `/api/me`. Set to empty string to skip the secondary probe.
+    #[arg(
+        long,
+        default_value = "/api/me",
+        help_heading = "Authentication",
+        display_order = 16,
+        help = "Identity endpoint for pre-flight role/email (default /api/me)"
+    )]
+    pub me_path: String,
 
-        /// Optional identity endpoint hit during pre-flight inspection to extract
-        /// role/email/id from a JSON response. Failure here does NOT mark the profile
-        /// dead — the landing test is the source of truth. Override only when you
-        /// want role-tier-based probe selection AND the app has a stable /me endpoint.
-        ///
-        /// Default `/api/me`. Set to empty string to skip the secondary probe.
-        #[arg(
-            long,
-            default_value = "/api/me",
-            help_heading = "Authentication",
-            display_order = 16,
-            help = "Identity endpoint for pre-flight role/email (default /api/me)"
-        )]
-        me_path: String,
+    /// Hard wall-clock timeout per AI generation call. The whole process tree is
+    /// killed if exceeded. Default 240s.
+    ///
+    /// Claude CLI typically takes 60-170s per template; Codex 90-220s; Gemini 30-180s.
+    /// Bump to 600+ for very large codebases the AI has to grep through.
+    #[arg(
+        long,
+        default_value = "240",
+        help_heading = "AI Generation",
+        display_order = 26,
+        help = "Hard timeout per AI generation call, seconds (default 240)"
+    )]
+    pub generation_timeout: u64,
 
-        /// Hard wall-clock timeout per AI generation call. The whole process tree is
-        /// killed if exceeded. Default 240s.
-        ///
-        /// Claude CLI typically takes 60-170s per template; Codex 90-220s; Gemini 30-180s.
-        /// Bump to 600+ for very large codebases the AI has to grep through.
-        #[arg(
-            long,
-            default_value = "240",
-            help_heading = "AI Generation",
-            display_order = 26,
-            help = "Hard timeout per AI generation call, seconds (default 240)"
-        )]
-        generation_timeout: u64,
+    /// Skip the pre-flight session health check entirely. Use when:
+    ///   • Multi-tenant app where the session lives at a subdomain different from --target
+    ///   • App has no stable /me-style endpoint
+    ///   • You know the session is fresh and want to skip the verification roundtrip
+    ///
+    /// Per-template health checks still run during the scan unless you also configure
+    /// scope.yaml to disable them.
+    #[arg(
+        long,
+        help_heading = "Authentication",
+        display_order = 17,
+        help = "Skip the pre-flight session health check"
+    )]
+    pub skip_health_check: bool,
 
-        /// Skip the pre-flight session health check entirely. Use when:
-        ///   • Multi-tenant app where the session lives at a subdomain different from --target
-        ///   • App has no stable /me-style endpoint
-        ///   • You know the session is fresh and want to skip the verification roundtrip
-        ///
-        /// Per-template health checks still run during the scan unless you also configure
-        /// scope.yaml to disable them.
-        #[arg(
-            long,
-            help_heading = "Authentication",
-            display_order = 17,
-            help = "Skip the pre-flight session health check"
-        )]
-        skip_health_check: bool,
+    /// Ignore server TLS certificate errors for web browser and raw HTTP requests
+    #[arg(long)]
+    pub insecure_tls: bool,
 
-        /// Ignore server TLS certificate errors for web browser and raw HTTP requests
-        #[arg(long)]
-        insecure_tls: bool,
+    /// Proxy server URL for web browser and raw HTTP requests
+    #[arg(long)]
+    pub proxy: Option<String>,
 
-        /// Proxy server URL for web browser and raw HTTP requests
-        #[arg(long)]
-        proxy: Option<String>,
+    /// PEM client certificate for the target origin
+    #[arg(long, requires = "client_key")]
+    pub client_cert: Option<PathBuf>,
 
-        /// PEM client certificate for the target origin
-        #[arg(long, requires = "client_key")]
-        client_cert: Option<PathBuf>,
+    /// PEM private key for the client certificate
+    #[arg(long, requires = "client_cert")]
+    pub client_key: Option<PathBuf>,
 
-        /// PEM private key for the client certificate
-        #[arg(long, requires = "client_cert")]
-        client_key: Option<PathBuf>,
+    /// An external out-of-band callback host cxg can INJECT INTO but cannot read
+    /// back (Burp Collaborator, a canary you host, an interactsh domain you
+    /// generated yourself). Exposed to templates as `cxg.oast.url(label, scheme?)`
+    /// so payloads carry a callback URL — but cxg never learns whether it fired,
+    /// so nothing here confirms anything: blind probes (SSRF, blind SQLi, blind
+    /// XXE, blind cmd-injection) still fall back to status-code heuristics and
+    /// timing, and the AI prompt is instructed to mark them `confirmed=false`.
+    /// Reading the callback is the operator's job, in their own tooling.
+    ///
+    /// Want cxg to do the confirming? Use `--oast-interactsh` instead.
+    ///
+    /// Example: `--oast c4ca4238a0b923820dcc.oastify.com`
+    ///
+    /// If the host is an interactsh domain rather than a Collaborator one, run
+    /// `interactsh-client` in another terminal first and paste the hostname it
+    /// prints — that terminal is the only place these callbacks become visible.
+    ///
+    /// (With `--oast-interactsh` there is no second terminal: cxg is the client.)
+    // @comment -- "operator-supplied callback host injected into payloads; kept exactly as it was, value and all, because every existing invocation and every template calling cxg.oast.url() depends on it"
+    // @comment -- "help text deliberately no longer claims 'definitive blind-vuln confirmation': cxg holds no session for a host it was merely handed, so it cannot poll it, and an operator who read the old wording would take an unconfirmed finding for a confirmed one"
+    #[arg(
+        long,
+        value_name = "HOST",
+        help_heading = "OAST",
+        display_order = 31,
+        help = "OAST canary cxg injects but cannot read back (unconfirmed)"
+    )]
+    pub oast: Option<String>,
 
-        /// An external out-of-band callback host cxg can INJECT INTO but cannot read
-        /// back (Burp Collaborator, a canary you host, an interactsh domain you
-        /// generated yourself). Exposed to templates as `cxg.oast.url(label, scheme?)`
-        /// so payloads carry a callback URL — but cxg never learns whether it fired,
-        /// so nothing here confirms anything: blind probes (SSRF, blind SQLi, blind
-        /// XXE, blind cmd-injection) still fall back to status-code heuristics and
-        /// timing, and the AI prompt is instructed to mark them `confirmed=false`.
-        /// Reading the callback is the operator's job, in their own tooling.
-        ///
-        /// Want cxg to do the confirming? Use `--oast-interactsh` instead.
-        ///
-        /// Example: `--oast c4ca4238a0b923820dcc.oastify.com`
-        ///
-        /// If the host is an interactsh domain rather than a Collaborator one, run
-        /// `interactsh-client` in another terminal first and paste the hostname it
-        /// prints — that terminal is the only place these callbacks become visible.
-        ///
-        /// (With `--oast-interactsh` there is no second terminal: cxg is the client.)
-        // @comment -- "operator-supplied callback host injected into payloads; kept exactly as it was, value and all, because every existing invocation and every template calling cxg.oast.url() depends on it"
-        // @comment -- "help text deliberately no longer claims 'definitive blind-vuln confirmation': cxg holds no session for a host it was merely handed, so it cannot poll it, and an operator who read the old wording would take an unconfirmed finding for a confirmed one"
-        #[arg(
-            long,
-            value_name = "HOST",
-            help_heading = "OAST",
-            display_order = 31,
-            help = "OAST canary cxg injects but cannot read back (unconfirmed)"
-        )]
-        oast: Option<String>,
+    /// Register an interactsh session cxg OWNS and poll it — the mode that can
+    /// actually confirm a blind vulnerability. Because cxg registered the session
+    /// it holds the correlation id, so templates can call `cxg.oast.poll(label)`,
+    /// read the interactions back in-band, and a callback becomes a genuine
+    /// `confirmed=true` finding with the interaction recorded as evidence. cxg is
+    /// the interactsh client here; you do not run one alongside it.
+    ///
+    /// The optional value is the interactsh server to register against; omit it to
+    /// use interactsh's default public servers.
+    ///
+    /// Mutually exclusive with `--oast`. Two canaries would split payloads between
+    /// a host cxg can poll and one it cannot, so "was this confirmed?" would have
+    /// no single answer per finding.
+    ///
+    /// Examples: `--oast-interactsh` (default servers), or
+    /// `--oast-interactsh https://oast.example.internal` (your own instance).
+    // @comment -- "selects the OAST mode in which cxg registers and therefore can read the canary; the server URL, when given, is the interactsh instance the session is registered against"
+    // @comment -- "conflicts_with rather than a runtime if-both check, matching --app-cmd/--app-binary above: clap then rejects the pair during parse with the standard usage error, before any scan work, and the constraint is visible in --help instead of hiding in main()"
+    // @comment -- "num_args = 0..=1 with an empty default_missing_value keeps the value optional and distinguishes the three states the mode needs — absent (None, no session), bare (Some(\"\"), default servers), explicit (Some(url)). An Option<Option<String>> would encode the same thing while making every downstream match arm nested for no gain"
+    // @g.source (#operator_oast_server) -- "interactsh server URL supplied by the operator on the command line"
+    #[arg(
+        long,
+        value_name = "SERVER_URL",
+        num_args = 0..=1,
+        default_missing_value = "",
+        conflicts_with = "oast",
+        help_heading = "OAST",
+        display_order = 32,
+        help = "OAST canary cxg owns and polls (confirms blind vulns)"
+    )]
+    pub oast_interactsh: Option<String>,
 
-        /// Register an interactsh session cxg OWNS and poll it — the mode that can
-        /// actually confirm a blind vulnerability. Because cxg registered the session
-        /// it holds the correlation id, so templates can call `cxg.oast.poll(label)`,
-        /// read the interactions back in-band, and a callback becomes a genuine
-        /// `confirmed=true` finding with the interaction recorded as evidence. cxg is
-        /// the interactsh client here; you do not run one alongside it.
-        ///
-        /// The optional value is the interactsh server to register against; omit it to
-        /// use interactsh's default public servers.
-        ///
-        /// Mutually exclusive with `--oast`. Two canaries would split payloads between
-        /// a host cxg can poll and one it cannot, so "was this confirmed?" would have
-        /// no single answer per finding.
-        ///
-        /// Examples: `--oast-interactsh` (default servers), or
-        /// `--oast-interactsh https://oast.example.internal` (your own instance).
-        // @comment -- "selects the OAST mode in which cxg registers and therefore can read the canary; the server URL, when given, is the interactsh instance the session is registered against"
-        // @comment -- "conflicts_with rather than a runtime if-both check, matching --app-cmd/--app-binary above: clap then rejects the pair during parse with the standard usage error, before any scan work, and the constraint is visible in --help instead of hiding in main()"
-        // @comment -- "num_args = 0..=1 with an empty default_missing_value keeps the value optional and distinguishes the three states the mode needs — absent (None, no session), bare (Some(\"\"), default servers), explicit (Some(url)). An Option<Option<String>> would encode the same thing while making every downstream match arm nested for no gain"
-        // @g.source (#operator_oast_server) -- "interactsh server URL supplied by the operator on the command line"
-        #[arg(
-            long,
-            value_name = "SERVER_URL",
-            num_args = 0..=1,
-            default_missing_value = "",
-            conflicts_with = "oast",
-            help_heading = "OAST",
-            display_order = 32,
-            help = "OAST canary cxg owns and polls (confirms blind vulns)"
-        )]
-        oast_interactsh: Option<String>,
+    /// Host a built-in OAST callback cxg OWNS and poll it, bound to an interface
+    /// the TARGET can reach rather than to loopback — the mode that confirms a
+    /// blind vulnerability (SSRF, XXE, command injection, SSTI, NoSQL, LDAP,
+    /// deserialization) against a target with no internet egress, such as an
+    /// `env up` sandbox or internal staging, where `--oast-interactsh` cannot
+    /// (its public servers need egress) and `--oast` cannot be read back.
+    ///
+    /// cxg holds the listener, so templates call `cxg.oast.poll(label)` and a
+    /// callback becomes a `confirmed=true` finding with the interaction as
+    /// evidence. The label rides in the URL path (`http://<host>/<label>`), not a
+    /// subdomain, because the bind address has no wildcard DNS under it.
+    ///
+    /// The optional value selects the bind: omit it or `docker-bridge` for the
+    /// docker bridge gateway (reachable from a container on the default bridge),
+    /// `host-docker-internal` for a Docker Desktop container, or an
+    /// address/hostname (e.g. `10.0.0.5`, or `ip:10.0.0.5`) for internal staging.
+    ///
+    /// Mutually exclusive with `--oast` and `--oast-interactsh`: one canary per
+    /// run, or payloads split between callbacks nobody correlates per finding.
+    // @comment -- "forwarded as the OAST mode, not a session: pentest/oast_listener.py binds the socket and decides reachability, so the Rust and Python CLIs cannot disagree about whether this canary is pollable; the three states (absent/bare/explicit) are carried exactly as --oast-interactsh carries them"
+    #[arg(
+        long,
+        value_name = "BIND",
+        num_args = 0..=1,
+        default_missing_value = "",
+        conflicts_with_all = ["oast", "oast_interactsh"],
+        help_heading = "OAST",
+        display_order = 33,
+        help = "Built-in OAST listener cxg owns, reachable by an egress-less target"
+    )]
+    pub oast_listener: Option<String>,
 
-        /// Host a built-in OAST callback cxg OWNS and poll it, bound to an interface
-        /// the TARGET can reach rather than to loopback — the mode that confirms a
-        /// blind vulnerability (SSRF, XXE, command injection, SSTI, NoSQL, LDAP,
-        /// deserialization) against a target with no internet egress, such as an
-        /// `env up` sandbox or internal staging, where `--oast-interactsh` cannot
-        /// (its public servers need egress) and `--oast` cannot be read back.
-        ///
-        /// cxg holds the listener, so templates call `cxg.oast.poll(label)` and a
-        /// callback becomes a `confirmed=true` finding with the interaction as
-        /// evidence. The label rides in the URL path (`http://<host>/<label>`), not a
-        /// subdomain, because the bind address has no wildcard DNS under it.
-        ///
-        /// The optional value selects the bind: omit it or `docker-bridge` for the
-        /// docker bridge gateway (reachable from a container on the default bridge),
-        /// `host-docker-internal` for a Docker Desktop container, or an
-        /// address/hostname (e.g. `10.0.0.5`, or `ip:10.0.0.5`) for internal staging.
-        ///
-        /// Mutually exclusive with `--oast` and `--oast-interactsh`: one canary per
-        /// run, or payloads split between callbacks nobody correlates per finding.
-        // @comment -- "forwarded as the OAST mode, not a session: pentest/oast_listener.py binds the socket and decides reachability, so the Rust and Python CLIs cannot disagree about whether this canary is pollable; the three states (absent/bare/explicit) are carried exactly as --oast-interactsh carries them"
-        #[arg(
-            long,
-            value_name = "BIND",
-            num_args = 0..=1,
-            default_missing_value = "",
-            conflicts_with_all = ["oast", "oast_interactsh"],
-            help_heading = "OAST",
-            display_order = 33,
-            help = "Built-in OAST listener cxg owns, reachable by an egress-less target"
-        )]
-        oast_listener: Option<String>,
+    /// Also start a DNS listener alongside `--oast-listener`, for a target whose
+    /// egress is filtered to DNS. Needs the target's resolver pointed at this host
+    /// and privilege to bind udp/53; a bind failure leaves the HTTP listener
+    /// working and notes the reason. No effect without `--oast-listener`.
+    #[arg(
+        long,
+        help_heading = "OAST",
+        display_order = 34,
+        help = "Add a DNS leg to --oast-listener (needs udp/53)"
+    )]
+    pub oast_listener_dns: bool,
 
-        /// Also start a DNS listener alongside `--oast-listener`, for a target whose
-        /// egress is filtered to DNS. Needs the target's resolver pointed at this host
-        /// and privilege to bind udp/53; a bind failure leaves the HTTP listener
-        /// working and notes the reason. No effect without `--oast-listener`.
-        #[arg(
-            long,
-            help_heading = "OAST",
-            display_order = 34,
-            help = "Add a DNS leg to --oast-listener (needs udp/53)"
-        )]
-        oast_listener_dns: bool,
+    /// Default Location URL for redirects staged with cxg.oast.redirect(label).
+    #[arg(
+        long,
+        requires = "oast_listener",
+        value_name = "URL",
+        help_heading = "OAST"
+    )]
+    pub oast_redirect_location: Option<String>,
 
-        /// Default Location URL for redirects staged with cxg.oast.redirect(label).
-        #[arg(
-            long,
-            requires = "oast_listener",
-            value_name = "URL",
-            help_heading = "OAST"
-        )]
-        oast_redirect_location: Option<String>,
+    /// Default HTTP redirect status (302 when omitted).
+    #[arg(long, requires = "oast_listener", value_parser = ["302", "307"], help_heading = "OAST")]
+    pub oast_redirect_status: Option<String>,
 
-        /// Default HTTP redirect status (302 when omitted).
-        #[arg(long, requires = "oast_listener", value_parser = ["302", "307"], help_heading = "OAST")]
-        oast_redirect_status: Option<String>,
+    /// First A query per name returns the listener IPv4; later queries return
+    /// this IPv4, all with TTL 0. The target resolver must reach this DNS server.
+    #[arg(long, requires_all = ["oast_listener", "oast_listener_dns"], value_name = "IPV4", help_heading = "OAST")]
+    pub oast_dns_rebind_ip: Option<String>,
 
-        /// First A query per name returns the listener IPv4; later queries return
-        /// this IPv4, all with TTL 0. The target resolver must reach this DNS server.
-        #[arg(long, requires_all = ["oast_listener", "oast_listener_dns"], value_name = "IPV4", help_heading = "OAST")]
-        oast_dns_rebind_ip: Option<String>,
+    /// Target type to pentest.
+    ///
+    /// `web` (default): the existing authenticated-browser pipeline against an HTTP
+    /// application. `electron`: launch N isolated instances of an Electron desktop
+    /// app, drive their renderers over CDP, and additionally probe IPC channels,
+    /// renderer configuration, and local data at rest.
+    ///
+    /// `tauri`: map a Tauri app's IPC command and capability surface from source —
+    /// the `#[tauri::command]` handlers, their `generate_handler!` registration, and
+    /// the `capabilities/*.json` grants — and correlate it against the guardlink
+    /// threat model. This is a source-surface MAP, not a live probe: a Tauri app
+    /// exposes no CDP endpoint on macOS or Linux, so cxg cannot drive its webview the
+    /// way it drives an Electron renderer. `--target` is not required for it, and the
+    /// default report carries an `enumerated_not_live_probed` caveat. No command is
+    /// confirmed or refuted unless `--tauri-prove` opts into the in-process harness.
+    /// No --auth or app launch command is needed. Keep --template-lang js; py is rejected.
+    ///
+    /// EXAMPLES:
+    ///
+    ///     cxg pentest run --target-type electron --app-cmd "npm run electron:dev" \
+    ///       --codebase ./app-repo --target https://api.example.com --auth desk-1,desk-2
+    ///
+    ///     cxg pentest run --target-type tauri --codebase ./app-repo
+    // @comment -- "selects which substrate the orchestrator uses; an unknown value is rejected by clap so a typo can never silently downgrade a desktop scan to a web scan, nor a web scan to a source-only tauri map"
+    // requires_if (not required_if_eq on app_cmd) is deliberate: clap's required_if_eq/
+    // required_unless validation path skips the conflicts_with escape hatch, so pairing it
+    // with app_cmd's conflicts_with would wrongly demand --app-cmd even when --app-binary
+    // alone was supplied. requires_if instead feeds the required-arg resolution path that
+    // does consult conflicts_with. See desktop_flag_tests::electron_with_app_binary_alone_parses.
+    // tauri is accepted here but needs no launch mechanism (it never starts the app) and no
+    // --target (it never navigates); both facts are enforced in the Python preflight, which
+    // is the single place target-type-conditional requirements live.
+    #[arg(
+        long,
+        default_value = "web",
+        value_parser = ["web", "electron", "tauri"],
+        requires_if("electron", "app_cmd"),
+        help_heading = "Target",
+        display_order = 3,
+        help = "Target type: web, electron, or tauri (source map; optional --tauri-prove)"
+    )]
+    pub target_type: String,
 
-        /// Target type to pentest.
-        ///
-        /// `web` (default): the existing authenticated-browser pipeline against an HTTP
-        /// application. `electron`: launch N isolated instances of an Electron desktop
-        /// app, drive their renderers over CDP, and additionally probe IPC channels,
-        /// renderer configuration, and local data at rest.
-        ///
-        /// `tauri`: map a Tauri app's IPC command and capability surface from source —
-        /// the `#[tauri::command]` handlers, their `generate_handler!` registration, and
-        /// the `capabilities/*.json` grants — and correlate it against the guardlink
-        /// threat model. This is a source-surface MAP, not a live probe: a Tauri app
-        /// exposes no CDP endpoint on macOS or Linux, so cxg cannot drive its webview the
-        /// way it drives an Electron renderer. `--target` is not required for it, and the
-        /// default report carries an `enumerated_not_live_probed` caveat. No command is
-        /// confirmed or refuted unless `--tauri-prove` opts into the in-process harness.
-        /// No --auth or app launch command is needed. Keep --template-lang js; py is rejected.
-        ///
-        /// EXAMPLES:
-        ///
-        ///     cxg pentest run --target-type electron --app-cmd "npm run electron:dev" \
-        ///       --codebase ./app-repo --target https://api.example.com --auth desk-1,desk-2
-        ///
-        ///     cxg pentest run --target-type tauri --codebase ./app-repo
-        // @comment -- "selects which substrate the orchestrator uses; an unknown value is rejected by clap so a typo can never silently downgrade a desktop scan to a web scan, nor a web scan to a source-only tauri map"
-        // requires_if (not required_if_eq on app_cmd) is deliberate: clap's required_if_eq/
-        // required_unless validation path skips the conflicts_with escape hatch, so pairing it
-        // with app_cmd's conflicts_with would wrongly demand --app-cmd even when --app-binary
-        // alone was supplied. requires_if instead feeds the required-arg resolution path that
-        // does consult conflicts_with. See desktop_flag_tests::electron_with_app_binary_alone_parses.
-        // tauri is accepted here but needs no launch mechanism (it never starts the app) and no
-        // --target (it never navigates); both facts are enforced in the Python preflight, which
-        // is the single place target-type-conditional requirements live.
-        #[arg(
-            long,
-            default_value = "web",
-            value_parser = ["web", "electron", "tauri"],
-            requires_if("electron", "app_cmd"),
-            help_heading = "Target",
-            display_order = 3,
-            help = "Target type: web, electron, or tauri (source map; optional --tauri-prove)"
-        )]
-        target_type: String,
+    /// Command that launches the desktop app, e.g. "npm run electron:dev".
+    ///
+    /// Required with `--target-type electron` unless `--app-binary` is given.
+    /// cxg appends `--remote-debugging-port` and a per-identity `--user-data-dir`.
+    // @comment -- "operator-supplied launch command forwarded to the orchestrator, which splits and executes it as a child process per identity"
+    // @g.source (#operator_app_cmd) -- "command string supplied by the operator on the command line"
+    #[arg(
+        long,
+        conflicts_with = "app_binary",
+        help_heading = "Target",
+        display_order = 4,
+        help = "Command that launches the desktop app (electron)"
+    )]
+    pub app_cmd: Option<String>,
 
-        /// Command that launches the desktop app, e.g. "npm run electron:dev".
-        ///
-        /// Required with `--target-type electron` unless `--app-binary` is given.
-        /// cxg appends `--remote-debugging-port` and a per-identity `--user-data-dir`.
-        // @comment -- "operator-supplied launch command forwarded to the orchestrator, which splits and executes it as a child process per identity"
-        // @g.source (#operator_app_cmd) -- "command string supplied by the operator on the command line"
-        #[arg(
-            long,
-            conflicts_with = "app_binary",
-            help_heading = "Target",
-            display_order = 4,
-            help = "Command that launches the desktop app (electron)"
-        )]
-        app_cmd: Option<String>,
+    /// Path to a built desktop app, e.g. /Applications/Foo.app.
+    ///
+    /// Alternative to `--app-cmd`; the two are mutually exclusive.
+    // @comment -- "operator-supplied path to a packaged application, executed directly instead of via a launch command"
+    #[arg(
+        long,
+        conflicts_with = "app_cmd",
+        help_heading = "Target",
+        display_order = 5,
+        help = "Path to a built desktop app (electron)"
+    )]
+    pub app_binary: Option<String>,
 
-        /// Path to a built desktop app, e.g. /Applications/Foo.app.
-        ///
-        /// Alternative to `--app-cmd`; the two are mutually exclusive.
-        // @comment -- "operator-supplied path to a packaged application, executed directly instead of via a launch command"
-        #[arg(
-            long,
-            conflicts_with = "app_cmd",
-            help_heading = "Target",
-            display_order = 5,
-            help = "Path to a built desktop app (electron)"
-        )]
-        app_binary: Option<String>,
+    /// Additionally scan a real installation directory for data at rest.
+    ///
+    /// By default host probes read only the isolated user-data directories cxg
+    /// created itself. Pass this to opt in to scanning an existing install.
+    // @comment -- "opt-in expansion of host-probe scan scope beyond cxg-created directories, since reading an operator's real install is host-level access"
+    #[arg(
+        long,
+        help_heading = "Target",
+        display_order = 6,
+        help = "Also scan a real install dir for data at rest (electron)"
+    )]
+    pub host_scan_path: Option<String>,
 
-        /// Additionally scan a real installation directory for data at rest.
-        ///
-        /// By default host probes read only the isolated user-data directories cxg
-        /// created itself. Pass this to opt in to scanning an existing install.
-        // @comment -- "opt-in expansion of host-probe scan scope beyond cxg-created directories, since reading an operator's real install is host-level access"
-        #[arg(
-            long,
-            help_heading = "Target",
-            display_order = 6,
-            help = "Also scan a real install dir for data at rest (electron)"
-        )]
-        host_scan_path: Option<String>,
+    /// For `--target-type tauri`: after mapping the IPC surface, build an in-process
+    /// proof harness against the app's own crate (Tauri's `test` feature) and drive
+    /// ranked commands through `get_ipc_response` with hostile arguments, feeding
+    /// confirmed / refuted / unevaluated into the findings. Needs a Rust toolchain; a
+    /// command the harness cannot drive is skipped with a reason, never refuted.
+    ///
+    /// Copies the app to the session's tauri-harness/ and runs cargo test using
+    /// a headless MockRuntime. Probes cover sentinel-based path traversal and
+    /// renderer-controlled authorization arguments. A confirmation proves observed
+    /// harness behavior; a refutation covers only attempted arguments. It does not
+    /// test live navigation, DOM behavior or clickjacking, nor reproduce the app's
+    /// full setup or capability configuration. Review caveats, ambiguous and
+    /// tauri_skipped_commands; build failures do not establish safety.
+    // @comment -- "opt-in because it builds the target crate (cargo test) and only applies to tauri; a plain tauri run stays a source-surface map. Forwarded to the Python orchestrator, which owns the harness."
+    #[arg(
+        long,
+        help_heading = "Target",
+        display_order = 7,
+        help = "tauri: prove commands in-process via Tauri's test harness"
+    )]
+    pub tauri_prove: bool,
 
-        /// For `--target-type tauri`: after mapping the IPC surface, build an in-process
-        /// proof harness against the app's own crate (Tauri's `test` feature) and drive
-        /// ranked commands through `get_ipc_response` with hostile arguments, feeding
-        /// confirmed / refuted / unevaluated into the findings. Needs a Rust toolchain; a
-        /// command the harness cannot drive is skipped with a reason, never refuted.
-        ///
-        /// Copies the app to the session's tauri-harness/ and runs cargo test using
-        /// a headless MockRuntime. Probes cover sentinel-based path traversal and
-        /// renderer-controlled authorization arguments. A confirmation proves observed
-        /// harness behavior; a refutation covers only attempted arguments. It does not
-        /// test live navigation, DOM behavior or clickjacking, nor reproduce the app's
-        /// full setup or capability configuration. Review caveats, ambiguous and
-        /// tauri_skipped_commands; build failures do not establish safety.
-        // @comment -- "opt-in because it builds the target crate (cargo test) and only applies to tauri; a plain tauri run stays a source-surface map. Forwarded to the Python orchestrator, which owns the harness."
-        #[arg(
-            long,
-            help_heading = "Target",
-            display_order = 7,
-            help = "tauri: prove commands in-process via Tauri's test harness"
-        )]
-        tauri_prove: bool,
+    /// Combined seconds budgeted for the `--tauri-prove` harness build and run.
+    ///
+    /// Used only for Tauri proof; default 1200. Example: --tauri-prove-timeout 1200
+    #[arg(
+        long,
+        default_value = "1200",
+        help_heading = "Target",
+        display_order = 8,
+        help = "Timeout (s) for the --tauri-prove harness build+run"
+    )]
+    pub tauri_prove_timeout: u64,
 
-        /// Combined seconds budgeted for the `--tauri-prove` harness build and run.
-        ///
-        /// Used only for Tauri proof; default 1200. Example: --tauri-prove-timeout 1200
-        #[arg(
-            long,
-            default_value = "1200",
-            help_heading = "Target",
-            display_order = 8,
-            help = "Timeout (s) for the --tauri-prove harness build+run"
-        )]
-        tauri_prove_timeout: u64,
+    /// Run cross-site probes (CSRF, CORS, clickjacking) from a loopback origin
+    /// cxg controls, in the same browsing context as the identity under test.
+    ///
+    /// Without this, those classes are reported as NOT PROBED rather than tested
+    /// from the target's own origin. A same-origin probe of them is unsound: an
+    /// app defended only by an Origin check accepts cxg's own-origin request, so
+    /// the probe confirms an attack a real cross-site attacker could never land.
+    // @comment -- "Opt-in because it binds a listening socket on the operator's machine and performs REAL cross-site state changes against their application. Both are consequences an operator should choose rather than discover, which is why this is a flag and not a default even though it strictly improves verdict quality."
+    #[arg(
+        long,
+        help_heading = "Probe execution",
+        display_order = 7,
+        help = "Probe CSRF/CORS/clickjacking from a foreign origin cxg controls"
+    )]
+    pub attacker_origin: bool,
 
-        /// Run cross-site probes (CSRF, CORS, clickjacking) from a loopback origin
-        /// cxg controls, in the same browsing context as the identity under test.
-        ///
-        /// Without this, those classes are reported as NOT PROBED rather than tested
-        /// from the target's own origin. A same-origin probe of them is unsound: an
-        /// app defended only by an Origin check accepts cxg's own-origin request, so
-        /// the probe confirms an attack a real cross-site attacker could never land.
-        // @comment -- "Opt-in because it binds a listening socket on the operator's machine and performs REAL cross-site state changes against their application. Both are consequences an operator should choose rather than discover, which is why this is a flag and not a default even though it strictly improves verdict quality."
-        #[arg(
-            long,
-            help_heading = "Probe execution",
-            display_order = 7,
-            help = "Probe CSRF/CORS/clickjacking from a foreign origin cxg controls"
-        )]
-        attacker_origin: bool,
+    /// Generate templates for N hypotheses per AI call instead of one each.
+    ///
+    /// Measured: 130-220s per AI template, so 105 routes cost ~4.5 hours.
+    /// Default 1 is the existing per-hypothesis path, byte-for-byte.
+    // @comment -- "Clamped to 5 inside the generator rather than here, so the blast radius of one timed-out call stays bounded: a failed batch costs a re-run of that chunk individually, and at 5 the worst case is five regenerations rather than fifty. Cached and deterministically-emittable hypotheses are excluded before batching, so a fully-cached run makes zero calls whatever this is set to."
+    #[arg(
+        long,
+        help_heading = "Hypothesis filtering",
+        display_order = 10,
+        default_value_t = 1,
+        help = "Hypotheses per AI generation call (1 = today's behaviour)"
+    )]
+    pub batch_size: usize,
 
-        /// Generate templates for N hypotheses per AI call instead of one each.
-        ///
-        /// Measured: 130-220s per AI template, so 105 routes cost ~4.5 hours.
-        /// Default 1 is the existing per-hypothesis path, byte-for-byte.
-        // @comment -- "Clamped to 5 inside the generator rather than here, so the blast radius of one timed-out call stays bounded: a failed batch costs a re-run of that chunk individually, and at 5 the worst case is five regenerations rather than fifty. Cached and deterministically-emittable hypotheses are excluded before batching, so a fully-cached run makes zero calls whatever this is set to."
-        #[arg(
-            long,
-            help_heading = "Hypothesis filtering",
-            display_order = 10,
-            default_value_t = 1,
-            help = "Hypotheses per AI generation call (1 = today's behaviour)"
-        )]
-        batch_size: usize,
+    /// Emit probes with no AI call at all for unambiguous shapes.
+    ///
+    /// Covers cross-identity IDOR reads and missing collection authorization —
+    /// 47 of Juice Shop's 105 discovered routes. These probes read no source,
+    /// so they cannot cite a code-level cause; breadth, not depth.
+    // @comment -- "Opt-in because a deterministic probe is genuinely WEAKER than an AI-authored one: it cannot recognise an intentional design or name the guard that failed. An operator should choose that trade deliberately rather than inherit it from a default."
+    #[arg(
+        long,
+        help_heading = "Hypothesis filtering",
+        display_order = 11,
+        help = "Emit known-shape probes without an AI call (fast, source-blind)"
+    )]
+    pub deterministic_templates: bool,
 
-        /// Emit probes with no AI call at all for unambiguous shapes.
-        ///
-        /// Covers cross-identity IDOR reads and missing collection authorization —
-        /// 47 of Juice Shop's 105 discovered routes. These probes read no source,
-        /// so they cannot cite a code-level cause; breadth, not depth.
-        // @comment -- "Opt-in because a deterministic probe is genuinely WEAKER than an AI-authored one: it cannot recognise an intentional design or name the guard that failed. An operator should choose that trade deliberately rather than inherit it from a default."
-        #[arg(
-            long,
-            help_heading = "Hypothesis filtering",
-            display_order = 11,
-            help = "Emit known-shape probes without an AI call (fast, source-blind)"
-        )]
-        deterministic_templates: bool,
+    /// Let a probe hand a fact it discovered to a later probe.
+    ///
+    /// Templates declare `@provides: <name>` / `@requires_artifact: <name>`; cxg
+    /// orders providers before consumers and passes the value through a per-run
+    /// store. Edges are also derived automatically from guardlink `@flows`.
+    // @comment -- "Opt-in because it CHANGES TEMPLATE ORDER: a consumer waits for its provider, and one that declares an artifact nobody provides is skipped rather than run. With the flag off the order is the plain destructive_priority sort it has always been, so an existing run is unaffected."
+    #[arg(
+        long,
+        help_heading = "Probe execution",
+        display_order = 12,
+        help = "Allow multi-step chains: one probe hands a fact to the next"
+    )]
+    pub enable_chaining: bool,
 
-        /// Let a probe hand a fact it discovered to a later probe.
-        ///
-        /// Templates declare `@provides: <name>` / `@requires_artifact: <name>`; cxg
-        /// orders providers before consumers and passes the value through a per-run
-        /// store. Edges are also derived automatically from guardlink `@flows`.
-        // @comment -- "Opt-in because it CHANGES TEMPLATE ORDER: a consumer waits for its provider, and one that declares an artifact nobody provides is skipped rather than run. With the flag off the order is the plain destructive_priority sort it has always been, so an existing run is unaffected."
-        #[arg(
-            long,
-            help_heading = "Probe execution",
-            display_order = 12,
-            help = "Allow multi-step chains: one probe hands a fact to the next"
-        )]
-        enable_chaining: bool,
+    /// Discover routes from source instead of requiring guardlink annotations.
+    ///
+    /// guardlink only parses GAL annotations, so an un-annotated codebase yields
+    /// zero hypotheses and the scan exits with "no templates available" having
+    /// tested nothing. Measured on OWASP Juice Shop: guardlink 0, discovery 105.
+    // @comment -- "Opt-in because it changes WHAT gets tested: a discovered route is an attack SURFACE inferred from source, not a threat anybody declared, so its hypotheses are speculative in a way an annotated one is not. An annotated hypothesis always wins where both cover the same route. Default off keeps every existing run byte-identical."
+    #[arg(
+        long,
+        help_heading = "Hypothesis filtering",
+        display_order = 9,
+        help = "Also derive hypotheses from routes found in source (no annotations needed)"
+    )]
+    pub discover_routes: bool,
 
-        /// Operator-owned configuration for IMAP and needs-you questions.
-        #[arg(long, value_name = "JSON", help_heading = "Probe execution")]
-        auth_inputs: Option<PathBuf>,
+    /// Do not read a code graph for this codebase.
+    ///
+    /// By default, when `codegraph-mcp` or `bravos graph` is installed and a graph
+    /// has been built for the codebase, its route table leads `--discover-routes`
+    /// and its reachable-sink ranking orders which hypotheses get templates. With
+    /// no graph available the run is unchanged either way.
+    // @comment -- "Forwarded only, never interpreted here: the orchestrator owns the default and the detection, and this layer restating either would give the two CLIs two definitions of when the graph is read."
+    #[arg(
+        long,
+        help_heading = "Hypothesis filtering",
+        display_order = 12,
+        help = "Do not use a code graph for route discovery or ranking"
+    )]
+    pub no_code_graph: bool,
 
-        /// Discover routes from source instead of requiring guardlink annotations.
-        ///
-        /// guardlink only parses GAL annotations, so an un-annotated codebase yields
-        /// zero hypotheses and the scan exits with "no templates available" having
-        /// tested nothing. Measured on OWASP Juice Shop: guardlink 0, discovery 105.
-        // @comment -- "Opt-in because it changes WHAT gets tested: a discovered route is an attack SURFACE inferred from source, not a threat anybody declared, so its hypotheses are speculative in a way an annotated one is not. An annotated hypothesis always wins where both cover the same route. Default off keeps every existing run byte-identical."
-        #[arg(
-            long,
-            help_heading = "Hypothesis filtering",
-            display_order = 9,
-            help = "Also derive hypotheses from routes found in source (no annotations needed)"
-        )]
-        discover_routes: bool,
+    /// Test only the hypotheses whose route or enclosing function is listed in FILE.
+    ///
+    /// Entries are `METHOD /path` (`ANY` or `*` for every method; path templates
+    /// and concrete paths match each other; a trailing `*` is a prefix), `/path`,
+    /// `file::Function` or `file:Function`, one per line, or JSON — including a code
+    /// graph's route or attack-surface answer as written. Everything else is
+    /// excluded before ranking and reported with its reason. An EMPTY list means
+    /// nothing is in scope: the run exits 0 without contacting the target.
+    // @comment -- "Forwarded only, never parsed here: the orchestrator owns the entry grammar, the empty-means-skip rule and the refusals, so this layer restating any of them would give the two CLIs two definitions of what the list admits."
+    #[arg(
+        long,
+        value_name = "FILE",
+        help_heading = "Hypothesis filtering",
+        display_order = 13,
+        help = "Test only the routes/functions listed in FILE (empty list = skip the run)"
+    )]
+    pub only_routes: Option<PathBuf>,
 
-        /// Do not read a code graph for this codebase.
-        ///
-        /// By default, when `codegraph-mcp` or `bravos graph` is installed and a graph
-        /// has been built for the codebase, its route table leads `--discover-routes`
-        /// and its reachable-sink ranking orders which hypotheses get templates. With
-        /// no graph available the run is unchanged either way.
-        // @comment -- "Forwarded only, never interpreted here: the orchestrator owns the default and the detection, and this layer restating either would give the two CLIs two definitions of when the graph is read."
-        #[arg(
-            long,
-            help_heading = "Hypothesis filtering",
-            display_order = 12,
-            help = "Do not use a code graph for route discovery or ranking"
-        )]
-        no_code_graph: bool,
+    /// One allowlist entry in the `--only-routes` line form. Repeatable.
+    #[arg(
+        long = "only-route",
+        value_name = "ENTRY",
+        help_heading = "Hypothesis filtering",
+        display_order = 14,
+        help = "One allowlist entry, e.g. 'GET /api/users/{id}' (repeatable)"
+    )]
+    pub only_route: Vec<String>,
 
-        /// Test only the hypotheses whose route or enclosing function is listed in FILE.
-        ///
-        /// Entries are `METHOD /path` (`ANY` or `*` for every method; path templates
-        /// and concrete paths match each other; a trailing `*` is a prefix), `/path`,
-        /// `file::Function` or `file:Function`, one per line, or JSON — including a code
-        /// graph's route or attack-surface answer as written. Everything else is
-        /// excluded before ranking and reported with its reason. An EMPTY list means
-        /// nothing is in scope: the run exits 0 without contacting the target.
-        // @comment -- "Forwarded only, never parsed here: the orchestrator owns the entry grammar, the empty-means-skip rule and the refusals, so this layer restating any of them would give the two CLIs two definitions of what the list admits."
-        #[arg(
-            long,
-            value_name = "FILE",
-            help_heading = "Hypothesis filtering",
-            display_order = 13,
-            help = "Test only the routes/functions listed in FILE (empty list = skip the run)"
-        )]
-        only_routes: Option<PathBuf>,
+    /// Append the operator skills in FILE to AI generation and mutation prompts.
+    ///
+    /// Markdown written by a caller (bravos writes the skills its operator tagged
+    /// for template authoring). Appended last, under an untrusted heading: it is
+    /// advice on how to write a probe and never overrides the template rules.
+    // @comment -- "Forwarded only, never read here: the orchestrator owns the heading, the budget and the unreadable-file behaviour, so the two CLIs cannot disagree about what a skills file does."
+    #[arg(
+        long,
+        value_name = "FILE",
+        help_heading = "Hypothesis filtering",
+        display_order = 15,
+        help = "Append operator skills (untrusted guidance) to generation/mutation prompts"
+    )]
+    pub skills_file: Option<PathBuf>,
 
-        /// One allowlist entry in the `--only-routes` line form. Repeatable.
-        #[arg(
-            long = "only-route",
-            value_name = "ENTRY",
-            help_heading = "Hypothesis filtering",
-            display_order = 14,
-            help = "One allowlist entry, e.g. 'GET /api/users/{id}' (repeatable)"
-        )]
-        only_route: Vec<String>,
+    /// Permit `cxg.socket`: raw TCP/TLS bytes with no HTTP client in between.
+    ///
+    /// Required for request smuggling, desync and header-order attacks, which no
+    /// HTTP client can express — both `window.fetch` and Playwright's
+    /// APIRequestContext normalise the framing that IS the payload for those
+    /// classes. Can desync connections or wedge a server.
+    // @comment -- "Permission, distinct from the substrate capability that says a socket is POSSIBLE. Byte-level traffic can wedge a target, and an operator must opt into that consequence rather than inherit it from their choice of --target-type. Without it, request_smuggling and http_desync hypotheses route to review_only_threats instead of consuming a template slot they could never conclude."
+    #[arg(
+        long,
+        help_heading = "Probe execution",
+        display_order = 8,
+        help = "Permit raw TCP/TLS byte-level probes (smuggling, desync)"
+    )]
+    pub allow_raw_socket: bool,
 
-        /// Append the operator skills in FILE to AI generation and mutation prompts.
-        ///
-        /// Markdown written by a caller (bravos writes the skills its operator tagged
-        /// for template authoring). Appended last, under an untrusted heading: it is
-        /// advice on how to write a probe and never overrides the template rules.
-        // @comment -- "Forwarded only, never read here: the orchestrator owns the heading, the budget and the unreadable-file behaviour, so the two CLIs cannot disagree about what a skills file does."
-        #[arg(
-            long,
-            value_name = "FILE",
-            help_heading = "Hypothesis filtering",
-            display_order = 15,
-            help = "Append operator skills (untrusted guidance) to generation/mutation prompts"
-        )]
-        skills_file: Option<PathBuf>,
+    /// Save redacted per-template HARs and curl reproductions for web JS probes.
+    #[arg(long, help_heading = "Probe execution")]
+    pub capture_http: bool,
 
-        /// Permit `cxg.socket`: raw TCP/TLS bytes with no HTTP client in between.
-        ///
-        /// Required for request smuggling, desync and header-order attacks, which no
-        /// HTTP client can express — both `window.fetch` and Playwright's
-        /// APIRequestContext normalise the framing that IS the payload for those
-        /// classes. Can desync connections or wedge a server.
-        // @comment -- "Permission, distinct from the substrate capability that says a socket is POSSIBLE. Byte-level traffic can wedge a target, and an operator must opt into that consequence rather than inherit it from their choice of --target-type. Without it, request_smuggling and http_desync hypotheses route to review_only_threats instead of consuming a template slot they could never conclude."
-        #[arg(
-            long,
-            help_heading = "Probe execution",
-            display_order = 8,
-            help = "Permit raw TCP/TLS byte-level probes (smuggling, desync)"
-        )]
-        allow_raw_socket: bool,
+    /// Permit native gRPC over HTTP/2, for services with no gRPC-Web proxy in
+    /// front of them. Requires grpcio. The call carries the identity's
+    /// --header values as gRPC metadata; cxg cannot borrow the browser
+    /// session on this transport.
+    // @comment -- "Permission, distinct from the substrate capability that says a native gRPC call is POSSIBLE from this process. cxg.grpc dials a host:port from outside the browser where no same-origin policy contains it, so an operator opts into that reach rather than inheriting it from --target-type. Without it, hypotheses whose route is a gRPC method go to review_only_threats instead of consuming a template slot they could never conclude."
+    // @comment -- "NOT the switch for gRPC-Web, which is an ordinary HTTP POST cxg.raw already sends on every run with no flag. This covers a BARE gRPC service, which nothing in cxg could reach at all before."
+    #[arg(
+        long,
+        help_heading = "Probe execution",
+        display_order = 9,
+        help = "Permit native gRPC (HTTP/2) probes against bare gRPC services"
+    )]
+    pub allow_grpc: bool,
 
-        /// Save redacted per-template HARs and curl reproductions for web JS probes.
-        #[arg(long, help_heading = "Probe execution")]
-        capture_http: bool,
+    /// A protoc-emitted FileDescriptorSet describing the target's gRPC
+    /// services, so probes can send real typed messages and decode responses.
+    /// Produce one with `protoc --descriptor_set_out=out.pb --include_imports`.
+    // @comment -- "The operator's own protoc output, and the only descriptor source cxg fully trusts: a service is free to describe itself inaccurately over reflection, so the result records which source produced each decoded field. Optional — without it cxg falls back to empty or raw-byte messages, which still answer an authorization question."
+    #[arg(
+        long,
+        value_name = "FILE",
+        help_heading = "Probe execution",
+        display_order = 10,
+        help = "protoc FileDescriptorSet for typed gRPC messages"
+    )]
+    pub grpc_descriptor_set: Option<String>,
 
-        /// Permit native gRPC over HTTP/2, for services with no gRPC-Web proxy in
-        /// front of them. Requires grpcio. The call carries the identity's
-        /// --header values as gRPC metadata; cxg cannot borrow the browser
-        /// session on this transport.
-        // @comment -- "Permission, distinct from the substrate capability that says a native gRPC call is POSSIBLE from this process. cxg.grpc dials a host:port from outside the browser where no same-origin policy contains it, so an operator opts into that reach rather than inheriting it from --target-type. Without it, hypotheses whose route is a gRPC method go to review_only_threats instead of consuming a template slot they could never conclude."
-        // @comment -- "NOT the switch for gRPC-Web, which is an ordinary HTTP POST cxg.raw already sends on every run with no flag. This covers a BARE gRPC service, which nothing in cxg could reach at all before."
-        #[arg(
-            long,
-            help_heading = "Probe execution",
-            display_order = 9,
-            help = "Permit native gRPC (HTTP/2) probes against bare gRPC services"
-        )]
-        allow_grpc: bool,
+    /// Do not ask gRPC services to describe themselves over server reflection.
+    /// Without reflection, typed messages need --grpc-descriptor-set.
+    // @comment -- "An OFF-switch rather than an on-switch, matching the orchestrator: --allow-grpc is already the deliberate opt-in to gRPC traffic, and reflection is one cached read-only request per service of exactly the kind grpcurl makes by default. This exists for an engagement where every extra request must be accounted for."
+    #[arg(
+        long,
+        help_heading = "Probe execution",
+        display_order = 11,
+        help = "Do not use gRPC server reflection to learn message types"
+    )]
+    pub no_grpc_reflection: bool,
 
-        /// A protoc-emitted FileDescriptorSet describing the target's gRPC
-        /// services, so probes can send real typed messages and decode responses.
-        /// Produce one with `protoc --descriptor_set_out=out.pb --include_imports`.
-        // @comment -- "The operator's own protoc output, and the only descriptor source cxg fully trusts: a service is free to describe itself inaccurately over reflection, so the result records which source produced each decoded field. Optional — without it cxg falls back to empty or raw-byte messages, which still answer an authorization question."
-        #[arg(
-            long,
-            value_name = "FILE",
-            help_heading = "Probe execution",
-            display_order = 10,
-            help = "protoc FileDescriptorSet for typed gRPC messages"
-        )]
-        grpc_descriptor_set: Option<String>,
+    /// Absolute ceiling on one template's dispatch before it is abandoned and
+    /// treated as a dead target. Default 900s. This is a BACKSTOP only —
+    /// `--stall-timeout` is what actually catches a frozen app. 0 disables it,
+    /// which lets a wedged app hang the scan indefinitely.
+    // @comment -- "forwards the per-template ceiling to the orchestrator; without this the flag existed in Python only and was unreachable from the cxg binary, so an operator could not raise or disable the backstop at all"
+    #[arg(
+        long,
+        help_heading = "Execution",
+        display_order = 44,
+        help = "Per-template dispatch ceiling, seconds (backstop; default 900)"
+    )]
+    pub template_timeout: Option<f64>,
 
-        /// Do not ask gRPC services to describe themselves over server reflection.
-        /// Without reflection, typed messages need --grpc-descriptor-set.
-        // @comment -- "An OFF-switch rather than an on-switch, matching the orchestrator: --allow-grpc is already the deliberate opt-in to gRPC traffic, and reflection is one cached read-only request per service of exactly the kind grpcurl makes by default. This exists for an engagement where every extra request must be accounted for."
-        #[arg(
-            long,
-            help_heading = "Probe execution",
-            display_order = 11,
-            help = "Do not use gRPC server reflection to learn message types"
-        )]
-        no_grpc_reflection: bool,
+    /// How long the run may go with NO completed dispatch before the surface is
+    /// corroborated against the other instances and, if it alone is silent,
+    /// treated as stalled. This is IDLE time, not template runtime: a probe that
+    /// keeps getting answers is never killed however long it runs. Default 90s,
+    /// 0 disables. Applies to `--target-type electron` only.
+    // @comment -- "forwards the stall threshold to the orchestrator; the measured freeze (a native modal blocking Electron's main process) produces no exception at all, so this is the only bound that ends such a run, and it was unreachable from the binary until now"
+    #[arg(
+        long,
+        help_heading = "Execution",
+        display_order = 45,
+        help = "Idle-time stall timeout, seconds (electron only; default 90)"
+    )]
+    pub stall_timeout: Option<f64>,
 
-        /// Absolute ceiling on one template's dispatch before it is abandoned and
-        /// treated as a dead target. Default 900s. This is a BACKSTOP only —
-        /// `--stall-timeout` is what actually catches a frozen app. 0 disables it,
-        /// which lets a wedged app hang the scan indefinitely.
-        // @comment -- "forwards the per-template ceiling to the orchestrator; without this the flag existed in Python only and was unreachable from the cxg binary, so an operator could not raise or disable the backstop at all"
-        #[arg(
-            long,
-            help_heading = "Execution",
-            display_order = 44,
-            help = "Per-template dispatch ceiling, seconds (backstop; default 900)"
-        )]
-        template_timeout: Option<f64>,
+    /// Do NOT relaunch a desktop target that dies mid-scan.
+    ///
+    /// Default is to restart it (max 2 per instance, 3 per run), report the crash
+    /// as a `denial_of_service` finding, re-probe the suspected IPC channel once
+    /// and then quarantine it. With this flag a dead target ends the scan with a
+    /// truncation caveat and exit 3 — the pre-recovery behaviour.
+    // @comment -- "operator opt-out of crash recovery, because recovery lets cxg's own probes restart the application under test repeatedly and that side effect is an availability decision the operator owns, not cxg"
+    #[arg(
+        long,
+        help_heading = "Execution",
+        display_order = 46,
+        help = "Do not relaunch a desktop target that dies mid-scan"
+    )]
+    pub no_restart: bool,
 
-        /// How long the run may go with NO completed dispatch before the surface is
-        /// corroborated against the other instances and, if it alone is silent,
-        /// treated as stalled. This is IDLE time, not template runtime: a probe that
-        /// keeps getting answers is never killed however long it runs. Default 90s,
-        /// 0 disables. Applies to `--target-type electron` only.
-        // @comment -- "forwards the stall threshold to the orchestrator; the measured freeze (a native modal blocking Electron's main process) produces no exception at all, so this is the only bound that ends such a run, and it was unreachable from the binary until now"
-        #[arg(
-            long,
-            help_heading = "Execution",
-            display_order = 45,
-            help = "Idle-time stall timeout, seconds (electron only; default 90)"
-        )]
-        stall_timeout: Option<f64>,
+    /// Non-interactive CI mode: fail loud instead of warning.
+    ///
+    /// A dead or expired auth session becomes a HARD FAIL (exit 5) at pre-flight
+    /// rather than today's warn-and-continue, so a pipeline never silently probes
+    /// UNAUTHENTICATED and refutes real findings; and a world-accessible
+    /// `--auth-dir` is refused rather than trusted. Without this flag the current
+    /// warn behaviour is unchanged. `--skip-health-check` remains the documented
+    /// escape hatch (it force-marks profiles alive, so the gate cannot trip).
+    ///
+    /// Also enabled by the environment variable CXG_CI=1, for pipelines that
+    /// cannot add the flag to the invocation.
+    // @comment -- "forwards the CI-mode selector as a flag when set; the hard-fail-on-dead-session and world-readable-auth-dir refusal both live in the Python orchestrator (cxg_pentest.py, auth.py), which also honours CXG_CI=1 on its own, so leaving the flag off here still lets the env var reach the orchestrator through the inherited environment"
+    #[arg(
+        long,
+        help_heading = "Authentication",
+        display_order = 19,
+        help = "CI mode: dead session → hard fail (exit 5). Also CXG_CI=1"
+    )]
+    pub ci: bool,
 
-        /// Do NOT relaunch a desktop target that dies mid-scan.
-        ///
-        /// Default is to restart it (max 2 per instance, 3 per run), report the crash
-        /// as a `denial_of_service` finding, re-probe the suspected IPC channel once
-        /// and then quarantine it. With this flag a dead target ends the scan with a
-        /// truncation caveat and exit 3 — the pre-recovery behaviour.
-        // @comment -- "operator opt-out of crash recovery, because recovery lets cxg's own probes restart the application under test repeatedly and that side effect is an availability decision the operator owns, not cxg"
-        #[arg(
-            long,
-            help_heading = "Execution",
-            display_order = 46,
-            help = "Do not relaunch a desktop target that dies mid-scan"
-        )]
-        no_restart: bool,
+    /// JSON report output path. Default: `report.json` under --session-dir.
+    /// The report contains: target, codebase, auth_profiles, goal, scope_stats,
+    /// confirmed_findings, ambiguous, mitigation_verifications, dead_profiles,
+    /// rejected_templates, retried_then_resolved.
+    #[arg(
+        long,
+        short,
+        help_heading = "Output",
+        display_order = 51,
+        help = "JSON report output path (default report.json in session dir)"
+    )]
+    pub output: Option<PathBuf>,
+}
 
-        /// Read auth profiles from this directory instead of ~/.cert-x-gen/auth.
-        ///
-        /// A CI pipeline restores a bundle of profiles (imported via
-        /// `cxg pentest auth import --auth-dir <dir>`) into its own directory and
-        /// points the run at the same directory here, so pre-flight, the engine, and
-        /// the health monitor all read the restored bundle rather than the operator's
-        /// home store.
-        // @comment -- "forwards the auth-store redirect to the orchestrator, which reassigns auth.AUTH_DIR before any profile is loaded; every profile consumer reaches the store only through auth.load_profile, so this one flag moves all of them. Forwarded only when set, so an unset flag leaves the orchestrator's ~/.cert-x-gen/auth default in force — one default, in one place the two CLIs cannot drift apart on."
-        #[arg(
-            long,
-            help_heading = "Authentication",
-            display_order = 18,
-            help = "Read auth profiles from this dir (CI profile bundle)"
-        )]
-        auth_dir: Option<PathBuf>,
+/// Inputs shared by automatic scan probes and explicit pentest runs.
+#[derive(clap::Args, Debug, Clone)]
+pub struct ProbeInputs {
+    /// Guarantee zero model calls. Plain scan already replays selected scanner
+    /// and JS probe templates without authoring. Explicit pentest runs require
+    /// --template-dir and disable ranking, generation and mutation.
+    #[arg(long, help_heading = "Generation")]
+    pub no_author: bool,
 
-        /// Non-interactive CI mode: fail loud instead of warning.
-        ///
-        /// A dead or expired auth session becomes a HARD FAIL (exit 5) at pre-flight
-        /// rather than today's warn-and-continue, so a pipeline never silently probes
-        /// UNAUTHENTICATED and refutes real findings; and a world-accessible
-        /// `--auth-dir` is refused rather than trusted. Without this flag the current
-        /// warn behaviour is unchanged. `--skip-health-check` remains the documented
-        /// escape hatch (it force-marks profiles alive, so the gate cannot trip).
-        ///
-        /// Also enabled by the environment variable CXG_CI=1, for pipelines that
-        /// cannot add the flag to the invocation.
-        // @comment -- "forwards the CI-mode selector as a flag when set; the hard-fail-on-dead-session and world-readable-auth-dir refusal both live in the Python orchestrator (cxg_pentest.py, auth.py), which also honours CXG_CI=1 on its own, so leaving the flag off here still lets the env var reach the orchestrator through the inherited environment"
-        #[arg(
-            long,
-            help_heading = "Authentication",
-            display_order = 19,
-            help = "CI mode: dead session → hard fail (exit 5). Also CXG_CI=1"
-        )]
-        ci: bool,
+    /// Source codebase root. Defaults to the current directory for scan;
+    /// pentest run requires an explicit value. Reads whitebox/findings.sarif
+    /// when present and supplies source context to the engine.
+    #[arg(
+        long,
+        default_value = ".",
+        help_heading = "Target",
+        display_order = 1,
+        help = "Source codebase root (contains whitebox/findings.sarif)"
+    )]
+    pub codebase: PathBuf,
 
-        /// Session directory where this scan's artifacts (audit.jsonl, report.json,
-        /// any captured screenshots) are written.
-        /// Default: ~/.cert-x-gen/sessions/pentest-<YYYYMMDD-HHMMSS>/
-        #[arg(
-            long,
-            help_heading = "Output",
-            display_order = 52,
-            help = "Session artifacts directory (audit.jsonl, report.json)"
-        )]
-        session_dir: Option<PathBuf>,
+    /// Comma-separated auth profile names previously captured via `cxg pentest auth`.
+    /// Probes that need multiple identities (IDOR cross-user, session-replay-against-
+    /// victim) require ≥2 profiles. The lowest-privilege identity is auto-selected as
+    /// the actor for privesc-class probes.
+    ///
+    /// Empty means a first-class anonymous (no-login) web/Electron run, not interactive capture.
+    /// Tauri source maps and in-process proofs need no --auth profile.
+    #[arg(
+        long,
+        default_value = "",
+        help_heading = "Authentication",
+        display_order = 11,
+        help = "Comma-separated captured auth profiles; empty = first-class anonymous (no-login) run on a clean unauthenticated surface with real anonymous probes and auth-only checks reported not-run. Empty does not imply interactive capture; use --interactive-auth"
+    )]
+    pub auth: String,
 
-        /// JSON report output path. Default: `report.json` under --session-dir.
-        /// The report contains: target, codebase, auth_profiles, goal, scope_stats,
-        /// confirmed_findings, ambiguous, mitigation_verifications, dead_profiles,
-        /// rejected_templates, retried_then_resolved.
-        #[arg(
-            long,
-            short,
-            help_heading = "Output",
-            display_order = 51,
-            help = "JSON report output path (default report.json in session dir)"
-        )]
-        output: Option<PathBuf>,
-    },
+    /// Path to scope.yaml. Default: safe permissive defaults (any URL, GET/POST/HEAD/
+    /// OPTIONS, 30 reqs/endpoint, 1500 reqs total, kill on 8-streak 5xx).
+    /// Generate one with `cxg pentest scope-init`.
+    ///
+    /// If this flag is given and the file cannot be read — path does not exist,
+    /// unreadable, invalid YAML, not a mapping, empty, or PyYAML not installed —
+    /// the run is REFUSED with exit 4. It does not fall back to the defaults:
+    /// a bound cxg cannot read is not the same as no bound. Omitting the flag
+    /// entirely is the supported way to run on the defaults.
+    ///
+    /// An empty value never reaches that check and is not ignored either:
+    /// `--scope-file "$SCOPE"` with `SCOPE` unset is rejected by the CLI parser
+    /// as a usage error (exit 2, `a value is required for '--scope-file
+    /// <SCOPE_FILE>' but none was supplied`) before the scan starts.
+    ///
+    /// Refused with exit 4 on `--template-lang py` as well: the legacy Python probe
+    /// path enforces no scope at all, so a file accepted there would be discarded.
+    #[arg(
+        long,
+        help_heading = "Execution",
+        display_order = 41,
+        help = "Path to scope.yaml (URL/method allowlist, budgets)"
+    )]
+    pub scope_file: Option<PathBuf>,
+
+    /// Operator-owned configuration for IMAP and needs-you questions.
+    #[arg(long, value_name = "JSON", help_heading = "Probe execution")]
+    pub auth_inputs: Option<PathBuf>,
+
+    /// Read auth profiles from this directory instead of ~/.cert-x-gen/auth.
+    ///
+    /// A CI pipeline restores a bundle of profiles (imported via
+    /// `cxg pentest auth import --auth-dir <dir>`) into its own directory and
+    /// points the run at the same directory here, so pre-flight, the engine, and
+    /// the health monitor all read the restored bundle rather than the operator's
+    /// home store.
+    // @comment -- "forwards the auth-store redirect to the orchestrator, which reassigns auth.AUTH_DIR before any profile is loaded; every profile consumer reaches the store only through auth.load_profile, so this one flag moves all of them. Forwarded only when set, so an unset flag leaves the orchestrator's ~/.cert-x-gen/auth default in force — one default, in one place the two CLIs cannot drift apart on."
+    #[arg(
+        long,
+        help_heading = "Authentication",
+        display_order = 18,
+        help = "Read auth profiles from this dir (CI profile bundle)"
+    )]
+    pub auth_dir: Option<PathBuf>,
+
+    /// Session directory where this scan's artifacts (audit.jsonl, report.json,
+    /// any captured screenshots) are written.
+    /// Explicit pentest default: ~/.cert-x-gen/sessions/pentest-<YYYYMMDD-HHMMSS>/
+    /// Plain scan groups probe inputs and per-target engine sessions under a scan-specific directory.
+    #[arg(
+        long,
+        help_heading = "Output",
+        display_order = 52,
+        help = "Session artifacts directory (audit.jsonl, report.json)"
+    )]
+    pub session_dir: Option<PathBuf>,
 }
 
 /// Non-interactive auth subcommands for CI — mirrors `pentest/auth.py`'s
@@ -1995,23 +2276,41 @@ COMMON SCANNING SCENARIOS:
 10. Internal Network Reconnaissance:
     cxg scan --scope 10.0.0.0/24 --passive --top-ports 100 --quiet
 
+Supplied JS probe contracts run automatically through the pentest engine with zero model calls.
+  Scanner templates keep their language runners; mixed packs produce one JSON report with
+  template-reported and engine-adjudicated verdict sources. Missing probe inputs are refused.
+  --scope supplies the target; --codebase defaults to the current directory. Use --auth,
+  --auth-dir, --auth-inputs, --scope-file and --session-dir for probe execution inputs.
+  All non-authoring pentest inputs are accepted for the probe engine, including CI,
+  containment, protocol, chaining, capture and timeout controls. They do not change
+  scanner contracts; scanner-only runs do not use these probe-engine controls.
+  Profile/scope inputs require a selected probe. Plain scan always disables authoring.
+  JS probes only; any-language probes are not yet supported. --pentest exposes authoring too.
+
 For more information, visit: https://cert-x-gen.io/docs"
 )]
 pub struct ScanArgs {
+    /// Parsed from the same engine definitions; no parallel list of option types/defaults.
+    #[arg(skip)]
+    pub probe_run: Option<Box<PentestRunArgs>>,
+
+    #[command(flatten)]
+    pub probe_inputs: ProbeInputs,
+
+    /// Enable all `pentest run` options, including authoring and desktop targets.
+    /// Plain scan already runs supplied JS probe contracts with zero model calls. JS probes only;
+    /// any-language probes are not supported. Use --no-author --template-dir DIR
+    /// for zero model calls. Engine-confirmed verdicts remain pentest verdicts;
+    /// ordinary scan findings remain template-reported.
+    #[arg(long, help_heading = "Engine")]
+    pub pentest: bool,
+
     // ===== Target Selection =====
     #[arg(
         long = "scope",
         short = 's',
         short_alias = 't',
-        aliases = [
-            "target",
-            "targets",
-            "target-file",
-            "domain",
-            "domains",
-            "domain-file",
-            "cidr"
-        ],
+        aliases = SCAN_SCOPE_ALIASES,
         value_name = "SCOPE",
         // No `value_delimiter` here on purpose. Comma splitting for scope
         // values is done by `expand_scope_entry`, which exempts `cli:` paths
@@ -3583,7 +3882,6 @@ pub enum ProviderAction {
 #[cfg(test)]
 mod desktop_flag_tests {
     use super::*;
-    use clap::Parser;
 
     fn parse(args: &[&str]) -> Result<Cli, clap::Error> {
         Cli::try_parse_from(args)
@@ -3602,7 +3900,7 @@ mod desktop_flag_tests {
         ])
         .expect("should parse");
         if let Some(Commands::Pentest(p)) = cli.command {
-            if let PentestAction::Run { target_type, .. } = p.action {
+            if let PentestAction::Run(PentestRunArgs { target_type, .. }) = p.action {
                 assert_eq!(target_type, "web");
                 return;
             }
@@ -3669,7 +3967,7 @@ mod desktop_flag_tests {
         ])
         .expect("should parse");
         if let Some(Commands::Pentest(p)) = cli.command {
-            if let PentestAction::Run { app_cmd, .. } = p.action {
+            if let PentestAction::Run(PentestRunArgs { app_cmd, .. }) = p.action {
                 assert_eq!(app_cmd.as_deref(), Some("npm run electron:dev"));
                 return;
             }
@@ -3705,12 +4003,12 @@ mod desktop_flag_tests {
         ])
         .expect("should parse");
         if let Some(Commands::Pentest(p)) = cli.command {
-            if let PentestAction::Run {
+            if let PentestAction::Run(PentestRunArgs {
                 template_timeout,
                 stall_timeout,
                 no_restart,
                 ..
-            } = p.action
+            }) = p.action
             {
                 assert_eq!(template_timeout, Some(1200.0));
                 assert_eq!(stall_timeout, Some(45.0));
@@ -3733,12 +4031,12 @@ mod desktop_flag_tests {
         ])
         .expect("should parse");
         if let Some(Commands::Pentest(p)) = bare.command {
-            if let PentestAction::Run {
+            if let PentestAction::Run(PentestRunArgs {
                 template_timeout,
                 stall_timeout,
                 no_restart,
                 ..
-            } = p.action
+            }) = p.action
             {
                 assert_eq!(template_timeout, None);
                 assert_eq!(stall_timeout, None);
@@ -3786,12 +4084,12 @@ mod desktop_flag_tests {
         ])
         .expect("tauri --tauri-prove should parse");
         if let Some(Commands::Pentest(p)) = cli.command {
-            if let PentestAction::Run {
+            if let PentestAction::Run(PentestRunArgs {
                 target_type,
                 tauri_prove,
                 tauri_prove_timeout,
                 ..
-            } = p.action
+            }) = p.action
             {
                 assert_eq!(target_type, "tauri");
                 assert!(tauri_prove);
@@ -3815,11 +4113,11 @@ mod desktop_flag_tests {
         ])
         .expect("parse");
         if let Some(Commands::Pentest(p)) = cli.command {
-            if let PentestAction::Run {
+            if let PentestAction::Run(PentestRunArgs {
                 tauri_prove,
                 tauri_prove_timeout,
                 ..
-            } = p.action
+            }) = p.action
             {
                 assert!(!tauri_prove);
                 assert_eq!(tauri_prove_timeout, 1200);
@@ -3845,12 +4143,12 @@ mod desktop_flag_tests {
         ])
         .expect("tauri run should parse without --target");
         if let Some(Commands::Pentest(p)) = cli.command {
-            if let PentestAction::Run {
+            if let PentestAction::Run(PentestRunArgs {
                 target_type,
                 target,
                 app_cmd,
                 ..
-            } = p.action
+            }) = p.action
             {
                 assert_eq!(target_type, "tauri");
                 assert!(target.is_none(), "no --target was given");
@@ -3886,11 +4184,11 @@ mod desktop_flag_tests {
         ])
         .expect("--app-binary alone with --target-type electron should parse");
         if let Some(Commands::Pentest(p)) = cli.command {
-            if let PentestAction::Run {
+            if let PentestAction::Run(PentestRunArgs {
                 app_binary,
                 app_cmd,
                 ..
-            } = p.action
+            }) = p.action
             {
                 assert_eq!(app_binary.as_deref(), Some("/tmp/a"));
                 assert_eq!(app_cmd, None);
@@ -4010,7 +4308,6 @@ mod desktop_flag_tests {
 #[cfg(test)]
 mod oast_flag_tests {
     use super::*;
-    use clap::Parser;
 
     fn run_action(args: &[&str]) -> PentestAction {
         let cli = Cli::try_parse_from(args).expect("should parse");
@@ -4040,11 +4337,11 @@ mod oast_flag_tests {
     fn oast_alone_is_unchanged_and_leaves_interactsh_unset() {
         let mut argv = base();
         argv.extend(["--oast", "c4ca4238a0b92.oastify.com"]);
-        if let PentestAction::Run {
+        if let PentestAction::Run(PentestRunArgs {
             oast,
             oast_interactsh,
             ..
-        } = run_action(&argv)
+        }) = run_action(&argv)
         {
             assert_eq!(oast.as_deref(), Some("c4ca4238a0b92.oastify.com"));
             assert_eq!(oast_interactsh, None);
@@ -4061,11 +4358,11 @@ mod oast_flag_tests {
     fn bare_interactsh_yields_empty_string_not_none() {
         let mut argv = base();
         argv.push("--oast-interactsh");
-        if let PentestAction::Run {
+        if let PentestAction::Run(PentestRunArgs {
             oast,
             oast_interactsh,
             ..
-        } = run_action(&argv)
+        }) = run_action(&argv)
         {
             assert_eq!(oast_interactsh.as_deref(), Some(""));
             assert_eq!(oast, None);
@@ -4078,9 +4375,9 @@ mod oast_flag_tests {
     fn interactsh_takes_an_explicit_server_url() {
         let mut argv = base();
         argv.extend(["--oast-interactsh", "https://oast.example.internal"]);
-        if let PentestAction::Run {
+        if let PentestAction::Run(PentestRunArgs {
             oast_interactsh, ..
-        } = run_action(&argv)
+        }) = run_action(&argv)
         {
             assert_eq!(
                 oast_interactsh.as_deref(),
@@ -4123,11 +4420,11 @@ mod oast_flag_tests {
     fn bare_interactsh_does_not_consume_a_following_flag() {
         let mut argv = base();
         argv.extend(["--oast-interactsh", "--headed"]);
-        if let PentestAction::Run {
+        if let PentestAction::Run(PentestRunArgs {
             oast_interactsh,
             headed,
             ..
-        } = run_action(&argv)
+        }) = run_action(&argv)
         {
             assert_eq!(oast_interactsh.as_deref(), Some(""));
             assert!(headed, "--headed must survive the optional-value flag");
@@ -4138,12 +4435,12 @@ mod oast_flag_tests {
 
     #[test]
     fn neither_flag_leaves_both_unset() {
-        if let PentestAction::Run {
+        if let PentestAction::Run(PentestRunArgs {
             oast,
             oast_interactsh,
             oast_listener,
             ..
-        } = run_action(&base())
+        }) = run_action(&base())
         {
             assert_eq!(oast, None);
             assert_eq!(oast_interactsh, None);
@@ -4161,7 +4458,7 @@ mod oast_flag_tests {
     fn bare_listener_yields_empty_string_not_none() {
         let mut argv = base();
         argv.push("--oast-listener");
-        if let PentestAction::Run { oast_listener, .. } = run_action(&argv) {
+        if let PentestAction::Run(PentestRunArgs { oast_listener, .. }) = run_action(&argv) {
             assert_eq!(oast_listener.as_deref(), Some(""));
             return;
         }
@@ -4172,7 +4469,7 @@ mod oast_flag_tests {
     fn listener_takes_an_explicit_bind() {
         let mut argv = base();
         argv.extend(["--oast-listener", "host-docker-internal"]);
-        if let PentestAction::Run { oast_listener, .. } = run_action(&argv) {
+        if let PentestAction::Run(PentestRunArgs { oast_listener, .. }) = run_action(&argv) {
             assert_eq!(oast_listener.as_deref(), Some("host-docker-internal"));
             return;
         }
@@ -4205,11 +4502,11 @@ mod oast_flag_tests {
     fn listener_dns_is_an_independent_boolean() {
         let mut argv = base();
         argv.extend(["--oast-listener", "127.0.0.1", "--oast-listener-dns"]);
-        if let PentestAction::Run {
+        if let PentestAction::Run(PentestRunArgs {
             oast_listener,
             oast_listener_dns,
             ..
-        } = run_action(&argv)
+        }) = run_action(&argv)
         {
             assert_eq!(oast_listener.as_deref(), Some("127.0.0.1"));
             assert!(oast_listener_dns);
@@ -4232,12 +4529,12 @@ mod oast_flag_tests {
             "--oast-dns-rebind-ip",
             "169.254.169.254",
         ]);
-        if let PentestAction::Run {
+        if let PentestAction::Run(PentestRunArgs {
             oast_redirect_location,
             oast_redirect_status,
             oast_dns_rebind_ip,
             ..
-        } = run_action(&argv)
+        }) = run_action(&argv)
         {
             assert_eq!(
                 oast_redirect_location.as_deref(),
@@ -4280,7 +4577,6 @@ mod oast_flag_tests {
 #[cfg(test)]
 mod track_b_auth_tests {
     use super::*;
-    use clap::Parser;
 
     fn action(args: &[&str]) -> PentestAction {
         let cli = Cli::try_parse_from(args).expect("should parse");
@@ -4568,7 +4864,11 @@ mod track_b_auth_tests {
             "./ci-auth",
         ]);
         match a {
-            PentestAction::Run { ci, auth_dir, .. } => {
+            PentestAction::Run(PentestRunArgs {
+                ci,
+                probe_inputs: ProbeInputs { auth_dir, .. },
+                ..
+            }) => {
                 assert!(ci);
                 assert_eq!(auth_dir.as_deref(), Some(std::path::Path::new("./ci-auth")));
             }
@@ -4588,7 +4888,11 @@ mod track_b_auth_tests {
             "https://x",
         ]);
         match a {
-            PentestAction::Run { ci, auth_dir, .. } => {
+            PentestAction::Run(PentestRunArgs {
+                ci,
+                probe_inputs: ProbeInputs { auth_dir, .. },
+                ..
+            }) => {
                 assert!(!ci, "--ci defaults off, so main.rs forwards nothing");
                 assert_eq!(auth_dir, None);
             }
@@ -4600,7 +4904,6 @@ mod track_b_auth_tests {
 #[cfg(test)]
 mod pentest_transport_tests {
     use super::*;
-    use clap::Parser;
 
     #[test]
     fn web_transport_flags_parse_and_require_a_certificate_pair() {
@@ -4627,13 +4930,13 @@ mod pentest_transport_tests {
         match cli.command {
             Some(Commands::Pentest(PentestCommand {
                 action:
-                    PentestAction::Run {
+                    PentestAction::Run(PentestRunArgs {
                         insecure_tls,
                         proxy,
                         client_cert,
                         client_key,
                         ..
-                    },
+                    }),
             })) => {
                 assert!(insecure_tls);
                 assert_eq!(proxy.as_deref(), Some("http://127.0.0.1:8080"));
@@ -4647,5 +4950,199 @@ mod pentest_transport_tests {
             argv.extend([flag, "file.pem"]);
             assert!(Cli::try_parse_from(argv).is_err());
         }
+    }
+}
+
+#[cfg(test)]
+mod scan_front_door_tests {
+    use super::*;
+
+    #[test]
+    fn a_probe_argument_cannot_switch_engines_or_change_scan_validation() {
+        let cli = Cli::try_parse_from([
+            "cxg",
+            "scan",
+            "--scope",
+            "cli:///bin/tool",
+            "--arg",
+            "--pentest",
+            "--templates",
+            "baseline",
+            "--template-dir",
+            "./pack",
+        ])
+        .unwrap();
+        match cli.command {
+            Some(Commands::Scan(scan)) => {
+                assert_eq!(scan.arg, ["--pentest"]);
+                assert_eq!(scan.templates, ["baseline"]);
+                assert_eq!(scan.template_dir, Some(PathBuf::from("./pack")));
+                assert!(!scan.pentest);
+            }
+            _ => panic!("probe argument switched engines"),
+        }
+        let error =
+            Cli::try_parse_from(["cxg", "scan", "--arg", "--pentest", "--help"]).unwrap_err();
+        assert_eq!(error.kind(), clap::error::ErrorKind::DisplayHelp);
+        assert!(error.to_string().contains("--parallel-targets"));
+    }
+
+    #[test]
+    fn globals_and_switch_position_are_parsed_by_clap() {
+        let cli = Cli::try_parse_from([
+            "cxg",
+            "--config",
+            "scan",
+            "scan",
+            "--codebase",
+            ".",
+            "--target-type",
+            "tauri",
+            "--pentest",
+        ])
+        .unwrap();
+        assert_eq!(cli.config, Some(PathBuf::from("scan")));
+        assert!(
+            matches!(cli.command, Some(Commands::Pentest(PentestCommand {
+            action: PentestAction::Run(PentestRunArgs { target_type, target: None, .. })
+        })) if target_type == "tauri")
+        );
+    }
+
+    #[test]
+    fn replay_inputs_preserve_bare_optional_values_and_repeated_options() {
+        let parsed = Cli::try_parse_from([
+            "cxg",
+            "scan",
+            "--scope",
+            "http://localhost",
+            "--oast-listener",
+            "--only-route",
+            "GET /a",
+            "--only-route",
+            "POST /b",
+        ])
+        .unwrap();
+        let Some(Commands::Scan(scan)) = parsed.command else {
+            panic!("expected scan")
+        };
+        let run = scan.probe_run.unwrap();
+        assert_eq!(run.oast_listener.as_deref(), Some(""));
+        assert_eq!(run.only_route, ["GET /a", "POST /b"]);
+    }
+
+    #[test]
+    fn plain_scan_reuses_non_authoring_engine_values_and_constraints() {
+        let parsed = Cli::try_parse_from([
+            "cxg",
+            "scan",
+            "--scope",
+            "http://localhost",
+            "--no-author",
+            "--no-code-graph",
+            "--attestation",
+            "local fixture",
+            "--mitigation-mode",
+            "mitigated",
+            "--me-path",
+            "/identity",
+            "--ci",
+            "--enable-chaining",
+            "--template-timeout",
+            "1.25",
+            "--stall-timeout",
+            "9.5",
+            "--destructive-ok",
+            "--allow-grpc",
+            "--grpc-descriptor-set",
+            "descriptors.pb",
+            "--tauri-prove",
+            "--host-scan-path",
+            "/fixture/install",
+        ])
+        .unwrap();
+        let Some(Commands::Scan(scan)) = parsed.command else {
+            panic!("expected scan")
+        };
+        let run = scan.probe_run.unwrap();
+        assert!(run.probe_inputs.no_author && run.no_code_graph && run.ci && run.enable_chaining);
+        assert_eq!(run.attestation.as_deref(), Some("local fixture"));
+        assert_eq!(run.mitigation_mode, "mitigated");
+        assert_eq!(run.me_path, "/identity");
+        assert_eq!(run.template_timeout, Some(1.25));
+        assert_eq!(run.stall_timeout, Some(9.5));
+        assert!(run.destructive_ok && run.allow_grpc && run.tauri_prove);
+        assert_eq!(run.grpc_descriptor_set.as_deref(), Some("descriptors.pb"));
+        assert_eq!(run.host_scan_path.as_deref(), Some("/fixture/install"));
+        assert!(Cli::try_parse_from(["cxg", "scan", "--client-cert", "cert.pem"]).is_err());
+        assert!(Cli::try_parse_from(["cxg", "scan", "--ai"]).is_err());
+        assert!(Cli::try_parse_from(["cxg", "scan", "--mutation-retries", "1"]).is_err());
+    }
+
+    #[test]
+    fn ordinary_scan_accepts_shared_probe_inputs_and_defaults_codebase() {
+        let parsed = Cli::try_parse_from([
+            "cxg",
+            "scan",
+            "--scope",
+            "https://example.test",
+            "--auth",
+            "attacker,victim",
+            "--auth-dir",
+            "profiles",
+            "--auth-inputs",
+            "inputs.json",
+            "--scope-file",
+            "scope.yaml",
+            "--session-dir",
+            "session",
+        ])
+        .unwrap();
+        let Some(Commands::Scan(args)) = parsed.command else {
+            panic!("expected scan")
+        };
+        assert_eq!(args.probe_inputs.codebase, PathBuf::from("."));
+        assert_eq!(args.probe_inputs.auth, "attacker,victim");
+        assert_eq!(args.probe_inputs.auth_dir, Some(PathBuf::from("profiles")));
+        assert_eq!(
+            args.probe_inputs.auth_inputs,
+            Some(PathBuf::from("inputs.json"))
+        );
+        assert_eq!(
+            args.probe_inputs.scope_file,
+            Some(PathBuf::from("scope.yaml"))
+        );
+        assert_eq!(
+            args.probe_inputs.session_dir,
+            Some(PathBuf::from("session"))
+        );
+        assert!(
+            Cli::try_parse_from(["cxg", "pentest", "run", "--target", "https://example.test"])
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn pentest_scan_requires_a_codebase_and_rejects_duplicate_targets() {
+        let error = Cli::try_parse_from(["cxg", "scan", "--pentest"]).unwrap_err();
+        assert_eq!(
+            error.kind(),
+            clap::error::ErrorKind::MissingRequiredArgument
+        );
+        assert!(error.to_string().contains("--codebase"));
+        assert!(Cli::try_parse_from([
+            "cxg",
+            "scan",
+            "--pentest",
+            "--codebase",
+            ".",
+            "--scope",
+            "https://a.test",
+            "--target",
+            "https://b.test",
+        ])
+        .unwrap_err()
+        .to_string()
+        .contains("one target"));
     }
 }
