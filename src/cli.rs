@@ -790,6 +790,10 @@ pub enum PentestAction {
         #[arg(long)]
         login_body: Option<String>,
 
+        /// Explicit token selector: json:/pointer, header:Authorization or cookie:name.
+        #[arg(long)]
+        login_token_source: Option<String>,
+
         /// Human-readable label for the profile (e.g. "admin", "low-priv-user").
         /// Shown in scan output to make findings readable. Does not affect behavior.
         #[arg(long)]

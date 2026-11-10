@@ -593,6 +593,7 @@ async fn run_pentest_process(
             login_pass_field,
             login_encoding,
             login_body,
+            login_token_source,
             label,
             verify_url,
             headers,
@@ -717,6 +718,9 @@ async fn run_pentest_process(
                     "--login-encoding".into(),
                     login_encoding,
                 ]);
+                if let Some(source) = login_token_source {
+                    args.extend(["--login-token-source".into(), source]);
+                }
                 if let Some(body) = login_body {
                     args.extend(["--login-body".into(), body]);
                 }
