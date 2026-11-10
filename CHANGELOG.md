@@ -7,6 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-11-10
+
+### Upgrading
+
+**After upgrading an existing installation, run `cxg pentest install --force`.** The
+embedded Python pentest pipeline changes in this release, and replacing the binary alone
+does not replace the files under `~/.cert-x-gen/pentest/`. The pinned `h2` dependency moves
+to 4.4.1, which drops Python 3.9.
+
+**Plain `cxg scan` now runs supplied JS probes.** A directory or file that holds JS probe
+contracts is run through the pentest engine with zero model calls, alongside scanner
+templates. The combined JSON report keeps a template's own verdict apart from the engine's
+adjudicated verdict. `--no-author` is accepted on plain scan. It requires supplied probes,
+skips ranking and generation, and records zero model calls. Missing, empty or wholly invalid
+inputs are refused instead of generated.
+
+**Report consumers:**
+- Scanner summaries split declared and inferred verdicts; engine-adjudicated rows keep their own count.
+- When subprocess traffic makes the total unknown, `network_requests_measured` carries the observed part and `network_requests` is null.
+- Discovery outcomes (skipped helpers, YAML load errors) are kept, and an all-invalid directory still writes a report.
+
+**Templates without a capability header are no longer rejected.** The required
+capabilities are derived from the namespaces a template uses, with a warning. Unsupported
+capabilities are still skipped, and raw fetch and `ipcRenderer` bypasses are still rejected.
+
+### Added
+
+- **`cxg scan --pentest`** is a front door to the pentest engine. It accepts every `pentest run` option through shared argument definitions, and refuses scan options that don't apply.
+- **Opt-in scan CI gates:** `--fail-on confirmed,errored,timed-out` (repeatable or comma-separated) exits 2 when a run reaches a listed status. The default exit behaviour is unchanged.
+- **Engine proof for unauthenticated protected reads.** A declared protected GET reads as:
+  - **confirmed** when guest and authenticated responses match;
+  - **refuted** when the authenticated read returns content and the guest gets 401, 403 or a login redirect;
+  - **inconclusive** otherwise.
+  This covers `auth_api`, `missing_authentication` (alias `missing-authn`) and protected metrics reads. The guest is a fresh context with no credentials.
+- **Engine refutation for authorization regressions.** In the same dispatch, an entitled 2xx plus a distinct attacker denial for the same method-qualified endpoint (such as `GET /tasks`) can be refuted. Missing, redirected or interfering controls read as `inconclusive_refusal`.
+- **Fired-oracle routing.** When a finding's declared class can't prove it, the engine routes through exactly one proven, request-bound oracle and keeps the original claim as provenance. Injection and file-inclusion aliases resolve before proof lookup. Forged stamps and ambiguous sibling matches can't promote a finding.
+- **`--auth-dir` for auth capture and listing,** as well as import and verify. `CERT_X_GEN_HOME` is honoured for Python state.
+
+### Changed
+
+- **Every engine HTTP request is audited:** landing, inspection, health, reauthentication and identity checks, including redirects. Each audit row records the `actor` and `purpose`.
+- **A reserved `anonymous` role binds to a separate clean guest.** A credentialed saved profile named `anonymous` never stands in for it.
+- **Python helper bytecode writes are disabled during scans.**
+- **Pull-request CI is two jobs:** Rust (fmt, clippy, tests) and Python (pytest). Windows, Python 3.12, macOS and build jobs run on main and tags.
+
 ### Fixed
 
 - Malformed HTTP probe calls, such as `cxg.fetch({method, path})`, are rejected
@@ -31,6 +76,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   dynamic imports, and script injection, directing authors to engine primitives.
   Source validation remains a backstop rather than a JavaScript sandbox; see the
   [browser traffic limitations](pentest/README.md#browser-traffic-limitations).
+- **Captured auth storage-state files are written with mode 0600,** and existing ones are tightened before re-capture.
+- **Raw HTTP redirects pass every scope check** at every hop: budget, pacing, method and canonical path. An out-of-scope hop stops before dispatch.
+- **Directory scans don't execute helpers,** and don't infer a refutation after a native transport failure. The shipped `{{BaseURL}}` request form executes.
+- **The crate compiles again** after duplicate CLI and template declarations were removed.
 
 ## [1.7.0] - 2026-10-26
 
