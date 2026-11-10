@@ -759,7 +759,7 @@ pub enum PentestAction {
         #[arg(long, default_value = "1")]
         auth_numbers: usize,
 
-        /// Inline credentials `email:password` for scripted login (skips browser pop-up).
+        /// Inline credentials `identity:password` for scripted login (skips browser pop-up).
         /// Only works for password-based auth — SSO/MFA flows MUST use interactive capture.
         #[arg(long)]
         creds: Option<String>,
@@ -770,9 +770,29 @@ pub enum PentestAction {
         creds_file: Option<PathBuf>,
 
         /// Endpoint path for scripted login POST. Only used with `--creds` or `--creds-file`.
-        /// The captured browser will POST {email, password} as JSON to <target><login-path>.
+        /// POST to <target><login-path> using the configured body fields.
         #[arg(long, default_value = "/api/auth/login")]
         login_path: String,
+
+        /// Identity field in the login body (dotted paths create nested objects).
+        #[arg(long, default_value = "email")]
+        login_user_field: String,
+
+        /// Secret field in the login body (dotted paths create nested objects).
+        #[arg(long, default_value = "password")]
+        login_pass_field: String,
+
+        /// Login body encoding: json or form (nested form fields use bracket notation).
+        #[arg(long, default_value = "json", value_parser = ["json", "form"])]
+        login_encoding: String,
+
+        /// JSON object of extra static login fields. Credentials override their paths.
+        #[arg(long)]
+        login_body: Option<String>,
+
+        /// Explicit token selector: json:/pointer, header:Authorization or cookie:name.
+        #[arg(long)]
+        login_token_source: Option<String>,
 
         /// Human-readable label for the profile (e.g. "admin", "low-priv-user").
         /// Shown in scan output to make findings readable. Does not affect behavior.
