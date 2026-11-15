@@ -779,9 +779,8 @@ pub enum PentestAction {
         #[arg(long)]
         label: Option<String>,
 
-        /// Optional URL probed after capture as a secondary identity check. The landing
-        /// test is the primary signal regardless. Default: empty (landing test only).
-        /// Pass an empty string to skip the secondary probe entirely.
+        /// Authenticated API liveness endpoint checked after capture and saved with
+        /// the profile for later verification. Defaults to /api/me.
         #[arg(long)]
         verify_url: Option<String>,
 
@@ -1000,8 +999,7 @@ pub struct PentestRunArgs {
     pub probe_inputs: ProbeInputs,
 
     /// Running target app URL. Both `http://` and `https://` are supported.
-    /// Multi-tenant note: pass the URL where the SESSION cookies live, not a marketing
-    /// host. The landing test verifies you arrive at a non-login page from this URL.
+    /// Profiles bind their own service origins and authenticated API liveness checks.
     ///
     /// Required for `--target-type web` and `electron`; omit it for
     /// `--target-type tauri`, which maps the IPC surface from source and navigates
@@ -1237,18 +1235,15 @@ pub struct PentestRunArgs {
     )]
     pub mitigation_mode: String,
 
-    /// Optional identity endpoint hit during pre-flight inspection to extract
-    /// role/email/id from a JSON response. Failure here does NOT mark the profile
-    /// dead — the landing test is the source of truth. Override only when you
-    /// want role-tier-based probe selection AND the app has a stable /me endpoint.
-    ///
-    /// Default `/api/me`. Set to empty string to skip the secondary probe.
+    /// Authenticated API liveness endpoint on each profile's own service.
+    /// Per-profile liveness_path takes precedence; 401/403 means dead and missing
+    /// endpoints remain unverified. The API JSON also supplies role/email/id.
     #[arg(
         long,
         default_value = "/api/me",
         help_heading = "Authentication",
         display_order = 16,
-        help = "Identity endpoint for pre-flight role/email (default /api/me)"
+        help = "Authenticated API liveness endpoint (default /api/me; per-profile setting wins)"
     )]
     pub me_path: String,
 
@@ -1266,18 +1261,13 @@ pub struct PentestRunArgs {
     )]
     pub generation_timeout: u64,
 
-    /// Skip the pre-flight session health check entirely. Use when:
-    ///   • Multi-tenant app where the session lives at a subdomain different from --target
-    ///   • App has no stable /me-style endpoint
-    ///   • You know the session is fresh and want to skip the verification roundtrip
-    ///
-    /// Per-template health checks still run during the scan unless you also configure
-    /// scope.yaml to disable them.
+    /// Skip periodic session health checks and re-authentication. Startup API
+    /// verification still runs; this flag supplies no proof for denial verdicts.
     #[arg(
         long,
         help_heading = "Authentication",
         display_order = 17,
-        help = "Skip the pre-flight session health check"
+        help = "Skip periodic health checks (startup API verification still runs)"
     )]
     pub skip_health_check: bool,
 
@@ -1899,6 +1889,8 @@ pub struct ProbeInputs {
 /// Non-interactive auth subcommands for CI — mirrors `pentest/auth.py`'s
 /// `import`/`verify` subparsers exactly.
 // @comment -- "the CI-replay half of the auth surface: a human captures a session once (SSO/MFA and all) and exports its Playwright storage_state; import writes a profile from that state with no browser, and verify gates on whether the saved session is still alive. Both were reachable only via `python3 cxg_pentest.py auth ...` until this surface was wired into clap; the defaults here are copied from auth.py's argparse, which is the specification."
+// Like PentestAction, this clap enum is parsed once per process; keep named flags inline.
+#[allow(clippy::large_enum_variant)]
 #[derive(Subcommand, Debug, Clone)]
 pub enum AuthSubcommand {
     /// Import a saved Playwright storage_state as a profile (no browser)
@@ -1928,7 +1920,7 @@ pub enum AuthSubcommand {
         profile: String,
 
         /// Target URL this session authenticates against. Recorded in the profile and
-        /// used by `auth verify` / run pre-flight as the landing-test URL.
+        /// used by API liveness checks as this profile's service origin.
         #[arg(long)]
         target: String,
 
@@ -1968,6 +1960,18 @@ pub enum AuthSubcommand {
         #[arg(long = "header", value_name = "NAME:VALUE")]
         headers: Vec<String>,
 
+        /// Authenticated API liveness path on this service (default /api/me).
+        #[arg(long)]
+        liveness_path: Option<String>,
+
+        /// Expected HTTP status, repeatable (default any 2xx; 401/403 always fail).
+        #[arg(long = "liveness-status")]
+        liveness_status: Vec<u16>,
+
+        /// Service name included in readiness receipts.
+        #[arg(long)]
+        service: Option<String>,
+
         /// Write into this auth directory instead of ~/.cert-x-gen/auth. A pipeline
         /// restores a bundle of profiles into one dir and points the run at it with the
         /// same flag.
@@ -1983,8 +1987,7 @@ pub enum AuthSubcommand {
 
     /// Check a saved web session is still alive (exit 0 alive / non-zero dead)
     ///
-    /// An out-of-band liveness gate for a saved session, reusing the same landing-page
-    /// test scan-time pre-flight uses. A pipeline runs this before spending a whole run,
+    /// An API liveness gate for a saved session, shared with scan-time pre-flight. A pipeline runs this before spending a whole run,
     /// and re-captures (or re-imports) when it fails.
     ///
     /// Example:
@@ -1994,12 +1997,11 @@ pub enum AuthSubcommand {
         #[arg(long)]
         profile: String,
 
-        /// Override the profile's saved target for the landing test.
+        /// Fallback service URL for a profile without a saved target.
         #[arg(long)]
         target: Option<String>,
 
-        /// Secondary identity endpoint probed for role/email; the landing test is the
-        /// source of truth. Default /api/me.
+        /// Authenticated API endpoint (default /api/me); per-profile liveness_path wins.
         #[arg(long, default_value = "/api/me")]
         me_path: String,
 
@@ -4691,6 +4693,14 @@ mod track_b_auth_tests {
             "x-b:2",
             "--auth-dir",
             "./ci-auth",
+            "--liveness-path",
+            "/session",
+            "--liveness-status",
+            "200",
+            "--liveness-status",
+            "204",
+            "--service",
+            "community",
             "--ci",
         ]);
         match a {
@@ -4707,6 +4717,9 @@ mod track_b_auth_tests {
                         tags,
                         headers,
                         auth_dir,
+                        liveness_path,
+                        liveness_status,
+                        service,
                         ci,
                     }),
                 ..
@@ -4722,6 +4735,9 @@ mod track_b_auth_tests {
                 assert_eq!(headers, vec!["x-a:1", "x-b:2"]);
                 assert_eq!(auth_dir.as_deref(), Some(std::path::Path::new("./ci-auth")));
                 assert!(ci);
+                assert_eq!(liveness_path.as_deref(), Some("/session"));
+                assert_eq!(liveness_status, vec![200, 204]);
+                assert_eq!(service.as_deref(), Some("community"));
             }
             _ => panic!("expected auth import"),
         }

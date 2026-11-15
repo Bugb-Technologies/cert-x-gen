@@ -284,7 +284,7 @@ pub async fn execute(
                 "report": report}));
         }
     }
-    if !refused.is_empty() && exit != 3 {
+    if !refused.is_empty() && !matches!(exit, 3 | 5) {
         exit = 4;
     }
     // Refusals before engine dispatch still need a gateable execution row.
