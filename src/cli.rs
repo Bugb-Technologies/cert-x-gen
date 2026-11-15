@@ -1236,7 +1236,7 @@ pub struct PentestRunArgs {
     pub mitigation_mode: String,
 
     /// Authenticated API liveness endpoint on each profile's own service.
-    /// Per-profile liveness_path takes precedence; 401/403 means dead and missing
+    /// Per-profile liveness_check takes precedence; 401/403 means dead and missing
     /// endpoints remain unverified. The API JSON also supplies role/email/id.
     #[arg(
         long,
@@ -2001,7 +2001,7 @@ pub enum AuthSubcommand {
         #[arg(long)]
         target: Option<String>,
 
-        /// Authenticated API endpoint (default /api/me); per-profile liveness_path wins.
+        /// Authenticated API endpoint (default /api/me); per-profile liveness_check wins.
         #[arg(long, default_value = "/api/me")]
         me_path: String,
 
