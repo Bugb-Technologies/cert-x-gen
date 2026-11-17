@@ -77,6 +77,21 @@ Supplied JavaScript `cxgProbe` templates also use the browser/runtime engine whe
 by ordinary `cxg scan`; their contract remains distinct from a scanner script's JSON output.
 The explicit engine routes are `cxg scan --pentest` and `cxg pentest run`.
 
+### Session liveness and proven fixes (1.9)
+
+Since 1.9.0, a session counts as alive only when an authenticated API endpoint on that
+profile's own service answers (`/api/me` by default; set `--me-path`, or
+`auth import --liveness-path` per profile). A public landing page no longer proves a
+session alive, and a denial verdict needs both sessions proven alive in the same run.
+An expired or unverified profile makes the run incomplete with **exit 5**, while probes
+for ready services still run, and each profile can open its own service in a
+multi-service run. The engine-owned `cxg.oracle.excludedRecords` oracle can now *refute*
+a correct row-filtering fix instead of leaving it inconclusive; 1.9.1 makes its verdicts
+bind when the scope URL has a path. Request paths resolve at the service origin, so
+templates that relied on a landing `--target` path must name their API prefix. See
+[API session liveness and multiple services](pentest/README.md#api-session-liveness-and-multiple-services)
+and the [changelog](CHANGELOG.md).
+
 The full command set:
 
 | Command | Purpose |
@@ -168,13 +183,6 @@ Upgrade between runs when migrating from older clients without execution leases.
 Python dependencies and browsers still require explicit setup; see the
 [pentest upgrade guide](pentest/README.md#pipeline-upgrades-and-status).
 
-### Homebrew (macOS/Linux)
-
-```bash
-brew tap bugb-technologies/cxg
-brew install cxg
-```
-
 ### Quick Install Script
 
 ```bash
@@ -230,7 +238,6 @@ leaves it believing the old version is installed. Pass `--force` to replace it a
 
 | Installed by | Upgrade with |
 |--------------|--------------|
-| Homebrew | `brew upgrade cxg` |
 | `cargo install` | `cargo install cert-x-gen --force` |
 | Docker image | `docker pull ghcr.io/bugb-technologies/cert-x-gen:latest` |
 

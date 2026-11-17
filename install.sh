@@ -18,6 +18,16 @@ info() { echo -e "${GREEN}[INFO]${NC} $1"; }
 warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 error() { echo -e "${RED}[ERROR]${NC} $1"; exit 1; }
 
+# Every download is bounded: a stalled connection used to hang the installer for
+# minutes after "Verifying checksum...". --max-time caps one attempt and --retry
+# retries transient failures (timeouts, 5xx) a bounded number of times.
+CURL_OPTS=(-fsSL --connect-timeout 15 --retry 2 --retry-delay 2)
+SMALL_MAX_TIME=20    # release metadata and SHA256SUMS
+# The binary is tens of MB, so a slow link gets a generous cap; a stalled one is
+# cut off sooner by the speed floor (under 1 KB/s for 30 s aborts the attempt).
+BINARY_MAX_TIME=900
+BINARY_STALL_OPTS=(--speed-limit 1024 --speed-time 30)
+
 # Detect OS and architecture
 detect_platform() {
     local os arch
@@ -40,7 +50,8 @@ detect_platform() {
 
 # Get latest release version
 get_latest_version() {
-    curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" | \
+    curl "${CURL_OPTS[@]}" --max-time "$SMALL_MAX_TIME" \
+        "https://api.github.com/repos/${REPO}/releases/latest" | \
         grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/'
 }
 
@@ -64,11 +75,16 @@ download_binary() {
     trap "rm -rf ${tmpdir}" EXIT
     
     # Download binary (keep original filename for checksum verification)
-    curl -fsSL -o "${tmpdir}/${binary_filename}" "$url" || error "Failed to download binary"
+    curl "${CURL_OPTS[@]}" --max-time "$BINARY_MAX_TIME" "${BINARY_STALL_OPTS[@]}" -o "${tmpdir}/${binary_filename}" "$url" \
+        || error "Failed to download binary"
     
     # Download and verify checksum
     info "Verifying checksum..."
-    curl -fsSL -o "${tmpdir}/SHA256SUMS" "$checksum_url" || warn "Could not download checksums"
+    if ! curl "${CURL_OPTS[@]}" --max-time "$SMALL_MAX_TIME" -o "${tmpdir}/SHA256SUMS" "$checksum_url"; then
+        # A timed-out transfer can leave a partial file; never verify against it.
+        rm -f "${tmpdir}/SHA256SUMS"
+        warn "Could not download checksums"
+    fi
     
     if [[ -f "${tmpdir}/SHA256SUMS" ]]; then
         cd "${tmpdir}"
