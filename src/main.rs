@@ -614,6 +614,9 @@ async fn run_pentest_process(
                 tags,
                 headers,
                 auth_dir,
+                liveness_path,
+                liveness_status,
+                service,
                 ci,
             }) => {
                 args.extend([
@@ -645,6 +648,15 @@ async fn run_pentest_process(
                 }
                 for h in headers {
                     args.extend(["--header".into(), h]);
+                }
+                if let Some(path) = liveness_path {
+                    args.extend(["--liveness-path".into(), path]);
+                }
+                for status in liveness_status {
+                    args.extend(["--liveness-status".into(), status.to_string()]);
+                }
+                if let Some(name) = service {
+                    args.extend(["--service".into(), name]);
                 }
                 if let Some(d) = auth_dir.or(parent_auth_dir) {
                     args.extend(["--auth-dir".into(), d.to_string_lossy().to_string()]);

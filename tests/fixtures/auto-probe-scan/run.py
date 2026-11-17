@@ -34,6 +34,12 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         requests.append(self.path)
         parsed = urlsplit(self.path)
+        if parsed.path == '/fixture-identity':
+            self.send_response(200 if self.headers.get('Authorization', '').startswith('Bearer fixture-') else 401)
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            self.wfile.write(b'{"role":"user"}')
+            return
         if parsed.path == '/controlled':
             self.send_response(200 if self.headers.get('Authorization') == 'Bearer fixture-entitled' else 403)
             self.send_header('Content-Type', 'application/json')
