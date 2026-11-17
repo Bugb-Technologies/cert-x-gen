@@ -1,7 +1,7 @@
 [package]
 name = "cert-x-gen"
-# @comment -- "release 1.9.1: excluded-records verdicts bind on a scope with a path, and pentest run help matches 1.9.0 session behaviour"
-version = "1.9.1"
+# @comment -- "release 1.9.2: supplied-probe replays behave as on 1.8.0 again (liveness landing fallback, roster narrowing, scope-bound identity traffic, target-prefixed paths, status ok, exit codes)"
+version = "1.9.2"
 edition = "2021"
 authors = ["CERT-X-GEN Core Team"]
 description = "Advanced Multi-Language Security Scanning Engine"
