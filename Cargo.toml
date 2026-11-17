@@ -1,7 +1,7 @@
 [package]
 name = "cert-x-gen"
-# @comment -- "release 1.8.0: plain scan runs supplied JS probes with zero model calls, engine verdicts for authorization and unauthenticated reads, per-hop scope checks and opt-in scan CI gates"
-version = "1.8.0"
+# @comment -- "release 1.9.0: excluded-records oracle refutes row-filtering fixes, authenticated API session liveness per service, and oracle proofs bound to dynamic request paths"
+version = "1.9.0"
 edition = "2021"
 authors = ["CERT-X-GEN Core Team"]
 description = "Advanced Multi-Language Security Scanning Engine"
