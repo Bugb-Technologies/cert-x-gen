@@ -969,9 +969,9 @@ pub enum PentestAction {
     ///       `--template-lang py`, `--target-type electron` without `--app-cmd`/
     ///       `--app-binary`, `--oast` together with `--oast-interactsh`, or an auth
     ///       profile whose kind does not match the target substrate
-    ///   5 → CI mode (`--ci` / CXG_CI=1): an auth session was dead/expired at
-    ///       pre-flight, so the run stopped before spending any AI calls rather
-    ///       than silently probing UNAUTHENTICATED
+    ///   5 → a selected auth profile or service is dead, expired or unverified,
+    ///       with or without `--ci`; probes for ready services still run, and the
+    ///       report is `complete: false`, `status: incomplete`
     #[command(after_help = "SCAN FRONT DOOR:
   cxg scan --pentest accepts every option listed above through the same pentest engine.
   --scope URL aliases --target URL; --templates DIR aliases --template-dir DIR.
@@ -1262,12 +1262,13 @@ pub struct PentestRunArgs {
     pub generation_timeout: u64,
 
     /// Skip periodic session health checks and re-authentication. Startup API
-    /// verification still runs; this flag supplies no proof for denial verdicts.
+    /// verification still runs, so a dead or expired profile still exits 5; this
+    /// flag supplies no proof for denial verdicts.
     #[arg(
         long,
         help_heading = "Authentication",
         display_order = 17,
-        help = "Skip periodic health checks (startup API verification still runs)"
+        help = "Skip periodic health checks (startup API verification still runs; a dead profile still exits 5)"
     )]
     pub skip_health_check: bool,
 
@@ -1757,14 +1758,13 @@ pub struct PentestRunArgs {
     )]
     pub no_restart: bool,
 
-    /// Non-interactive CI mode: fail loud instead of warning.
+    /// Non-interactive CI mode: refuse a world-accessible `--auth-dir`.
     ///
-    /// A dead or expired auth session becomes a HARD FAIL (exit 5) at pre-flight
-    /// rather than today's warn-and-continue, so a pipeline never silently probes
-    /// UNAUTHENTICATED and refutes real findings; and a world-accessible
-    /// `--auth-dir` is refused rather than trusted. Without this flag the current
-    /// warn behaviour is unchanged. `--skip-health-check` remains the documented
-    /// escape hatch (it force-marks profiles alive, so the gate cannot trip).
+    /// When credentials are in use, a world-accessible `--auth-dir` is refused
+    /// (exit 4) rather than trusted. A dead or expired auth session exits 5 with or
+    /// without this flag, and `--skip-health-check` does not bypass that: startup
+    /// API verification still runs and a profile it cannot prove alive still fails
+    /// the run.
     ///
     /// Also enabled by the environment variable CXG_CI=1, for pipelines that
     /// cannot add the flag to the invocation.
@@ -1773,7 +1773,7 @@ pub struct PentestRunArgs {
         long,
         help_heading = "Authentication",
         display_order = 19,
-        help = "CI mode: dead session → hard fail (exit 5). Also CXG_CI=1"
+        help = "CI mode: refuse a world-accessible --auth-dir. Also CXG_CI=1"
     )]
     pub ci: bool,
 

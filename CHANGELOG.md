@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.1] - 2026-11-17
+
+### Upgrading
+
+**After upgrading an existing installation, run `cxg pentest install --force`.** The fix
+below is in the embedded Python pentest pipeline, and replacing the binary alone does not
+replace the files under `~/.cert-x-gen/pentest/`.
+
+### Fixed
+
+- **`cxg.oracle.excludedRecords` verdicts bind when the scope has a path.** With a landing
+  scope such as `--scope http://host/dashboard`, the oracle measured `/api/x` at the service
+  origin while the finding claimed `/dashboard/api/x`, so a correct row-filtering fix came
+  back `inconclusive_refusal` (unverified) instead of refuted (proven), and a leak was not
+  confirmed by the oracle. The claim is now resolved at the service origin, the way the
+  oracle's requests are, through both `cxg scan` and `cxg pentest run`. The other class
+  oracles build their requests from the full `--target`, so their claims already bound and
+  are unchanged.
+- **`cxg pentest run --help` described 1.8.0 session behaviour.** It said a dead session only
+  warns without `--ci` and that `--skip-health-check` force-marks profiles alive. Since 1.9.0
+  an expired profile exits 5 with or without either flag, and probes for ready services
+  still run. The `--ci`, `--skip-health-check` and exit-code 5 help now say so, and `--ci`
+  reads as what it still does: refuse a world-accessible `--auth-dir`.
+
 ## [1.9.0] - 2026-11-17
 
 ### Upgrading
@@ -1701,7 +1725,8 @@ Stated plainly so it produces no more false leads:
 
 ---
 
-[Unreleased]: https://github.com/Bugb-Technologies/cert-x-gen/compare/v1.9.0...HEAD
+[Unreleased]: https://github.com/Bugb-Technologies/cert-x-gen/compare/v1.9.1...HEAD
+[1.9.1]: https://github.com/Bugb-Technologies/cert-x-gen/compare/v1.9.0...v1.9.1
 [1.9.0]: https://github.com/Bugb-Technologies/cert-x-gen/compare/v1.8.0...v1.9.0
 [1.8.0]: https://github.com/Bugb-Technologies/cert-x-gen/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/Bugb-Technologies/cert-x-gen/compare/v1.6.1...v1.7.0
