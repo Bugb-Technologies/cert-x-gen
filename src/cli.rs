@@ -969,9 +969,12 @@ pub enum PentestAction {
     ///       `--template-lang py`, `--target-type electron` without `--app-cmd`/
     ///       `--app-binary`, `--oast` together with `--oast-interactsh`, or an auth
     ///       profile whose kind does not match the target substrate
-    ///   5 → a selected auth profile or service is dead, expired or unverified,
-    ///       with or without `--ci`; probes for ready services still run, and the
-    ///       report is `complete: false`, `status: incomplete`
+    ///   5 → a selected auth profile or service is dead, expired, or unverified by
+    ///       its configured liveness endpoint, with or without `--ci`; probes for
+    ///       ready services still run, and the report is `complete: false`,
+    ///       `status: incomplete`. A blocked or failed request does not change the
+    ///       exit code; it is listed in `request_failures` and also makes the
+    ///       report `status: incomplete`
     #[command(after_help = "SCAN FRONT DOOR:
   cxg scan --pentest accepts every option listed above through the same pentest engine.
   --scope URL aliases --target URL; --templates DIR aliases --template-dir DIR.
@@ -999,7 +1002,8 @@ pub struct PentestRunArgs {
     pub probe_inputs: ProbeInputs,
 
     /// Running target app URL. Both `http://` and `https://` are supported.
-    /// Profiles bind their own service origins and authenticated API liveness checks.
+    /// Every identity's traffic and liveness check go to this target, unless a profile
+    /// was imported with `--service`, which opts it into its own saved origin.
     ///
     /// Required for `--target-type web` and `electron`; omit it for
     /// `--target-type tauri`, which maps the IPC surface from source and navigates
@@ -1235,9 +1239,11 @@ pub struct PentestRunArgs {
     )]
     pub mitigation_mode: String,
 
-    /// Authenticated API liveness endpoint on each profile's own service.
-    /// Per-profile liveness_check takes precedence; 401/403 means dead and missing
-    /// endpoints remain unverified. The API JSON also supplies role/email/id.
+    /// Authenticated API liveness endpoint. Per-profile liveness_check takes
+    /// precedence; 401/403 means dead, and a configured endpoint that does not answer
+    /// 2xx leaves the session unverified. When nothing is configured and the default
+    /// /api/me is absent (404, an HTML page, a redirect), the landing test decides
+    /// instead. The API JSON also supplies role/email/id.
     #[arg(
         long,
         default_value = "/api/me",
@@ -1919,8 +1925,9 @@ pub enum AuthSubcommand {
         #[arg(long)]
         profile: String,
 
-        /// Target URL this session authenticates against. Recorded in the profile and
-        /// used by API liveness checks as this profile's service origin.
+        /// Target URL this session authenticates against. Recorded in the profile. A run
+        /// sends this identity's traffic to its own `--scope`/`--target`; the saved
+        /// origin is used instead only when `--service` is also given.
         #[arg(long)]
         target: String,
 
@@ -1968,7 +1975,9 @@ pub enum AuthSubcommand {
         #[arg(long = "liveness-status")]
         liveness_status: Vec<u16>,
 
-        /// Service name included in readiness receipts.
+        /// Service name included in readiness receipts. Opts this profile into
+        /// multi-service: its saved `--target` origin, not the run's target, receives
+        /// its traffic and liveness check.
         #[arg(long)]
         service: Option<String>,
 
@@ -1997,11 +2006,13 @@ pub enum AuthSubcommand {
         #[arg(long)]
         profile: String,
 
-        /// Fallback service URL for a profile without a saved target.
+        /// Override the profile's saved target (a profile imported with `--service`
+        /// keeps its own).
         #[arg(long)]
         target: Option<String>,
 
         /// Authenticated API endpoint (default /api/me); per-profile liveness_check wins.
+        /// When neither is configured and /api/me is absent, the landing test decides.
         #[arg(long, default_value = "/api/me")]
         me_path: String,
 

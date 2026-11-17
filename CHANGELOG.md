@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.2] - 2026-11-17
+
+### Upgrading
+
+**After upgrading an existing installation, run `cxg pentest install --force`.** These fixes
+are in the embedded Python pentest pipeline. `cxg scan` refreshes it on first use.
+
+### Fixed
+
+- **A profile is no longer unverified, and the run no longer exits 5, because the app has no
+  JSON `/api/me`.** When no liveness endpoint is configured and `/api/me` answers 404, HTML, a
+  redirect or nothing, the 1.8.0 landing test decides; a configured endpoint, or an
+  `/api/me` answering 401/403, still decides as in 1.9.x. Remaining 1.8.0 hole: an app with
+  no API liveness endpoint, a public landing page and an expired bearer reads as alive.
+- **A supplied-probe replay drops `--auth` names with no loadable profile, as 1.8.0 did**,
+  so one missing profile no longer makes every kit, including anonymous ones, exit 5.
+- **Identity traffic and liveness go to the `--scope` target again.** A profile's saved
+  `--target` origin is used only for a profile imported with `--service`; 1.9.x sent a stale
+  profile's requests to another port while the verdict was recorded against the scope.
+- **Request helpers keep the `--scope` path prefix again**, so `cxg.fetch`/`raw`/`url` and
+  `cxg.page.probeXss` agree under a scope such as `http://host/app/` and an XSS that 1.8.0
+  confirmed confirms. `cxg.oracle.excludedRecords` still resolves at the origin.
+- **A complete run reports `status: "ok"`, not `"complete"`**, so a consumer that treats any
+  status other than `ok` as a caveat no longer reports one; `incomplete` is unchanged.
+- **A blocked or failed request no longer changes the exit code to 4.** It is still recorded
+  in `request_failures` and makes the run `status: incomplete`.
+
 ## [1.9.1] - 2026-11-17
 
 ### Upgrading
