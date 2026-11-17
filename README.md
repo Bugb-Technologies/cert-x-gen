@@ -77,18 +77,22 @@ Supplied JavaScript `cxgProbe` templates also use the browser/runtime engine whe
 by ordinary `cxg scan`; their contract remains distinct from a scanner script's JSON output.
 The explicit engine routes are `cxg scan --pentest` and `cxg pentest run`.
 
-### Session liveness and proven fixes (1.9)
+### Session liveness and proven fixes (1.9.2)
 
-Since 1.9.0, a session counts as alive only when an authenticated API endpoint on that
-profile's own service answers (`/api/me` by default; set `--me-path`, or
-`auth import --liveness-path` per profile). A public landing page no longer proves a
-session alive, and a denial verdict needs both sessions proven alive in the same run.
-An expired or unverified profile makes the run incomplete with **exit 5**, while probes
-for ready services still run, and each profile can open its own service in a
-multi-service run. The engine-owned `cxg.oracle.excludedRecords` oracle can now *refute*
-a correct row-filtering fix instead of leaving it inconclusive; 1.9.1 makes its verdicts
-bind when the scope URL has a path. Request paths resolve at the service origin, so
-templates that relied on a landing `--target` path must name their API prefix. See
+A session is checked against an authenticated API endpoint: one you configure
+(`auth import --liveness-path`, or a non-default `--me-path`), otherwise `/api/me`.
+A 401 or 403 from it always means the session is dead. When nothing is configured and
+`/api/me` cannot decide (404, an HTML catch-all, a redirect, no answer), the 1.8.0
+landing test decides instead; configure `--liveness-path` if your app has a public
+landing page, or an expired bearer can still read as alive. A selected profile or
+service that is unavailable makes the run `status: incomplete` with **exit 5**, while
+probes for ready services still run, and a denial verdict needs both sessions proven
+alive in the same run. Identity traffic and liveness go to the `--scope` target; only a
+profile imported with `--service` opts into its own service origin for a multi-service
+run. Request helpers keep the `--scope` path prefix, as in 1.8.0. The engine-owned
+`cxg.oracle.excludedRecords` oracle can *refute* a correct row-filtering fix instead of
+leaving it inconclusive, and it resolves at the service origin, so its verdicts bind
+under a scope with a path. See
 [API session liveness and multiple services](pentest/README.md#api-session-liveness-and-multiple-services)
 and the [changelog](CHANGELOG.md).
 
