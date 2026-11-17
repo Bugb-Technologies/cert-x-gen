@@ -7,6 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-11-17
+
+### Upgrading
+
+**After upgrading an existing installation, run `cxg pentest install --force`.** The
+embedded Python pentest pipeline changes in this release, and replacing the binary alone
+does not replace the files under `~/.cert-x-gen/pentest/`.
+
+**Session liveness is now an authenticated API check, not a landing page.** Capture,
+`cxg pentest auth verify`, scan pre-flight and runtime health all call one API endpoint
+on each profile's own service. It defaults to `/api/me` and expects a 2xx; 401 and 403
+always mean dead. **If your application has no `/api/me`, its sessions now read as
+unverified:** configure a real authenticated endpoint with `--me-path`, or per profile
+with `auth import --liveness-path`. `--skip-health-check` now skips only periodic
+health checks and re-authentication. It no longer bypasses the startup API check. See
+[API session liveness and multiple services](pentest/README.md#api-session-liveness-and-multiple-services).
+
+**Request paths resolve at the service origin.** `fetch`, `fetchAs`, `raw`, `rawAs` and
+`cxg.url` no longer inherit a path from a landing `--target` such as
+`https://app.example/dashboard`. The landing URL is still used for browser navigation.
+Templates that relied on the implicit prefix must name their API prefix explicitly.
+
+**Report consumers:**
+- `report.json` and the audit footer carry `profile_liveness` (profile, service, origin, alive, status code, reason) and `services` with `ready`/`unavailable` status.
+- **Exit 5** means a selected profile or service is unavailable or unverified. Probes for ready services still run, but the report is `complete: false`, `status: incomplete`.
+- Scope and transport failures are recorded in `request_failures` and make the run incomplete with exit 4, even when a probe returns no findings.
+
+### Added
+
+- **Engine-owned excluded-records oracle (`cxg.oracle.excludedRecords`).** It can refute a correct row-filtering fix. Such a fix keeps answering 200, so the refusal-control rule had nothing to observe and the fixed state stayed inconclusive. The engine issues three read-only GETs, each with its identity's own credentials: the subject list as the attacker, the attacker's own scoped list, and a reference list as a different identity. It compares records by key:
+  - **confirmed** when a subject record outside the attacker's list carries a reference value;
+  - **refuted** (proven) when the subject is non-empty and wholly inside the attacker's list, the reference is non-empty, and both sessions were proven alive in the same run;
+  - **inconclusive** otherwise, naming the cause.
+
+  The verdict binds to the finding's endpoint and applies only to cross-identity classes. It never overturns a proven confirmation and cannot be forged from template evidence. Generation prompt v8 documents it.
+- **Per-profile service and liveness settings** on `cxg pentest auth import`: `--service`, `--liveness-path` and repeatable `--liveness-status`. Captures and imports save them as `liveness_check: {path, expected_status}`, and existing `liveness_path` metadata still loads.
+- **Multi-service runs.** Each profile opens its own service. Cross-origin `cxg.fetchAs` uses that identity's API request context, so a second service no longer fails on CORS. Scope, budgets, redirects and audit still apply at every hop.
+
+### Changed
+
+- **A denial verdict needs proof that both sessions were alive.** Attacker and control liveness must come from the same run and service. Otherwise the result is `inconclusive_refusal`, naming the unverified profiles. An expired session can no longer be recorded as a verified mitigation.
+- **One unavailable profile no longer cancels the run.** Profiles keep their roster indices, only the probes that need an unavailable profile are skipped, and other services continue.
+- **When an oracle observation cannot bind to a finding, triage names the measured request and the claimed endpoint.** It no longer reports that the oracle saw no signal.
+
+### Fixed
+
+- **Oracle proofs bind to findings on dynamic paths** such as `GET /users/{username}`. Every SQLi and class-oracle router keeps the original request URL beside the substituted one. Binding accepts `{param}`, `:param`, `<param>` and `<type:param>`, but a parameter never spans more than one segment. Method, origin, query and sibling-uniqueness checks are unchanged.
+- **A public landing page can no longer make an expired bearer session look alive.** Redirects, HTML fallbacks and missing endpoints do not count as liveness.
+- **The HTTP/2 race transport keeps reading responses** already queued by a closing peer when an acknowledgment write fails. Previously those responses could be lost as all-zero statuses.
+
 ## [1.8.0] - 2026-11-10
 
 ### Upgrading
@@ -1651,7 +1701,9 @@ Stated plainly so it produces no more false leads:
 
 ---
 
-[Unreleased]: https://github.com/Bugb-Technologies/cert-x-gen/compare/v1.7.0...HEAD
+[Unreleased]: https://github.com/Bugb-Technologies/cert-x-gen/compare/v1.9.0...HEAD
+[1.9.0]: https://github.com/Bugb-Technologies/cert-x-gen/compare/v1.8.0...v1.9.0
+[1.8.0]: https://github.com/Bugb-Technologies/cert-x-gen/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/Bugb-Technologies/cert-x-gen/compare/v1.6.1...v1.7.0
 [1.6.1]: https://github.com/Bugb-Technologies/cert-x-gen/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/Bugb-Technologies/cert-x-gen/compare/v1.5.0...v1.6.0
